@@ -6,6 +6,10 @@
 
 `index.html` をブラウザで開くと動作します。ログイン、DB、外部API、実SDK連携は使っていません。入力内容はブラウザの `localStorage` に保存されます。
 
+## デプロイ先
+
+Cloudflare Pages: https://tonari-hatake-safety.pages.dev/
+
 ## MVP機能
 
 - トップダッシュボード
