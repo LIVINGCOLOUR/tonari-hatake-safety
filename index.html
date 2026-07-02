@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>となり畑セーフティ MVP</title>
+    <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
+    <link rel="stylesheet" href="css/styles.css?v=20260629-field-boundaries">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="メインナビゲーション">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">田</div>
+          <div>
+            <p class="eyebrow">REGIONAL SPRAY SAFETY</p>
+            <h1>となり畑<br>セーフティ</h1>
+            <span>笠間市周辺を想定した実証デモ</span>
+          </div>
+        </div>
+
+        <div class="role-switcher" id="roleSwitcher" aria-label="利用者モード">
+          <button class="role-option active" data-role="sprayer" type="button">
+            <span>散布者</span>
+            <strong>散布前後の確認</strong>
+          </button>
+          <button class="role-option" data-role="neighbor" type="button">
+            <span>周辺農家</span>
+            <strong>圃場登録・返信</strong>
+          </button>
+          <button class="role-option" data-role="admin" type="button">
+            <span>地域管理</span>
+            <strong>全体把握</strong>
+          </button>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-roles="sprayer neighbor admin" data-view-target="dashboard" type="button"><span class="nav-icon">⌂</span><span>トップ</span></button>
+          <button class="nav-item" data-roles="sprayer admin" data-view-target="plans" type="button"><span class="nav-icon">＋</span><span>散布計画</span></button>
+          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="map" type="button"><span class="nav-icon">◇</span><span>圃場マップ</span></button>
+          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="fields" type="button"><span class="nav-icon">▦</span><span>圃場ステータス</span></button>
+          <button class="nav-item" data-roles="sprayer admin" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
+          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
+          <button class="nav-item" data-roles="sprayer admin" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
+          <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>地域管理</span></button>
+          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="sources" type="button"><span class="nav-icon">i</span><span>データソース</span></button>
+        </nav>
+
+        <div class="sidebar-actions">
+          <button class="ghost-button wide" id="loadSampleButton" type="button">サンプル読込</button>
+          <button class="primary-button wide" id="newPlanButton" type="button">散布計画を追加</button>
+        </div>
+
+        <div class="org-card">
+          <span>実証モード</span>
+          <strong>匿名サンプル運用</strong>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="crumb" id="currentCrumb">トップダッシュボード</p>
+            <h2 id="currentTitle">地域内の散布予定と確認状況</h2>
+          </div>
+          <div class="topbar-controls">
+            <label class="select-label" for="activePlanSelect">表示中の散布計画</label>
+            <select id="activePlanSelect"></select>
+            <button class="ghost-button" id="exportCsvButton" type="button">CSV出力</button>
+          </div>
+        </header>
+
+        <section class="view active" data-view="dashboard" aria-labelledby="dashboardTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="dashboardTitle">トップダッシュボード</h3>
+              <p>地域内の予定、通知、確認不足を一覧します。</p>
+            </div>
+            <button class="primary-button" data-view-target="plans" type="button">計画登録へ</button>
+          </div>
+
+          <div class="rule-banner" id="ruleBanner"></div>
+
+          <div class="role-action-panel" id="roleActionPanel"></div>
+
+          <div class="kpi-grid" id="kpiGrid"></div>
+
+          <div class="dashboard-grid">
+            <article class="panel panel-hero dashboard-map-panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-attention">今日の判断メモ</span>
+                  <h4 id="focusPlanTitle">散布予定</h4>
+                </div>
+                <button class="icon-button" data-view-target="map" title="マップを開く" type="button">↗</button>
+              </div>
+              <div class="dashboard-gis-map" id="dashboardGisMap">
+                <div class="dashboard-maplibre-canvas" id="dashboardMapLibreCanvas" aria-hidden="true"></div>
+                <div class="dashboard-map-shade"></div>
+
+                <div class="dashboard-map-overlay dashboard-left-stack">
+                  <div class="dashboard-glass-card today-card">
+                    <div class="card-title-line">
+                      <span class="map-sun">☼</span>
+                      <strong>散布可否の気象条件</strong>
+                      <span id="dashboardMapDate">6/29(月)</span>
+                    </div>
+                    <div class="weather-strip">
+                      <span class="status-red" id="dashboardMapDecision">△ 確認中</span>
+                      <strong id="dashboardMapWind">-- m/s</strong>
+                      <span id="dashboardMapRain">風下 -- / 降雨 --</span>
+                    </div>
+                    <div class="mini-weather-grid" id="dashboardMapMetrics"></div>
+                    <div class="tomorrow-row">
+                      <span>明日</span>
+                      <b>△ 強風</b>
+                      <span>明後日</span>
+                      <b>△ 強風</b>
+                    </div>
+                  </div>
+
+                  <div class="map-control-stack">
+                    <button class="map-control-row" data-map-focus="spray" type="button">◎ 散布ほ場へ</button>
+                    <button class="map-control-row" data-map-focus="all" type="button">□ 全体表示</button>
+                    <button class="map-control-row" data-map-focus="wind" type="button">↓ 風下確認</button>
+                  </div>
+                </div>
+
+                <div class="dashboard-map-overlay dashboard-right-stack">
+                  <div class="dashboard-glass-card layer-toolbar">
+                    <strong>▱ レイヤー</strong>
+                    <div class="layer-toolbar-buttons">
+                      <button class="active" type="button">散布予定</button>
+                      <button type="button">圃場ステータス</button>
+                      <button type="button">通知範囲</button>
+                      <button type="button">水源</button>
+                      <button class="active" type="button">飛行ログ</button>
+                    </div>
+                  </div>
+                  <div class="dashboard-glass-card track-card">
+                    <strong>↗ 作業軌跡</strong>
+                    <span id="dashboardTrackSummary">サンプルログ未取込</span>
+                  </div>
+                </div>
+
+                <div class="dashboard-map-overlay dashboard-map-legend" id="dashboardMapLegend"></div>
+                <div class="dashboard-map-overlay dashboard-field-dock">
+                  <strong>▦ 圃場一覧</strong>
+                  <span id="dashboardFieldCount">0件</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">優先確認</span>
+                  <h4>追加確認が必要な予定</h4>
+                </div>
+              </div>
+              <div class="priority-list" id="priorityList"></div>
+            </article>
+          </div>
+
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">タイムライン</span>
+                  <h4>計画から報告まで</h4>
+                </div>
+              </div>
+              <ol class="timeline" id="timeline"></ol>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">散布予定一覧</span>
+                  <h4>直近の登録</h4>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>日時</th>
+                      <th>ほ場</th>
+                      <th>方法</th>
+                      <th>確認</th>
+                      <th>通知</th>
+                    </tr>
+                  </thead>
+                  <tbody id="planTableBody"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view="plans" aria-labelledby="plansTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="plansTitle">散布計画登録</h3>
+              <p>散布前に必要な情報を記録します。</p>
+            </div>
+            <button class="ghost-button" id="duplicatePlanButton" type="button">この計画を複製</button>
+          </div>
+
+          <div class="form-layout">
+            <form class="panel form-panel" id="planForm">
+              <div class="form-grid">
+                <label>散布予定日<input name="date" type="date" required></label>
+                <label>散布時間帯<input name="timeWindow" type="text" placeholder="例：06:00-07:30" required></label>
+                <label>散布ほ場<input name="fieldName" type="text" required></label>
+                <label>地区<input name="district" type="text" required></label>
+                <label>作物名<input name="crop" type="text" required></label>
+                <label>使用農薬名<input name="pesticide" type="text" required></label>
+                <label>使用目的<input name="purpose" type="text" required></label>
+                <label>散布方法
+                  <select name="method" required>
+                    <option>ドローン</option>
+                    <option>無人ヘリ</option>
+                    <option>ブームスプレーヤー</option>
+                    <option>動噴</option>
+                    <option>その他</option>
+                  </select>
+                </label>
+                <label>散布者名または事業者名<input name="operator" type="text" required></label>
+                <label>連絡先<input name="contact" type="text" required></label>
+                <details class="form-section wide-field" open>
+                  <summary>ドローン・飛行条件</summary>
+                  <div class="form-grid nested-form-grid">
+                    <label>ドローン機体<input name="droneModel" type="text"></label>
+                    <label>機体登録記号<input name="aircraftRegistration" type="text"></label>
+                    <label>操縦者<input name="pilot" type="text"></label>
+                    <label>補助者<input name="assistant" type="text"></label>
+                    <label>散布装置<input name="sprayDevice" type="text"></label>
+                    <label>ノズル・粒径<input name="nozzle" type="text"></label>
+                    <label>飛行高度予定<input name="plannedAltitude" type="text"></label>
+                    <label>飛行速度予定<input name="plannedSpeed" type="text"></label>
+                  </div>
+                </details>
+                <details class="form-section wide-field">
+                  <summary>農薬ラベル・使用条件</summary>
+                  <div class="form-grid nested-form-grid">
+                    <label>農薬登録番号<input name="pesticideRegistration" type="text"></label>
+                    <label>収穫前日数<input name="preHarvestDays" type="text"></label>
+                    <label>10a当たり使用量<input name="amount" type="text"></label>
+                    <label>希釈倍率<input name="dilution" type="text"></label>
+                    <label>ラベル確認日<input name="labelCheckedAt" type="date"></label>
+                  </div>
+                </details>
+                <label class="wide-field">散布範囲<input name="sprayArea" type="text"></label>
+                <label class="wide-field">備考<textarea name="notes" rows="4"></textarea></label>
+              </div>
+              <div class="form-actions">
+                <button class="primary-button" type="submit">計画を保存</button>
+                <button class="ghost-button" data-view-target="checklist" type="button">チェックへ進む</button>
+              </div>
+            </form>
+
+            <aside class="panel sticky-panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-green">自動確認</span>
+                  <h4>周辺確認要約</h4>
+                </div>
+              </div>
+              <div class="risk-summary" id="planRiskSummary"></div>
+              <div class="readiness-summary" id="planReadinessSummary"></div>
+              <div class="meter-block">
+                <div class="meter-label"><span>確認進捗</span><strong id="planProgressLabel">0/10</strong></div>
+                <div class="meter"><span id="planProgressMeter"></span></div>
+              </div>
+              <button class="secondary-button wide" data-view-target="notify" type="button">通知文を作成</button>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="map" aria-labelledby="mapTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="mapTitle">圃場マップ・周辺確認</h3>
+              <p>散布ほ場、圃場ステータス、通知範囲、風下方向、ドローン飛行ログをGIS風に表示します。</p>
+            </div>
+            <div class="segmented" role="group" aria-label="マップ表示">
+              <button class="segment active" data-map-layer="risk" type="button">周辺確認</button>
+              <button class="segment" data-map-layer="notify" type="button">通知</button>
+              <button class="segment" data-map-layer="wind" type="button">風下</button>
+              <button class="segment" data-map-layer="drone" type="button">飛行ログ</button>
+            </div>
+          </div>
+
+          <div class="map-layout">
+            <div class="map-shell panel">
+              <div class="map-canvas" id="mapCanvas">
+                <div class="maplibre-canvas" id="mapLibreCanvas" aria-hidden="true"></div>
+                <div class="map-overlay top-left">
+                  <div class="dash-card">
+                    <span>散布可否の気象条件</span>
+                    <strong id="mapStatusLabel">周辺確認</strong>
+                    <div class="dash-mini-grid" id="mapDashMetrics"></div>
+                  </div>
+                  <button class="map-chip" data-map-focus="spray" type="button">散布ほ場へ</button>
+                  <button class="map-chip" data-map-focus="all" type="button">全体表示</button>
+                  <button class="map-chip" data-map-focus="wind" type="button">風下確認</button>
+                </div>
+                <div class="map-overlay top-right">
+                  <div class="layer-panel">
+                    <strong>レイヤー</strong>
+                    <div class="layer-buttons">
+                      <button class="layer active" type="button">散布予定</button>
+                      <button class="layer" type="button">圃場ステータス</button>
+                      <button class="layer" type="button">通知範囲</button>
+                      <button class="layer" type="button">水源</button>
+                      <button class="layer active" type="button">飛行ログ</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="map-legend" id="mapLegend"></div>
+              </div>
+            </div>
+
+            <aside class="map-side">
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <span class="tag tag-attention">周辺確認</span>
+                    <h4>通知対象と確認項目</h4>
+                  </div>
+                </div>
+                <div class="risk-list" id="mapRiskList"></div>
+              </article>
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <span class="tag">風向メモ</span>
+                    <h4>風下方向</h4>
+                  </div>
+                </div>
+                <div class="wind-card" id="mapWindCard"></div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="fields" aria-labelledby="fieldsTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="fieldsTitle">圃場ステータス登録</h3>
+              <p>有機JASだけに限定せず、農薬使用状況や農薬影響を避けたい理由を登録します。</p>
+            </div>
+            <div class="section-actions">
+              <button class="ghost-button" id="newFieldStatusButton" type="button">自分の圃場を追加</button>
+              <button class="primary-button" id="saveFieldStatusButton" type="button">ステータスを保存</button>
+            </div>
+          </div>
+
+          <div class="form-layout">
+            <form class="panel form-panel" id="fieldStatusForm">
+              <div class="form-grid">
+                <label>圃場名<input name="name" type="text"></label>
+                <label>作物<input name="crop" type="text"></label>
+                <label>栽培区分
+                  <select name="cultivation">
+                    <option>農薬使用あり</option>
+                    <option>農薬使用なし</option>
+                    <option>有機JAS</option>
+                    <option>有機JASではないが農薬不使用</option>
+                    <option>特定農薬を避けたい</option>
+                    <option>未登録・未回答</option>
+                  </select>
+                </label>
+                <label>農薬使用
+                  <select name="chemicalUse">
+                    <option>あり</option>
+                    <option>なし</option>
+                    <option>未回答</option>
+                  </select>
+                </label>
+                <label>有機JAS
+                  <select name="organicJas">
+                    <option>なし</option>
+                    <option>あり</option>
+                    <option>未回答</option>
+                  </select>
+                </label>
+                <label>通知希望
+                  <select name="notifyPreference">
+                    <option>希望する</option>
+                    <option>必要時のみ</option>
+                    <option>未確認</option>
+                  </select>
+                </label>
+                <label>連絡方法
+                  <select name="contactMethod">
+                    <option>LINE</option>
+                    <option>メール</option>
+                    <option>電話</option>
+                    <option>紙</option>
+                    <option>未確認</option>
+                  </select>
+                </label>
+                <label>収穫予定時期<input name="harvestWindow" type="text"></label>
+                <label class="wide-field">農薬不使用・影響回避の理由<textarea name="avoidReason" rows="3"></textarea></label>
+                <label class="check-label"><input name="seedling" type="checkbox">育苗中</label>
+                <label class="check-label"><input name="house" type="checkbox">ハウスあり</label>
+                <label class="check-label"><input name="waterNear" type="checkbox">水源・水路近接</label>
+                <label class="check-label"><input name="unregistered" type="checkbox">未確認圃場として扱う</label>
+              </div>
+            </form>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-green">登録済み</span>
+                  <h4>周辺圃場ステータス</h4>
+                </div>
+              </div>
+              <div class="field-status-list" id="fieldStatusList"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="drone" aria-labelledby="droneTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="droneTitle">ドローン連携・飛行ログ取込</h3>
+              <p>SDK/API連携は準備中として、V1ではサンプル飛行ログで散布ON/OFF・高度・予定範囲との差分を確認します。</p>
+            </div>
+            <button class="primary-button" id="loadDroneLogButton" type="button">サンプル飛行ログ取込</button>
+          </div>
+
+          <div class="drone-layout">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-blue">連携モック</span>
+                  <h4>機体・SDK連携状況</h4>
+                </div>
+              </div>
+              <div class="drone-summary" id="droneSummary"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-attention">ログ解析</span>
+                  <h4>飛行ルート・高度・散布ON/OFF</h4>
+                </div>
+              </div>
+              <div class="flight-log-summary" id="flightLogSummary"></div>
+              <div class="altitude-chart" id="altitudeChart"></div>
+            </article>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">追加確認</span>
+                  <h4>ドローンログからの助言</h4>
+                </div>
+              </div>
+              <div class="advice-list" id="droneAdviceList"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="notify" aria-labelledby="notifyTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="notifyTitle">近隣通知</h3>
+              <p>関係者へ共有する文面と通知履歴を作成します。</p>
+            </div>
+            <button class="primary-button" id="printNoticeButton" type="button">通知書PDF</button>
+          </div>
+
+          <div class="notify-layout">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-green">通知文生成</span>
+                  <h4>農薬散布予定のお知らせ</h4>
+                </div>
+                <div class="segmented compact" role="group" aria-label="通知手段">
+                  <button class="segment active" data-channel="line" type="button">LINE</button>
+                  <button class="segment" data-channel="mail" type="button">メール</button>
+                  <button class="segment" data-channel="paper" type="button">紙</button>
+                </div>
+              </div>
+              <textarea class="notice-text" id="noticeText" rows="18"></textarea>
+              <div class="form-actions">
+                <button class="primary-button" id="copyNoticeButton" type="button">文面コピー</button>
+                <button class="secondary-button" id="markNotifiedButton" type="button">選択先を通知済みにする</button>
+              </div>
+            </article>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">通知対象</span>
+                  <h4>周辺関係者</h4>
+                </div>
+              </div>
+              <div class="target-list" id="notifyTargetList"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="checklist" aria-labelledby="checklistTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="checklistTitle">散布前チェックリスト</h3>
+              <p>ガイドラインに沿った確認状況を記録します。</p>
+            </div>
+            <button class="primary-button" id="printPrecheckButton" type="button">確認書PDF</button>
+          </div>
+
+          <div class="check-layout">
+            <article class="panel">
+              <div class="progress-hero">
+                <div>
+                  <span class="tag tag-green">確認完了度</span>
+                  <strong id="checkProgressHero">0 / 10</strong>
+                </div>
+                <div class="donut" id="checkDonut"><span>0%</span></div>
+              </div>
+              <div class="checklist" id="checklistItems"></div>
+            </article>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-attention">未確認</span>
+                  <h4>追加確認が必要な項目</h4>
+                </div>
+              </div>
+              <div class="missing-list" id="missingChecklist"></div>
+              <button class="secondary-button wide" data-view-target="weather" type="button">風向・風速を記録</button>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="weather" aria-labelledby="weatherTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="weatherTitle">気象・風向風速確認</h3>
+              <p>OSS系の気象APIから予報を自動取得し、現地実測だけ補助入力します。</p>
+            </div>
+            <div class="section-actions">
+              <button class="secondary-button" id="fetchWeatherButton" type="button">気象情報を自動取得</button>
+              <button class="primary-button" id="saveWeatherButton" type="button">気象メモを保存</button>
+            </div>
+          </div>
+
+          <div class="weather-layout">
+            <form class="panel form-panel" id="weatherForm">
+              <div class="weather-api-status" id="weatherApiStatus"></div>
+              <div class="form-grid">
+                <label>取得地点 緯度<input name="latitude" type="number" min="-90" max="90" step="0.0001"></label>
+                <label>取得地点 経度<input name="longitude" type="number" min="-180" max="180" step="0.0001"></label>
+                <label>予報風向
+                  <select name="forecastDirection">
+                    <option>北</option><option>北東</option><option>東</option><option>南東</option>
+                    <option>南</option><option>南西</option><option>西</option><option>北西</option>
+                  </select>
+                </label>
+                <label>予報風速 m/s<input name="forecastSpeed" type="number" min="0" max="20" step="0.1"></label>
+                <label>最大瞬間風速 m/s<input name="maxGust" type="number" min="0" max="30" step="0.1"></label>
+                <label>気温 ℃<input name="temperature" type="number" min="-20" max="50" step="0.1"></label>
+                <label>湿度 %<input name="humidity" type="number" min="0" max="100" step="1"></label>
+                <label>降雨予報<input name="rainForecast" type="text"></label>
+                <label>実測風向
+                  <select name="actualDirection">
+                    <option>北</option><option>北東</option><option>東</option><option>南東</option>
+                    <option>南</option><option>南西</option><option>西</option><option>北西</option>
+                  </select>
+                </label>
+                <label>実測風速 m/s<input name="actualSpeed" type="number" min="0" max="20" step="0.1"></label>
+                <label>測定時刻<input name="measuredAt" type="time"></label>
+                <label>測定場所<input name="measuredPlace" type="text"></label>
+                <label>測定方法
+                  <select name="measurementMethod">
+                    <option>風速計で測定</option>
+                    <option>目視</option>
+                    <option>気象アプリ</option>
+                    <option>気象庁等データ</option>
+                    <option>その他</option>
+                  </select>
+                </label>
+                <label>測定者<input name="measuredBy" type="text"></label>
+                <label class="wide-field">備考<textarea name="weatherNotes" rows="4"></textarea></label>
+              </div>
+            </form>
+
+            <aside class="panel weather-summary">
+              <div class="wind-compass" id="windCompass">
+                <span>風下</span>
+                <b>南東</b>
+              </div>
+              <div id="weatherAssessment"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="report" aria-labelledby="reportTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="reportTitle">実施後報告</h3>
+              <p>実施内容、問い合わせ、写真メモを記録します。</p>
+            </div>
+            <button class="primary-button" id="printReportButton" type="button">実施後報告PDF</button>
+          </div>
+
+          <div class="report-layout">
+            <form class="panel form-panel" id="reportForm">
+              <div class="form-grid">
+                <label>実施日<input name="doneDate" type="date"></label>
+                <label>実施時間<input name="doneTime" type="text" placeholder="例：06:10-07:05"></label>
+                <label>実施ほ場<input name="doneField" type="text"></label>
+                <label>使用農薬<input name="donePesticide" type="text"></label>
+                <label>実施範囲<input name="doneArea" type="text"></label>
+                <label>実施時の風向・風速<input name="doneWeather" type="text"></label>
+                <label>異常の有無
+                  <select name="incident">
+                    <option>なし</option>
+                    <option>問い合わせあり</option>
+                    <option>確認事項あり</option>
+                  </select>
+                </label>
+                <label>近隣からの問い合わせ
+                  <select name="inquiry">
+                    <option>なし</option>
+                    <option>あり</option>
+                    <option>未確認</option>
+                  </select>
+                </label>
+                <label>報告分類
+                  <select name="reportType">
+                    <option>通常報告</option>
+                    <option>問い合わせあり</option>
+                    <option>追加確認あり</option>
+                  </select>
+                </label>
+                <label>実散布量<input name="actualAmount" type="text"></label>
+                <label>高度要確認区間<input name="altitudeNotes" type="text"></label>
+                <label>予定範囲外飛行
+                  <select name="outsideFlight">
+                    <option>なし</option>
+                    <option>要確認</option>
+                    <option>未確認</option>
+                  </select>
+                </label>
+                <label class="wide-field">写真メモ<input id="photoInput" name="photo" type="file" accept="image/*"></label>
+                <label class="wide-field">備考<textarea name="reportNotes" rows="4"></textarea></label>
+              </div>
+              <div class="form-actions">
+                <button class="secondary-button" id="autoFillReportButton" type="button">計画とログから自動入力</button>
+                <button class="primary-button" type="submit">報告を保存</button>
+                <button class="ghost-button" id="clearReportPhotoButton" type="button">写真を外す</button>
+              </div>
+            </form>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">報告プレビュー</span>
+                  <h4>散布者控え</h4>
+                </div>
+              </div>
+              <div id="reportPreview"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="admin" aria-labelledby="adminTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="adminTitle">地域管理者ダッシュボード</h3>
+              <p>JA・生産部会・自治体向けの確認画面です。</p>
+            </div>
+            <button class="primary-button" id="printAdminButton" type="button">管理者一覧PDF</button>
+          </div>
+
+          <div class="admin-grid">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">一覧</span>
+                  <h4>散布予定・確認状況</h4>
+                </div>
+              </div>
+              <div class="table-wrap large-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>日付</th>
+                      <th>地区</th>
+                      <th>ほ場</th>
+                      <th>周辺確認</th>
+                      <th>通知</th>
+                      <th>チェック</th>
+                      <th>確認完了度</th>
+                      <th>報告</th>
+                    </tr>
+                  </thead>
+                  <tbody id="adminTableBody"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-green">集計</span>
+                  <h4>地区別・月別</h4>
+                </div>
+              </div>
+              <div class="bar-list" id="districtBars"></div>
+              <div class="bar-list" id="monthBars"></div>
+            </aside>
+          </div>
+
+          <div class="rule-grid">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-green">実証ルール案</span>
+                  <h4>デモ運用条件</h4>
+                </div>
+              </div>
+              <form id="rulesForm" class="form-grid">
+                <label>デモ地域名<input name="regionName" type="text"></label>
+                <label>管理者名<input name="managerName" type="text"></label>
+                <label>有機ほ場の重点確認距離 m<input name="organicRadius" type="number" min="10" max="1000" step="10"></label>
+                <label>通知対象距離 m<input name="notifyRadius" type="number" min="10" max="1000" step="10"></label>
+                <label>住宅・水源等の確認距離 m<input name="sensitiveRadius" type="number" min="10" max="1000" step="10"></label>
+                <label>再確認推奨風速 m/s<input name="windCaution" type="number" min="0" max="20" step="0.1"></label>
+                <label>延期検討風速 m/s<input name="windLimit" type="number" min="0" max="20" step="0.1"></label>
+                <label>事前通知期限 日前<input name="noticeDeadlineDays" type="number" min="0" max="30" step="1"></label>
+                <label>報告提出期限 日後<input name="reportDeadlineDays" type="number" min="0" max="30" step="1"></label>
+                <label>共有範囲
+                  <select name="sharingScope">
+                    <option>関係者限定</option>
+                    <option>部会内共有</option>
+                    <option>自治体・JA共有</option>
+                  </select>
+                </label>
+              </form>
+              <div class="form-actions">
+                <button class="primary-button" id="saveRulesButton" type="button">実証ルール案を保存</button>
+                <button class="ghost-button" id="resetRulesButton" type="button">標準値に戻す</button>
+              </div>
+            </article>
+
+            <aside class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag tag-attention">説明用</span>
+                  <h4>確認完了度の根拠</h4>
+                </div>
+              </div>
+              <div class="readiness-detail" id="readinessBreakdown"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="sources" aria-labelledby="sourcesTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="sourcesTitle">データソース・根拠資料</h3>
+              <p>MVP上で表示している確認項目の参照元です。</p>
+            </div>
+          </div>
+
+          <div class="source-grid" id="sourceGrid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="print-sheet" id="printSheet" aria-hidden="true"></div>
+    <nav class="mobile-quickbar" aria-label="モバイル主要操作">
+      <button data-view-target="dashboard" type="button"><span>⌂</span>トップ</button>
+      <button data-view-target="map" type="button"><span>◇</span>マップ</button>
+      <button data-view-target="notify" type="button"><span>✉</span>通知</button>
+      <button data-view-target="fields" type="button"><span>▦</span>圃場</button>
+      <button data-view-target="report" type="button"><span>□</span>報告</button>
+    </nav>
+    <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
+    <script src="vendor/turf/turf.min.js" defer></script>
+    <script src="js/main.js?v=20260629-field-boundaries" defer></script>
+  </body>
+</html>
