@@ -1,4 +1,4 @@
-const STORAGE_KEY = "tonariHatakeSafetyMvp.v2.drone";
+const STORAGE_KEY = "tonariHatakeSafetyMvp.v3.coverage";
 
 const VIEW_META = {
   dashboard: ["トップダッシュボード", "地域内の散布予定と確認状況"],
