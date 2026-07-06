@@ -431,6 +431,22 @@ textarea:focus {
   margin-top: 10px;
 }
 
+.field-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.field-import-actions .rx-import-button {
+  color: #06301b;
+}
+
+.field-import-actions button,
+.field-import-actions .rx-import-button {
+  flex: 1 1 auto;
+}
+
 .fields-readonly-note {
   display: none;
   margin-bottom: 16px;

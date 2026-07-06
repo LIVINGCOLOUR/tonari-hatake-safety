@@ -240,18 +240,47 @@ const DIRECTION_BEARING = {
   北西: 315,
 };
 
+// デモの既定範囲（笠間市周辺の農地寄り・近似）。実境界を取り込むと自動でその範囲に切り替わる。
 const DEMO_MAP_BOUNDS = {
-  west: 140.2966,
-  east: 140.3134,
-  north: 36.3512,
-  south: 36.3387,
+  west: 140.2732,
+  east: 140.2892,
+  north: 36.3646,
+  south: 36.3526,
 };
 
 const DEFAULT_MAP_VIEW = {
-  center: [140.304, 36.345],
-  zoom: 14.65,
+  center: [140.2812, 36.3586],
+  zoom: 15.6,
   bearing: 0,
 };
+
+// 実際のほ場境界（geo付きフィールド）があればその外接範囲、無ければデモ既定範囲。
+function currentMapBounds() {
+  const geoFields = (state?.fields || []).filter((f) => Array.isArray(f.geo) && f.geo.length >= 3);
+  if (!geoFields.length) return DEMO_MAP_BOUNDS;
+  let west = Infinity;
+  let east = -Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  geoFields.forEach((f) =>
+    f.geo.forEach(([lng, lat]) => {
+      west = Math.min(west, lng);
+      east = Math.max(east, lng);
+      south = Math.min(south, lat);
+      north = Math.max(north, lat);
+    }),
+  );
+  const padLng = (east - west) * 0.18 || 0.002;
+  const padLat = (north - south) * 0.18 || 0.002;
+  return { west: west - padLng, east: east + padLng, north: north + padLat, south: south - padLat };
+}
+
+const BEARING_DIRECTIONS = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+
+function bearingToDirection(bearingDeg) {
+  const normalized = ((bearingDeg % 360) + 360) % 360;
+  return BEARING_DIRECTIONS[Math.round(normalized / 45) % 8];
+}
 
 const FIELD_LAYER_COLORS = {
   spray: "#c94b44",
@@ -264,55 +293,35 @@ const FIELD_LAYER_COLORS = {
   public: "#695faf",
 };
 
+// 農地区画に見えるよう、圃場を軸そろえの矩形グリッドで配置（散布ほ場は飛行ログを内包）。
 const SAMPLE_FIELD_GEOMETRY = {
   "spray-field-a": {
-    x: 50.3,
-    y: 40.2,
-    w: 9.1,
-    h: 7.8,
-    geoShape: [[50.3, 41.6], [56.2, 40.2], [59.4, 44.4], [55.5, 48.0], [50.4, 46.7]],
-  },
-  "organic-field-a": {
-    x: 39.2,
-    y: 53.4,
-    w: 11.0,
-    h: 8.7,
-    geoShape: [[39.2, 54.8], [47.8, 53.4], [50.2, 62.1], [41.3, 61.6]],
+    x: 45, y: 39, w: 16, h: 12,
+    geoShape: [[45, 39], [61, 39], [61, 51], [45, 51]],
   },
   "no-chemical-field-b": {
-    x: 57.1,
-    y: 54.0,
-    w: 7.3,
-    h: 9.5,
-    geoShape: [[57.1, 54.0], [63.1, 55.2], [64.4, 63.5], [57.2, 61.3]],
+    x: 64, y: 39, w: 16, h: 12,
+    geoShape: [[64, 39], [80, 39], [80, 51], [64, 51]],
+  },
+  "organic-field-a": {
+    x: 64, y: 54, w: 16, h: 12,
+    geoShape: [[64, 54], [80, 54], [80, 66], [64, 66]],
   },
   "seedling-house-c": {
-    x: 53.5,
-    y: 30.7,
-    w: 8.5,
-    h: 6.7,
-    geoShape: [[55.5, 30.7], [62.0, 31.8], [60.4, 37.4], [53.5, 36.0]],
+    x: 45, y: 54, w: 16, h: 12,
+    geoShape: [[45, 54], [61, 54], [61, 66], [45, 66]],
   },
   "preharvest-field-d": {
-    x: 41.2,
-    y: 23.5,
-    w: 10.8,
-    h: 19.0,
-    geoShape: [[41.8, 25.8], [49.1, 23.5], [52.0, 37.0], [46.8, 42.5], [41.2, 36.8]],
+    x: 27, y: 39, w: 16, h: 12,
+    geoShape: [[27, 39], [43, 39], [43, 51], [27, 51]],
   },
   "water-channel-d": {
-    x: 62.8,
-    y: 42.5,
-    w: 4.5,
-    h: 21.0,
-    geoShape: [[63.1, 42.5], [67.3, 43.5], [66.1, 63.5], [62.8, 61.8]],
+    x: 27, y: 54, w: 16, h: 12,
+    geoShape: [[27, 54], [43, 54], [43, 66], [27, 66]],
   },
   "facility-e": {
-    x: 68.5,
-    y: 25.0,
-    w: 6.5,
-    h: 6.7,
-    geoShape: [[69.0, 25.0], [75.0, 25.6], [74.2, 31.7], [68.5, 31.2]],
+    x: 45, y: 26, w: 16, h: 12,
+    geoShape: [[45, 26], [61, 26], [61, 38], [45, 38]],
   },
 };
 
@@ -598,6 +607,12 @@ function bindEvents() {
   });
   $("#loadSamplePrescriptionButton")?.addEventListener("click", loadSamplePrescription);
   $("#clearPrescriptionButton")?.addEventListener("click", clearPrescription);
+  $("#fieldBoundaryInput")?.addEventListener("change", (event) => {
+    importFieldBoundaries(event.target.files[0]);
+    event.target.value = "";
+  });
+  $("#loadSampleBoundaryButton")?.addEventListener("click", loadSampleFieldBoundaries);
+  $("#resetBoundaryButton")?.addEventListener("click", resetFieldBoundaries);
   $("#createPrescriptionButton")?.addEventListener("click", createPrescription);
   document.body.addEventListener("input", (event) => {
     const rateInput = event.target.closest("[data-rx-rate]");
@@ -1407,10 +1422,11 @@ function focusGisMap(map, mode) {
   if (!map) return;
   map.resize();
   if (mode === "all") {
+    const bounds = currentMapBounds();
     map.fitBounds(
       [
-        [DEMO_MAP_BOUNDS.west, DEMO_MAP_BOUNDS.south],
-        [DEMO_MAP_BOUNDS.east, DEMO_MAP_BOUNDS.north],
+        [bounds.west, bounds.south],
+        [bounds.east, bounds.north],
       ],
       { padding: 70, duration: 500, bearing: DEFAULT_MAP_VIEW.bearing },
     );
@@ -1492,6 +1508,11 @@ function fieldFeatureCollection() {
 }
 
 function fieldPolygonCoordinates(field, index = 0) {
+  if (Array.isArray(field.geo) && field.geo.length >= 3) {
+    const ring = field.geo.map(([lng, lat]) => [Number(lng), Number(lat)]);
+    ring.push([...ring[0]]);
+    return ring;
+  }
   if (Array.isArray(field.geoShape) && field.geoShape.length >= 3) {
     const ring = field.geoShape.map(([x, y]) => lngLatFromPercent(x, y));
     ring.push([...ring[0]]);
@@ -1523,6 +1544,10 @@ function activeSprayField() {
 }
 
 function fieldCenterLngLat(field = activeSprayField()) {
+  if (Array.isArray(field?.geo) && field.geo.length) {
+    const sum = field.geo.reduce((acc, [lng, lat]) => ({ x: acc.x + Number(lng), y: acc.y + Number(lat) }), { x: 0, y: 0 });
+    return [sum.x / field.geo.length, sum.y / field.geo.length];
+  }
   if (Array.isArray(field?.geoShape) && field.geoShape.length) {
     const sum = field.geoShape.reduce(
       (acc, [x, y]) => {
@@ -1538,8 +1563,9 @@ function fieldCenterLngLat(field = activeSprayField()) {
 }
 
 function lngLatFromPercent(x, y) {
-  const lng = DEMO_MAP_BOUNDS.west + (DEMO_MAP_BOUNDS.east - DEMO_MAP_BOUNDS.west) * (Number(x) / 100);
-  const lat = DEMO_MAP_BOUNDS.north - (DEMO_MAP_BOUNDS.north - DEMO_MAP_BOUNDS.south) * (Number(y) / 100);
+  const bounds = currentMapBounds();
+  const lng = bounds.west + (bounds.east - bounds.west) * (Number(x) / 100);
+  const lat = bounds.north - (bounds.north - bounds.south) * (Number(y) / 100);
   return [lng, lat];
 }
 
@@ -4003,6 +4029,124 @@ function activeField() {
   return selected || fallback;
 }
 
+// --- 実際のほ場境界（GeoJSON）の取込・表示 ---
+function bearingBetween([lng1, lat1], [lng2, lat2]) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const dLambda = toRad(lng2 - lng1);
+  const y = Math.sin(dLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function outerRingLngLat(geometry) {
+  const ring = geometry.type === "MultiPolygon" ? geometry.coordinates[0]?.[0] : geometry.coordinates[0];
+  const coords = (ring || []).map((c) => [Number(c[0]), Number(c[1])]).filter((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
+  if (coords.length > 2) {
+    const first = coords[0];
+    const last = coords[coords.length - 1];
+    if (first[0] === last[0] && first[1] === last[1]) coords.pop();
+  }
+  return coords;
+}
+
+function buildFieldsFromGeoJson(text) {
+  const data = JSON.parse(text);
+  let features = [];
+  if (data.type === "FeatureCollection") features = data.features || [];
+  else if (data.type === "Feature") features = [data];
+  else if (data.type && data.coordinates) features = [{ type: "Feature", geometry: data, properties: {} }];
+  const polys = features.filter((f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"));
+  if (!polys.length) throw new Error("ポリゴンのGeoJSONが見つかりません。");
+  const fields = polys.map((f, i) => {
+    const geo = outerRingLngLat(f.geometry);
+    const props = f.properties || {};
+    const name = props.name || props["圃場名"] || props.field || props.NAME || props.label || `取込ほ場${i + 1}`;
+    const isSpray = i === 0;
+    return {
+      id: `imported-${i}-${Date.now().toString(36)}`,
+      type: isSpray ? "spray" : "noChemical",
+      name: String(name),
+      short: isSpray ? "散布" : "不使",
+      crop: String(props.crop || props["作物"] || "未登録"),
+      cultivation: isSpray ? "農薬使用あり" : "未登録・未回答",
+      chemicalUse: isSpray ? "あり" : "未回答",
+      organicJas: "未回答",
+      notifyPreference: isSpray ? "必要時のみ" : "希望する",
+      contactMethod: "未確認",
+      harvestWindow: "未登録",
+      avoidReason: "",
+      seedling: false,
+      house: false,
+      waterNear: false,
+      unregistered: false,
+      geo,
+      distance: 0,
+      direction: isSpray ? "中心" : "-",
+      notifyTarget: !isSpray,
+      owner: isSpray ? "自分" : "周辺農家",
+    };
+  });
+  const sprayCenter = fieldCenterLngLat(fields[0]);
+  fields.forEach((field, i) => {
+    if (i === 0) return;
+    const c = fieldCenterLngLat(field);
+    field.distance = Math.round(haversineMeters(sprayCenter, c));
+    field.direction = bearingToDirection(bearingBetween(sprayCenter, c));
+  });
+  return fields;
+}
+
+function applyImportedFields(fields, message) {
+  state.fields = fields;
+  const plan = activePlan();
+  if (plan && fields[0]) plan.fieldName = fields[0].name;
+  state.activeFieldId = fields.find((f) => f.type !== "spray")?.id;
+  saveState();
+  renderAll();
+  requestAnimationFrame(() => focusVisibleMaps("all"));
+  showToast(message);
+}
+
+function importFieldBoundaries(file) {
+  if (!file) return;
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".zip") || lower.endsWith(".shp")) {
+    showToast("Shapefileは次段対応です。GeoJSON（筆ポリゴン等）で取り込んでください。");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const fields = buildFieldsFromGeoJson(String(reader.result));
+      applyImportedFields(fields, `実際のほ場境界を取り込みました（${fields.length}区画）。`);
+    } catch (error) {
+      showToast(`取り込めませんでした：${error.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function loadSampleFieldBoundaries() {
+  const geoFields = createSampleState().fields.map((field) => {
+    const ring = fieldPolygonCoordinates(field);
+    const open = ring.slice(0, -1);
+    return { ...field, geo: open };
+  });
+  applyImportedFields(geoFields, "サンプルの実境界（geo）を読み込みました。");
+}
+
+function resetFieldBoundaries() {
+  state.fields = createSampleState().fields;
+  state.activeFieldId = state.fields.find((f) => f.type !== "spray")?.id;
+  saveState();
+  renderAll();
+  requestAnimationFrame(() => focusVisibleMaps("all"));
+  showToast("デモの圃場に戻しました。");
+}
+
 function createBlankField() {
   return {
     id: uniqueId("field"),
@@ -4068,11 +4212,11 @@ function createBlankPlan() {
 
 // Serpentine (lawn-mower) sweep over the demo spray field, so grid coverage is meaningful.
 function serpentineFlightPoints() {
-  const x0 = 48;
-  const x1 = 60;
-  const y0 = 41.5;
-  const y1 = 49.5;
-  const rows = 12;
+  const x0 = 45.8;
+  const x1 = 60.2;
+  const y0 = 40;
+  const y1 = 50;
+  const rows = 14;
   const points = [];
   for (let r = 0; r < rows; r += 1) {
     const y = y0 + ((y1 - y0) * r) / (rows - 1);
@@ -4308,10 +4452,10 @@ function createSampleState() {
     dilution: "8倍",
     ratePer10a: 800,
     rateUnit: "mL",
-    areaHa: 1.0,
+    areaHa: 3.6,
     sprayWidthM: 9,
     labelCheckedAt: dateOffset(0),
-    sprayArea: "1.0ha",
+    sprayArea: "3.6ha",
     notes: "農薬不使用ほ場が風下方向にあるため、通知と散布直前の風速確認を重点確認。",
     weather: {
       latitude: DEFAULT_WEATHER_LOCATION.latitude,
@@ -4459,10 +4603,10 @@ function createSampleState() {
     dilution: "10倍",
     ratePer10a: 600,
     rateUnit: "mL",
-    areaHa: 1.0,
+    areaHa: 3.6,
     sprayWidthM: 9,
     labelCheckedAt: dateOffset(-1),
-    sprayArea: "1.0ha",
+    sprayArea: "3.6ha",
     droneLog: createSampleDroneLog(true),
     notes: "通知済み、実施後報告作成済みのサンプル。飛行ログからカバレッジを可視化。",
     weather: {
@@ -4507,7 +4651,7 @@ function createSampleState() {
       doneTime: "05:32-06:18",
       doneField: "笠間デモほ場A",
       donePesticide: "殺虫剤C（サンプル）",
-      doneArea: "1.0ha",
+      doneArea: "3.6ha",
       doneWeather: "北 1.4m/s",
       incident: "なし",
       inquiry: "なし",
@@ -4546,11 +4690,11 @@ function createSampleState() {
     dilution: "500倍",
     ratePer10a: 100,
     rateUnit: "L",
-    areaHa: 1.0,
+    areaHa: 3.6,
     sprayWidthM: 9,
     droneLog: createSampleDroneLog(true),
     labelCheckedAt: dateOffset(-3),
-    sprayArea: "1.0ha",
+    sprayArea: "3.6ha",
     notes: "農薬ではなく液体肥料の葉面散布。有機ほ場が風下にあるため、化学肥料の飛散にも配慮して通知・確認を実施。",
     weather: {
       ...defaultWeather(),
@@ -4584,7 +4728,7 @@ function createSampleState() {
       doneTime: "06:32-07:05",
       doneField: "笠間デモほ場A",
       donePesticide: "液体葉面散布肥料（サンプル）",
-      doneArea: "1.0ha",
+      doneArea: "3.6ha",
       doneWeather: "北西 1.3m/s",
       incident: "なし",
       inquiry: "なし",
