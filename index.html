@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260707-vra2">
+    <link rel="stylesheet" href="css/styles.css?v=20260707-ux">
   </head>
   <body>
     <div class="app-shell">
@@ -39,10 +39,10 @@
           <button class="nav-item" data-roles="sprayer admin" data-view-target="plans" type="button"><span class="nav-icon">＋</span><span>散布計画</span></button>
           <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="map" type="button"><span class="nav-icon">◇</span><span>圃場マップ</span></button>
           <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="fields" type="button"><span class="nav-icon">▦</span><span>圃場ステータス</span></button>
-          <button class="nav-item" data-roles="sprayer admin" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
           <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
-          <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
+          <button class="nav-item" data-roles="sprayer admin" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
           <button class="nav-item" data-roles="sprayer admin" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
           <button class="nav-item" data-roles="sprayer admin" data-view-target="history" type="button"><span class="nav-icon">≡</span><span>作業履歴</span></button>
           <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>地域管理</span></button>
@@ -114,12 +114,6 @@
                       <span id="dashboardMapRain">風下 -- / 降雨 --</span>
                     </div>
                     <div class="mini-weather-grid" id="dashboardMapMetrics"></div>
-                    <div class="tomorrow-row">
-                      <span>明日</span>
-                      <b>△ 強風</b>
-                      <span>明後日</span>
-                      <b>△ 強風</b>
-                    </div>
                   </div>
 
                   <div class="map-control-stack">
@@ -130,16 +124,6 @@
                 </div>
 
                 <div class="dashboard-map-overlay dashboard-right-stack">
-                  <div class="dashboard-glass-card layer-toolbar">
-                    <strong>▱ レイヤー</strong>
-                    <div class="layer-toolbar-buttons">
-                      <button class="active" type="button">散布予定</button>
-                      <button type="button">圃場ステータス</button>
-                      <button type="button">通知範囲</button>
-                      <button type="button">水源</button>
-                      <button class="active" type="button">飛行ログ</button>
-                    </div>
-                  </div>
                   <div class="dashboard-glass-card track-card">
                     <strong>↗ 作業軌跡</strong>
                     <span id="dashboardTrackSummary">サンプルログ未取込</span>
@@ -334,18 +318,6 @@
                   <button class="map-chip" data-map-focus="spray" type="button">散布ほ場へ</button>
                   <button class="map-chip" data-map-focus="all" type="button">全体表示</button>
                   <button class="map-chip" data-map-focus="wind" type="button">風下確認</button>
-                </div>
-                <div class="map-overlay top-right">
-                  <div class="layer-panel">
-                    <strong>レイヤー</strong>
-                    <div class="layer-buttons">
-                      <button class="layer active" type="button">散布予定</button>
-                      <button class="layer" type="button">圃場ステータス</button>
-                      <button class="layer" type="button">通知範囲</button>
-                      <button class="layer" type="button">水源</button>
-                      <button class="layer active" type="button">飛行ログ</button>
-                    </div>
-                  </div>
                 </div>
                 <div class="map-legend" id="mapLegend"></div>
 
@@ -919,13 +891,14 @@
     <div class="print-sheet" id="printSheet" aria-hidden="true"></div>
     <nav class="mobile-quickbar" aria-label="モバイル主要操作">
       <button data-view-target="dashboard" type="button"><span>⌂</span>トップ</button>
+      <button data-view-target="weather" type="button"><span>↗</span>気象</button>
       <button data-view-target="map" type="button"><span>◇</span>マップ</button>
       <button data-view-target="notify" type="button"><span>✉</span>通知</button>
-      <button data-view-target="fields" type="button"><span>▦</span>圃場</button>
+      <button data-view-target="checklist" type="button"><span>✓</span>チェック</button>
       <button data-view-target="report" type="button"><span>□</span>報告</button>
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
-    <script src="js/main.js?v=20260707-vra2" defer></script>
+    <script src="js/main.js?v=20260707-ux" defer></script>
   </body>
 </html>
