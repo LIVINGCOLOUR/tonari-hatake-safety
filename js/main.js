@@ -358,6 +358,13 @@ function bindEvents() {
       return;
     }
 
+    const rxAction = event.target.closest("[data-rx-action]");
+    if (rxAction) {
+      if (rxAction.dataset.rxAction === "regenerate") regeneratePrescription();
+      else if (rxAction.dataset.rxAction === "export") exportPrescriptionGeoJSON();
+      return;
+    }
+
     const planTrack = event.target.closest("[data-plan-track]");
     if (planTrack) {
       const plan = state.plans.find((item) => item.id === planTrack.dataset.planTrack);
@@ -567,6 +574,11 @@ function bindEvents() {
   });
   $("#loadSamplePrescriptionButton")?.addEventListener("click", loadSamplePrescription);
   $("#clearPrescriptionButton")?.addEventListener("click", clearPrescription);
+  $("#createPrescriptionButton")?.addEventListener("click", createPrescription);
+  document.body.addEventListener("input", (event) => {
+    const rateInput = event.target.closest("[data-rx-rate]");
+    if (rateInput) updatePrescriptionRate(Number(rateInput.dataset.rxRate), rateInput.value);
+  });
 
   document.body.addEventListener("change", (event) => {
     const response = event.target.closest("[data-notify-response]");
@@ -2487,6 +2499,11 @@ function renderPrescriptionPanel() {
 
 function updatePrescriptionDisplay() {
   if (mapLayer !== "prescription") return;
+  refreshPrescriptionMap();
+  renderPrescriptionEditor(activePlan().prescription);
+}
+
+function refreshPrescriptionMap() {
   const plan = activePlan();
   if (mapLibreMap && mapLibreMap.getSource("prescription-zones")) {
     mapLibreMap.getSource("prescription-zones").setData(prescriptionZonesFeatureCollection(plan));
@@ -2559,6 +2576,138 @@ function clearPrescription() {
   saveState();
   updatePrescriptionDisplay();
   showToast("処方マップをクリアしました。");
+}
+
+// --- 可変施肥マップの作成・編集・書き出し ---
+const RATE_UNITS = ["kg/ha", "L/ha", "g/10a", "mL/10a"];
+
+function generatePrescriptionZones(plan, zones, baseRate, unit, material) {
+  const field = coverageField(plan);
+  const ring = fieldPolygonCoordinates(field);
+  const lngs = ring.map((c) => c[0]);
+  const lats = ring.map((c) => c[1]);
+  const w = Math.min(...lngs);
+  const e = Math.max(...lngs);
+  const s = Math.min(...lats);
+  const n = Math.max(...lats);
+  const count = Math.max(2, Math.min(8, Math.round(zones) || 4));
+  const rate = toPositiveNumber(baseRate, 100);
+  const features = [];
+  for (let i = 0; i < count; i += 1) {
+    const y0 = n - ((n - s) * i) / count;
+    const y1 = n - ((n - s) * (i + 1)) / count;
+    features.push({
+      type: "Feature",
+      properties: { zone: i + 1, rate },
+      geometry: { type: "Polygon", coordinates: [[[w, y0], [e, y0], [e, y1], [w, y1], [w, y0]]] },
+    });
+  }
+  const rx = buildPrescription(features, `処方マップ（${material || "可変施肥"}）`, unit || "kg/ha");
+  rx.editable = true;
+  rx.material = material || "化学肥料";
+  return rx;
+}
+
+function createPrescription() {
+  const plan = activePlan();
+  plan.prescription = generatePrescriptionZones(plan, 4, 100, "kg/ha", "化学肥料");
+  saveState();
+  updatePrescriptionDisplay();
+  showToast("処方マップを作成しました。ゾーンごとに施用量を編集できます。");
+}
+
+function regeneratePrescription() {
+  const plan = activePlan();
+  const zones = Number($("#rxZonesInput")?.value) || 4;
+  const baseRate = $("#rxBaseRateInput")?.value;
+  const unit = $("#rxUnitInput")?.value || "kg/ha";
+  const material = plan.prescription?.material || "化学肥料";
+  plan.prescription = generatePrescriptionZones(plan, zones, baseRate, unit, material);
+  saveState();
+  updatePrescriptionDisplay();
+  showToast("処方マップを再生成しました。");
+}
+
+function updatePrescriptionRate(index, value) {
+  const rx = activePlan().prescription;
+  if (!rx?.editable || !rx.features[index]) return;
+  rx.features[index].properties.rate = toNumber(value) || 0;
+  const stats = buildPrescription(rx.features, rx.name, rx.unit);
+  rx.min = stats.min;
+  rx.max = stats.max;
+  rx.avg = stats.avg;
+  rx.totalAmount = stats.totalAmount;
+  rx.totalAreaHa = stats.totalAreaHa;
+  saveState();
+  refreshPrescriptionMap();
+}
+
+function renderPrescriptionEditor(rx) {
+  const container = $("#prescriptionEditor");
+  if (!container) return;
+  if (!rx?.editable) {
+    container.innerHTML = "";
+    return;
+  }
+  const unitOptions = RATE_UNITS.map((u) => `<option ${rx.unit === u ? "selected" : ""}>${escapeHtml(u)}</option>`).join("");
+  const zoneOptions = [2, 3, 4, 5, 6].map((z) => `<option ${rx.count === z ? "selected" : ""}>${z}</option>`).join("");
+  const zoneRows = rx.features
+    .map((f, i) => {
+      const ha = polygonAreaHa(f.geometry);
+      return `
+        <div class="rx-zone-row">
+          <span>ゾーン${i + 1}<small>${trimNumber(ha)}ha</small></span>
+          <input type="number" min="0" step="1" data-rx-rate="${i}" value="${escapeAttr(f.properties.rate)}">
+          <span class="rx-zone-unit">${escapeHtml(rx.unit)}</span>
+        </div>
+      `;
+    })
+    .join("");
+  container.innerHTML = `
+    <div class="rx-builder">
+      <div class="rx-builder-row">
+        <label>単位<select id="rxUnitInput">${unitOptions}</select></label>
+        <label>基準量<input id="rxBaseRateInput" type="number" min="0" step="1" value="${escapeAttr(Math.round(rx.avg))}"></label>
+        <label>ゾーン数<select id="rxZonesInput">${zoneOptions}</select></label>
+        <button class="ghost-button tiny" data-rx-action="regenerate" type="button">再生成</button>
+      </div>
+      <div class="rx-zone-list">${zoneRows}</div>
+      <button class="primary-button" data-rx-action="export" type="button">GeoJSONで書き出し</button>
+    </div>
+  `;
+}
+
+function exportPrescriptionGeoJSON() {
+  const rx = activePlan().prescription;
+  if (!rx) {
+    showToast("書き出す処方マップがありません。");
+    return;
+  }
+  const fc = {
+    type: "FeatureCollection",
+    name: rx.name,
+    unit: rx.unit,
+    features: rx.features.map((f, i) => ({
+      type: "Feature",
+      properties: {
+        zone: i + 1,
+        rate: Number(f.properties[rx.rateField]),
+        unit: rx.unit,
+        material: rx.material || "",
+      },
+      geometry: f.geometry,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(fc, null, 2)], { type: "application/geo+json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `tonari-hatake-rx-${dateOffset(0)}.geojson`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("処方マップをGeoJSONで書き出しました。");
 }
 
 function historyRecords() {

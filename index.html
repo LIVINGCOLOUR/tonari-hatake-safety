@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260707-vra">
+    <link rel="stylesheet" href="css/styles.css?v=20260707-vra2">
   </head>
   <body>
     <div class="app-shell">
@@ -367,14 +367,16 @@
                     <strong>▤ 可変施肥 処方マップ</strong>
                     <span>施用量を色分け（少→多）</span>
                   </div>
-                  <div class="coverage-controls">
+                  <div class="coverage-controls rx-controls">
+                    <button class="primary-button" id="createPrescriptionButton" type="button">処方を作成</button>
                     <label class="rx-import-button">
-                      処方を取込
+                      取込
                       <input type="file" id="prescriptionFileInput" accept=".geojson,.json,application/geo+json,application/json" hidden>
                     </label>
-                    <button class="ghost-button" id="loadSamplePrescriptionButton" type="button">サンプル処方</button>
+                    <button class="ghost-button" id="loadSamplePrescriptionButton" type="button">サンプル</button>
                     <button class="ghost-button" id="clearPrescriptionButton" type="button">クリア</button>
                   </div>
+                  <div id="prescriptionEditor"></div>
                   <div id="prescriptionReadout"></div>
                 </div>
               </div>
@@ -924,6 +926,6 @@
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
-    <script src="js/main.js?v=20260707-vra" defer></script>
+    <script src="js/main.js?v=20260707-vra2" defer></script>
   </body>
 </html>
