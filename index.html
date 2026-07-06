@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260629-field-boundaries">
+    <link rel="stylesheet" href="css/styles.css?v=20260706-coverage">
   </head>
   <body>
     <div class="app-shell">
@@ -44,6 +44,7 @@
           <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
           <button class="nav-item" data-roles="sprayer admin" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
+          <button class="nav-item" data-roles="sprayer admin" data-view-target="history" type="button"><span class="nav-icon">≡</span><span>作業履歴</span></button>
           <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>地域管理</span></button>
           <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="sources" type="button"><span class="nav-icon">i</span><span>データソース</span></button>
         </nav>
@@ -217,7 +218,14 @@
                 <label>散布ほ場<input name="fieldName" type="text" required></label>
                 <label>地区<input name="district" type="text" required></label>
                 <label>作物名<input name="crop" type="text" required></label>
-                <label>使用農薬名<input name="pesticide" type="text" required></label>
+                <label>資材種別
+                  <select name="materialType" required>
+                    <option>農薬</option>
+                    <option>液体肥料・葉面散布</option>
+                    <option>その他資材</option>
+                  </select>
+                </label>
+                <label>使用資材名（農薬・肥料等）<input name="pesticide" type="text" required></label>
                 <label>使用目的<input name="purpose" type="text" required></label>
                 <label>散布方法
                   <select name="method" required>
@@ -252,6 +260,23 @@
                     <label>希釈倍率<input name="dilution" type="text"></label>
                     <label>ラベル確認日<input name="labelCheckedAt" type="date"></label>
                   </div>
+                </details>
+                <details class="form-section wide-field" open>
+                  <summary>散布量・カバレッジ（総量の自動計算）</summary>
+                  <div class="form-grid nested-form-grid">
+                    <label>使用量（数値・10a当たり）<input name="ratePer10a" type="number" min="0" step="0.1" placeholder="例：600"></label>
+                    <label>単位
+                      <select name="rateUnit">
+                        <option>mL</option>
+                        <option>L</option>
+                        <option>g</option>
+                        <option>kg</option>
+                      </select>
+                    </label>
+                    <label>散布面積（数値・ha）<input name="areaHa" type="number" min="0" step="0.1" placeholder="例：4.0"></label>
+                    <label>散布幅（m）<input name="sprayWidthM" type="number" min="0" step="0.5" placeholder="例：4"></label>
+                  </div>
+                  <p class="total-amount-note" id="planTotalAmount"></p>
                 </details>
                 <label class="wide-field">散布範囲<input name="sprayArea" type="text"></label>
                 <label class="wide-field">備考<textarea name="notes" rows="4"></textarea></label>
@@ -291,6 +316,7 @@
               <button class="segment" data-map-layer="notify" type="button">通知</button>
               <button class="segment" data-map-layer="wind" type="button">風下</button>
               <button class="segment" data-map-layer="drone" type="button">飛行ログ</button>
+              <button class="segment" data-map-layer="coverage" type="button">散布カバレッジ</button>
             </div>
           </div>
 
@@ -321,6 +347,19 @@
                   </div>
                 </div>
                 <div class="map-legend" id="mapLegend"></div>
+
+                <div class="map-overlay coverage-panel" id="coveragePanel">
+                  <div class="coverage-panel-head">
+                    <strong>▧ 散布カバレッジ</strong>
+                    <span>散布済（緑）／未散布（グレー）</span>
+                  </div>
+                  <div class="coverage-controls">
+                    <button class="primary-button" id="coveragePlayButton" type="button">▶ 散布を再生</button>
+                    <button class="ghost-button" id="coverageResetButton" type="button">⟲ 全体表示</button>
+                  </div>
+                  <div class="coverage-progress-track"><span id="coverageProgress"></span></div>
+                  <div id="coverageReadout"></div>
+                </div>
               </div>
             </div>
 
@@ -675,6 +714,83 @@
           </div>
         </section>
 
+        <section class="view" data-view="history" aria-labelledby="historyTitle">
+          <div class="section-head">
+            <div>
+              <h3 id="historyTitle">作業履歴・防除履歴</h3>
+              <p>登録した散布計画と実施後報告から、圃場ごとの農薬・肥料散布の履歴を自動でまとめます。防除履歴の記帳や出荷確認の控えに使えます。</p>
+            </div>
+            <div class="section-actions">
+              <button class="ghost-button" id="exportHistoryCsvButton" type="button">履歴CSV</button>
+              <button class="primary-button" id="printHistoryButton" type="button">履歴PDF</button>
+            </div>
+          </div>
+
+          <div class="kpi-grid" id="historyKpiGrid"></div>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="tag tag-green">絞り込み</span>
+                <h4>履歴フィルター</h4>
+              </div>
+              <div class="history-filters">
+                <label class="select-label">圃場<select id="historyFieldFilter"></select></label>
+                <label class="select-label">資材種別<select id="historyMaterialFilter"></select></label>
+                <label class="select-label">状態
+                  <select id="historyStatusFilter">
+                    <option value="all">すべて</option>
+                    <option value="done">実施済み</option>
+                    <option value="planned">予定のみ</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="table-wrap large-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>実施/予定日</th>
+                    <th>圃場</th>
+                    <th>作物</th>
+                    <th>種別</th>
+                    <th>資材名</th>
+                    <th>使用量(10a)・希釈</th>
+                    <th>総量</th>
+                    <th>範囲・カバー</th>
+                    <th>位置</th>
+                    <th>方法</th>
+                    <th>散布者</th>
+                    <th>報告</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">圃場別</span>
+                  <h4>圃場ごとの散布回数</h4>
+                </div>
+              </div>
+              <div class="bar-list" id="historyFieldBars"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-head">
+                <div>
+                  <span class="tag">種別別</span>
+                  <h4>資材種別の内訳</h4>
+                </div>
+              </div>
+              <div class="bar-list" id="historyMaterialBars"></div>
+            </article>
+          </div>
+        </section>
+
         <section class="view" data-view="admin" aria-labelledby="adminTitle">
           <div class="section-head">
             <div>
@@ -791,6 +907,6 @@
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
-    <script src="js/main.js?v=20260629-field-boundaries" defer></script>
+    <script src="js/main.js?v=20260706-coverage" defer></script>
   </body>
 </html>

@@ -10,6 +10,7 @@ const VIEW_META = {
   checklist: ["散布前チェック", "確認完了度と未完了項目"],
   weather: ["気象メモ", "風向・風速の記録"],
   report: ["実施後報告", "実施内容と問い合わせ記録"],
+  history: ["作業履歴", "圃場ごとの散布・施肥履歴"],
   admin: ["地域管理", "JA・生産部会・自治体向け一覧"],
   sources: ["データソース", "根拠資料とMVP範囲"],
 };
@@ -33,9 +34,17 @@ const ROLE_META = {
 };
 
 const ROLE_ALLOWED_VIEWS = {
-  sprayer: ["dashboard", "plans", "map", "fields", "drone", "notify", "checklist", "weather", "report", "sources"],
+  sprayer: ["dashboard", "plans", "map", "fields", "drone", "notify", "checklist", "weather", "report", "history", "sources"],
   neighbor: ["dashboard", "map", "fields", "notify", "sources"],
-  admin: ["dashboard", "plans", "map", "fields", "drone", "notify", "report", "admin", "sources"],
+  admin: ["dashboard", "plans", "map", "fields", "drone", "notify", "report", "history", "admin", "sources"],
+};
+
+const MATERIAL_TYPES = ["農薬", "液体肥料・葉面散布", "その他資材"];
+
+const MATERIAL_TERMS = {
+  農薬: "農薬散布",
+  "液体肥料・葉面散布": "肥料散布",
+  その他資材: "資材散布",
 };
 
 const NOTICE_RESPONSE_OPTIONS = [
@@ -291,6 +300,10 @@ let activeRole = state?.role || "sprayer";
 let activeView = "dashboard";
 let noticeChannel = "line";
 let mapLayer = "risk";
+let historyFilters = { field: "all", material: "all", status: "all" };
+let coveragePlayIndex = null;
+let coveragePlaying = false;
+let coverageTimer = null;
 let toastTimer;
 let mapLibreMap;
 let dashboardMapLibreMap;
@@ -345,6 +358,20 @@ function bindEvents() {
       return;
     }
 
+    const planTrack = event.target.closest("[data-plan-track]");
+    if (planTrack) {
+      const plan = state.plans.find((item) => item.id === planTrack.dataset.planTrack);
+      if (plan && plan.droneLog) {
+        state.activePlanId = plan.id;
+        state.droneLog = plan.droneLog;
+        saveState();
+        renderAll();
+        switchView("drone");
+        showToast("飛行ログの軌跡を表示しました。");
+      }
+      return;
+    }
+
     const target = event.target.closest("[data-view-target]");
     if (target) {
       switchView(target.dataset.viewTarget);
@@ -357,6 +384,7 @@ function bindEvents() {
 
   $("#activePlanSelect").addEventListener("change", (event) => {
     state.activePlanId = event.target.value;
+    resetCoveragePlayback();
     saveState();
     renderAll();
   });
@@ -405,6 +433,11 @@ function bindEvents() {
     showToast("散布計画を保存しました。");
   });
 
+  ["ratePer10a", "areaHa", "rateUnit", "sprayWidthM"].forEach((name) => {
+    const input = $("#planForm").elements[name];
+    if (input) input.addEventListener("input", () => updatePlanTotalPreview());
+  });
+
   $("#saveWeatherButton").addEventListener("click", () => {
     updateWeatherFromForm();
     saveState();
@@ -444,7 +477,21 @@ function bindEvents() {
   $("#printPrecheckButton").addEventListener("click", () => printDocument("precheck"));
   $("#printReportButton").addEventListener("click", () => printDocument("report"));
   $("#printAdminButton").addEventListener("click", () => printDocument("admin"));
+  $("#printHistoryButton").addEventListener("click", () => printDocument("history"));
   $("#exportCsvButton").addEventListener("click", exportCsv);
+  $("#exportHistoryCsvButton").addEventListener("click", exportHistoryCsv);
+  $("#historyFieldFilter").addEventListener("change", (event) => {
+    historyFilters.field = event.target.value;
+    renderHistory();
+  });
+  $("#historyMaterialFilter").addEventListener("change", (event) => {
+    historyFilters.material = event.target.value;
+    renderHistory();
+  });
+  $("#historyStatusFilter").addEventListener("change", (event) => {
+    historyFilters.status = event.target.value;
+    renderHistory();
+  });
   $("#newFieldStatusButton").addEventListener("click", () => {
     const field = createBlankField();
     state.fields.push(field);
@@ -463,14 +510,16 @@ function bindEvents() {
     showToast("圃場ステータスを保存しました。");
   });
   $("#loadDroneLogButton").addEventListener("click", () => {
-    state.droneLog = createSampleDroneLog(true);
+    const log = createSampleDroneLog(true);
+    state.droneLog = log;
     const plan = activePlan();
+    plan.droneLog = log;
     plan.checks.flightLog = true;
     plan.checks.altitude = true;
     saveState();
     renderAll();
     switchView("drone");
-    showToast("サンプル飛行ログを取り込みました。");
+    showToast("サンプル飛行ログを取り込み、この計画に紐付けました。");
   });
   $("#autoFillReportButton").addEventListener("click", () => {
     autoFillReportFromPlan();
@@ -503,10 +552,14 @@ function bindEvents() {
   $$(".segment[data-map-layer]").forEach((button) => {
     button.addEventListener("click", () => {
       mapLayer = button.dataset.mapLayer;
+      if (mapLayer !== "coverage") stopCoveragePlayback();
       $$(".segment[data-map-layer]").forEach((item) => item.classList.toggle("active", item === button));
       renderMapView();
     });
   });
+
+  $("#coveragePlayButton")?.addEventListener("click", toggleCoveragePlayback);
+  $("#coverageResetButton")?.addEventListener("click", resetCoveragePlayback);
 
   document.body.addEventListener("change", (event) => {
     const response = event.target.closest("[data-notify-response]");
@@ -531,6 +584,7 @@ function renderAll() {
   renderChecklist();
   renderWeather();
   renderReport();
+  renderHistory();
   renderAdmin();
   renderRulesForm();
   renderSources();
@@ -820,6 +874,7 @@ function renderPlanForm() {
     fieldName: plan.fieldName,
     district: plan.district,
     crop: plan.crop,
+    materialType: plan.materialType,
     pesticide: plan.pesticide,
     purpose: plan.purpose,
     method: plan.method,
@@ -837,13 +892,19 @@ function renderPlanForm() {
     preHarvestDays: plan.preHarvestDays,
     amount: plan.amount,
     dilution: plan.dilution,
+    ratePer10a: plan.ratePer10a,
+    rateUnit: plan.rateUnit,
+    areaHa: plan.areaHa,
+    sprayWidthM: plan.sprayWidthM,
     labelCheckedAt: plan.labelCheckedAt,
     sprayArea: plan.sprayArea,
     notes: plan.notes,
   }).forEach(([name, value]) => {
     const input = form.elements[name];
-    if (input) input.value = value || "";
+    if (input) input.value = value === 0 || value ? value : "";
   });
+
+  updatePlanTotalPreview(plan);
 
   const riskItems = riskItemsForPlan(plan);
   $("#planRiskSummary").innerHTML = riskItems.length
@@ -868,6 +929,21 @@ function renderPlanForm() {
   const progress = checkProgress(plan);
   $("#planProgressLabel").textContent = `${progress.done}/${progress.total}`;
   $("#planProgressMeter").style.width = `${progress.percent}%`;
+}
+
+function updatePlanTotalPreview(plan = activePlan()) {
+  const el = $("#planTotalAmount");
+  if (!el) return;
+  const form = $("#planForm");
+  const source = form && form.elements.ratePer10a
+    ? { ratePer10a: form.elements.ratePer10a.value, areaHa: form.elements.areaHa.value, rateUnit: form.elements.rateUnit.value }
+    : plan;
+  const total = plannedTotalAmount(source);
+  const cov = estimateCoverage(plan);
+  const covNote = cov.hasLog && cov.coveragePct != null ? ` ／ 飛行ログのカバー率 ${cov.coveragePct}%` : "";
+  el.innerHTML = total
+    ? `総散布量の目安：<strong>${escapeHtml(formatAmountValue(total.value, total.unit))}</strong>（${escapeHtml(trimNumber(toNumber(source.ratePer10a)))}${escapeHtml(source.rateUnit || "mL")}/10a × ${escapeHtml(trimNumber(toNumber(source.areaHa)))}ha）${escapeHtml(covNote)}`
+    : "使用量（数値）と面積（ha）を入力すると、総散布量を自動計算します。";
 }
 
 function renderMapView() {
@@ -899,6 +975,7 @@ function renderMapView() {
     .join("");
 
   $("#mapWindCard").innerHTML = weatherCard(plan);
+  renderCoveragePanel();
 }
 
 function renderDashboardGisMap() {
@@ -1007,8 +1084,10 @@ function setupGisMapLayers(map) {
       "risk-buffer",
       "wind-zone",
       "fields",
+      "coverage-grid",
       "flight-lines",
       "flight-points",
+      "drone-marker",
     ].forEach((id) => {
       if (!map.getSource(id)) {
         map.addSource(id, { type: "geojson", data: emptyFeatureCollection() });
@@ -1062,6 +1141,25 @@ function setupGisMapLayers(map) {
       },
     });
     map.addLayer({
+      id: "coverage-fill",
+      type: "fill",
+      source: "coverage-grid",
+      paint: {
+        "fill-color": ["case", ["==", ["get", "sprayed"], 1], "#2fbf6b", "#7c8a83"],
+        "fill-opacity": ["case", ["==", ["get", "sprayed"], 1], 0.62, 0.32],
+      },
+    });
+    map.addLayer({
+      id: "coverage-outline",
+      type: "line",
+      source: "coverage-grid",
+      paint: {
+        "line-color": ["case", ["==", ["get", "sprayed"], 1], "#1f8f4d", "#5c6a62"],
+        "line-width": 0.35,
+        "line-opacity": 0.5,
+      },
+    });
+    map.addLayer({
       id: "flight-lines",
       type: "line",
       source: "flight-lines",
@@ -1095,6 +1193,27 @@ function setupGisMapLayers(map) {
         "circle-stroke-width": 1.5,
       },
     });
+    map.addLayer({
+      id: "drone-marker-halo",
+      type: "circle",
+      source: "drone-marker",
+      paint: {
+        "circle-radius": 14,
+        "circle-color": "#1f6fe0",
+        "circle-opacity": 0.22,
+      },
+    });
+    map.addLayer({
+      id: "drone-marker-dot",
+      type: "circle",
+      source: "drone-marker",
+      paint: {
+        "circle-radius": 7,
+        "circle-color": "#1f6fe0",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+      },
+    });
 
     map.on("click", "field-fill", (event) => showGisFieldPopup(map, event));
     map.on("mouseenter", "field-fill", () => {
@@ -1118,6 +1237,9 @@ function updateGisMap(map, options = {}) {
   setGeoJsonSource(map, "wind-zone", windZoneFeatureCollection(activePlan()));
   setGeoJsonSource(map, "flight-lines", flightLineFeatureCollection());
   setGeoJsonSource(map, "flight-points", flightPointFeatureCollection());
+  const coverage = !options.dashboard && mapLayer === "coverage" ? coverageMapData(activePlan(), coveragePlayIndex) : null;
+  setGeoJsonSource(map, "coverage-grid", coverage ? coverage.cells : emptyFeatureCollection());
+  setGeoJsonSource(map, "drone-marker", coverage ? coverage.marker : emptyFeatureCollection());
   applyGisLayerVisibility(map, options);
 }
 
@@ -1156,16 +1278,21 @@ function setGeoJsonSource(map, id, data) {
 
 function applyGisLayerVisibility(map, options = {}) {
   const always = Boolean(options.dashboard);
+  const coverage = !always && mapLayer === "coverage";
   const showRisk = always || mapLayer === "risk" || mapLayer === "notify";
   const showWind = always || mapLayer === "risk" || mapLayer === "wind";
-  const showDrone = always || mapLayer === "risk" || mapLayer === "drone";
+  const showDrone = always || mapLayer === "risk" || mapLayer === "drone" || coverage;
   const visibility = {
     "risk-buffer-fill": showRisk,
     "risk-buffer-line": showRisk,
     "wind-zone-fill": showWind,
     "flight-lines": showDrone,
     "flight-lines-spray": showDrone,
-    "flight-points": showDrone,
+    "flight-points": showDrone && !coverage,
+    "coverage-fill": coverage,
+    "coverage-outline": coverage,
+    "drone-marker-halo": coverage,
+    "drone-marker-dot": coverage,
   };
   Object.entries(visibility).forEach(([layerId, visible]) => {
     if (map.getLayer(layerId)) {
@@ -1861,6 +1988,448 @@ function renderReport() {
   `;
 }
 
+const UNIT_STEP_UP = { mL: ["L", 1000], g: ["kg", 1000] };
+
+function trimNumber(n) {
+  return Number(Number(n).toFixed(2)).toString();
+}
+
+function plannedTotalAmount(plan) {
+  const rate = toNumber(plan.ratePer10a);
+  const area = toNumber(plan.areaHa);
+  if (!rate || !area) return null;
+  return { value: rate * area * 10, unit: plan.rateUnit || "mL" };
+}
+
+function formatAmountValue(value, unit) {
+  if (!Number.isFinite(value)) return "";
+  const stepUp = UNIT_STEP_UP[unit];
+  if (stepUp && value >= stepUp[1]) {
+    return `${trimNumber(value / stepUp[1])}${stepUp[0]}`;
+  }
+  return `${trimNumber(value)}${unit}`;
+}
+
+function formatTotalAmount(plan) {
+  const total = plannedTotalAmount(plan);
+  return total ? formatAmountValue(total.value, total.unit) : "—";
+}
+
+function haversineMeters([lng1, lat1], [lng2, lat2]) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+const COVERAGE_CELL_M = 5;
+const coverageGridCache = new Map();
+
+function projectMeters([lng, lat], [lng0, lat0]) {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  return [(lng - lng0) * mPerDegLng, (lat - lat0) * mPerDegLat];
+}
+
+function unprojectMeters([x, y], [lng0, lat0]) {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  return [lng0 + x / mPerDegLng, lat0 + y / mPerDegLat];
+}
+
+function pointInRing([px, py], ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointSegmentDistM([px, py], [ax, ay], [bx, by]) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function coverageField(plan) {
+  return (
+    state.fields.find((field) => field.name === plan.fieldName) ||
+    state.fields.find((field) => field.type === "spray") ||
+    state.fields[0]
+  );
+}
+
+// Rasterise the spray field into a metre grid; cache per field geometry.
+function buildCoverageGrid(plan) {
+  const field = coverageField(plan);
+  if (!field) return null;
+  const ringLngLat = fieldPolygonCoordinates(field);
+  const origin = ringLngLat[0];
+  const ring = ringLngLat.map((c) => projectMeters(c, origin));
+  const key = `${field.id}:${ring.map((p) => p.map((n) => Math.round(n)).join(",")).join(";")}`;
+  if (coverageGridCache.has(key)) return coverageGridCache.get(key);
+  const xs = ring.map((p) => p[0]);
+  const ys = ring.map((p) => p[1]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const cell = COVERAGE_CELL_M;
+  const cells = [];
+  for (let y = minY; y < maxY; y += cell) {
+    for (let x = minX; x < maxX; x += cell) {
+      const cx = x + cell / 2;
+      const cy = y + cell / 2;
+      if (pointInRing([cx, cy], ring)) cells.push({ x, y, cx, cy });
+    }
+  }
+  const grid = { origin, ring, cells, cell };
+  coverageGridCache.set(key, grid);
+  return grid;
+}
+
+function coverageTrackProjected(grid, plan) {
+  const log = plan.droneLog;
+  const points = Array.isArray(log?.points) ? log.points : [];
+  return points.map((point) => ({
+    proj: projectMeters(lngLatFromPercent(point.x, point.y), grid.origin),
+    sprayOn: Boolean(point.sprayOn),
+  }));
+}
+
+// Flags array (0/1) marking cells sprayed by the log up to `uptoIndex` (inclusive).
+function coverageSprayedFlags(grid, plan, uptoIndex) {
+  const track = coverageTrackProjected(grid, plan);
+  const flags = new Uint8Array(grid.cells.length);
+  if (track.length < 2) return flags;
+  const half = (toNumber(plan.sprayWidthM) || 4) / 2 + grid.cell * 0.4;
+  const end = uptoIndex == null ? track.length - 1 : Math.min(uptoIndex, track.length - 1);
+  for (let i = 1; i <= end; i += 1) {
+    if (!track[i - 1].sprayOn && !track[i].sprayOn) continue;
+    const a = track[i - 1].proj;
+    const b = track[i].proj;
+    for (let c = 0; c < grid.cells.length; c += 1) {
+      if (flags[c]) continue;
+      if (pointSegmentDistM([grid.cells[c].cx, grid.cells[c].cy], a, b) <= half) flags[c] = 1;
+    }
+  }
+  return flags;
+}
+
+function gridCoverage(plan, uptoIndex) {
+  const log = plan.droneLog;
+  if (!log || !Array.isArray(log.points) || log.points.length < 2) return null;
+  const grid = buildCoverageGrid(plan);
+  if (!grid || !grid.cells.length) return null;
+  const flags = coverageSprayedFlags(grid, plan, uptoIndex);
+  let sprayed = 0;
+  for (let i = 0; i < flags.length; i += 1) sprayed += flags[i];
+  const cellHa = (grid.cell * grid.cell) / 10000;
+  return {
+    grid,
+    flags,
+    sprayedCells: sprayed,
+    totalCells: grid.cells.length,
+    coveredHa: sprayed * cellHa,
+    fieldAreaHa: grid.cells.length * cellHa,
+    coveragePct: grid.cells.length ? Math.round((sprayed / grid.cells.length) * 100) : null,
+  };
+}
+
+function estimateCoverage(plan) {
+  const log = plan.droneLog;
+  if (!log || !log.imported) return { hasLog: false };
+  const gc = gridCoverage(plan);
+  if (gc) {
+    return {
+      hasLog: true,
+      coveredHa: Number(gc.coveredHa.toFixed(2)),
+      fieldAreaHa: Number(gc.fieldAreaHa.toFixed(2)),
+      coveragePct: gc.coveragePct,
+      unsprayedCells: gc.totalCells - gc.sprayedCells,
+    };
+  }
+  return { hasLog: false };
+}
+
+function coverageLabel(plan) {
+  const cov = estimateCoverage(plan);
+  if (!cov.hasLog) return "軌跡なし";
+  return cov.coveragePct != null ? `カバー率 ${cov.coveragePct}%（${trimNumber(cov.coveredHa)}ha）` : "軌跡あり";
+}
+
+// Build map GeoJSON for the sprayed/unsprayed grid + current drone position (up to uptoIndex).
+function coverageMapData(plan, uptoIndex) {
+  const gc = gridCoverage(plan, uptoIndex);
+  if (!gc) return null;
+  const { origin, cell } = gc.grid;
+  const cellFeatures = gc.grid.cells.map((c, i) => ({
+    type: "Feature",
+    geometry: {
+      type: "Polygon",
+      coordinates: [[
+        unprojectMeters([c.x, c.y], origin),
+        unprojectMeters([c.x + cell, c.y], origin),
+        unprojectMeters([c.x + cell, c.y + cell], origin),
+        unprojectMeters([c.x, c.y + cell], origin),
+        unprojectMeters([c.x, c.y], origin),
+      ]],
+    },
+    properties: { sprayed: gc.flags[i] },
+  }));
+  const points = plan.droneLog.points;
+  const idx = uptoIndex == null ? points.length - 1 : Math.max(0, Math.min(uptoIndex, points.length - 1));
+  const marker = points[idx];
+  return {
+    cells: { type: "FeatureCollection", features: cellFeatures },
+    marker: {
+      type: "FeatureCollection",
+      features: marker ? [{ type: "Feature", geometry: { type: "Point", coordinates: lngLatFromPercent(marker.x, marker.y) }, properties: {} }] : [],
+    },
+    gc,
+    idx,
+  };
+}
+
+function coveragePlanHasLog(plan = activePlan()) {
+  return Boolean(plan?.droneLog?.imported && Array.isArray(plan.droneLog.points) && plan.droneLog.points.length >= 2);
+}
+
+function renderCoveragePanel() {
+  const panel = $("#coveragePanel");
+  if (!panel) return;
+  const active = mapLayer === "coverage";
+  panel.classList.toggle("is-active", active);
+  if (!active) {
+    stopCoveragePlayback();
+    return;
+  }
+  updateCoverageDisplay();
+}
+
+function updateCoverageDisplay() {
+  if (mapLayer !== "coverage") return;
+  const plan = activePlan();
+  const data = coveragePlanHasLog(plan) ? coverageMapData(plan, coveragePlayIndex) : null;
+  if (mapLibreMap && mapLibreMap.getSource("coverage-grid")) {
+    mapLibreMap.getSource("coverage-grid").setData(data ? data.cells : emptyFeatureCollection());
+    mapLibreMap.getSource("drone-marker").setData(data ? data.marker : emptyFeatureCollection());
+  }
+  renderCoverageReadout(data);
+  updateCoverageButtons();
+}
+
+function renderCoverageReadout(data) {
+  const readout = $("#coverageReadout");
+  if (!readout) return;
+  const plan = activePlan();
+  if (!coveragePlanHasLog(plan)) {
+    readout.innerHTML = `<div class="empty-state">この計画には飛行ログがありません。<br>「ドローン連携」でサンプル飛行ログを取り込むと、散布済／未散布を表示します。</div>`;
+    $("#coverageProgress").style.width = "0%";
+    return;
+  }
+  if (!data) return;
+  const gc = data.gc;
+  const cellHa = (gc.grid.cell * gc.grid.cell) / 10000;
+  const unsprayed = gc.totalCells - gc.sprayedCells;
+  const total = plan.droneLog.points.length;
+  const pctThrough = Math.round(((data.idx + 1) / total) * 100);
+  readout.innerHTML = `
+    <div class="coverage-figures">
+      <div><span>カバー率</span><strong>${gc.coveragePct}%</strong></div>
+      <div><span>散布済み</span><strong>${trimNumber(gc.coveredHa)}ha</strong></div>
+      <div><span>塗り残し</span><strong class="${unsprayed ? "warn" : "good"}">${unsprayed}区画（${trimNumber(unsprayed * cellHa)}ha）</strong></div>
+      <div><span>圃場面積</span><strong>${trimNumber(gc.fieldAreaHa)}ha</strong></div>
+    </div>
+    <div class="coverage-legend">
+      <span><i style="background:#2fbf6b"></i>散布済み</span>
+      <span><i style="background:#7c8a83"></i>未散布</span>
+      <span><i class="dot" style="background:#1f6fe0"></i>現在地</span>
+    </div>
+    <div class="coverage-track-note">${coveragePlaying ? "再生中" : coveragePlayIndex == null ? "全区間表示" : "一時停止"} ・ 進捗 ${pctThrough}%</div>
+  `;
+  $("#coverageProgress").style.width = `${gc.coveragePct}%`;
+}
+
+function updateCoverageButtons() {
+  const playButton = $("#coveragePlayButton");
+  if (playButton) playButton.textContent = coveragePlaying ? "⏸ 一時停止" : "▶ 散布を再生";
+}
+
+function startCoveragePlayback() {
+  const plan = activePlan();
+  if (!coveragePlanHasLog(plan)) {
+    showToast("この計画には飛行ログがありません。");
+    return;
+  }
+  stopCoveragePlayback();
+  const total = plan.droneLog.points.length;
+  coveragePlaying = true;
+  coveragePlayIndex = 0;
+  const stepMs = Math.max(140, Math.round(6000 / total));
+  coverageTimer = setInterval(() => {
+    coveragePlayIndex += 1;
+    if (coveragePlayIndex >= total - 1) {
+      coveragePlayIndex = total - 1;
+      stopCoveragePlayback();
+    }
+    updateCoverageDisplay();
+  }, stepMs);
+  updateCoverageDisplay();
+}
+
+function stopCoveragePlayback() {
+  coveragePlaying = false;
+  if (coverageTimer) {
+    clearInterval(coverageTimer);
+    coverageTimer = null;
+  }
+  updateCoverageButtons();
+}
+
+function toggleCoveragePlayback() {
+  if (coveragePlaying) {
+    stopCoveragePlayback();
+    updateCoverageDisplay();
+  } else {
+    startCoveragePlayback();
+  }
+}
+
+function resetCoveragePlayback() {
+  stopCoveragePlayback();
+  coveragePlayIndex = null;
+  updateCoverageDisplay();
+}
+
+function historyRecords() {
+  return state.plans
+    .map((plan) => {
+      const report = plan.report || {};
+      const done = Boolean(report.doneDate);
+      const dilution = plan.dilution ? `／${plan.dilution}` : "";
+      const cov = estimateCoverage(plan);
+      return {
+        id: plan.id,
+        done,
+        date: report.doneDate || plan.date,
+        planDate: plan.date,
+        time: report.doneTime || plan.timeWindow,
+        field: report.doneField || plan.fieldName,
+        crop: plan.crop,
+        materialType: plan.materialType || "農薬",
+        material: report.donePesticide || plan.pesticide,
+        rate: `${report.actualAmount || plan.amount || "未記録"}${dilution}`,
+        total: formatTotalAmount(plan),
+        area: report.doneArea || plan.sprayArea || "未記録",
+        hasLog: cov.hasLog,
+        coverage: coverageLabel(plan),
+        method: plan.method,
+        operator: plan.operator,
+        weather: report.doneWeather || weatherLabel(plan),
+        reportType: report.reportType || "",
+      };
+    })
+    .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+}
+
+function filteredHistoryRecords() {
+  return historyRecords().filter((record) => {
+    if (historyFilters.field !== "all" && record.field !== historyFilters.field) return false;
+    if (historyFilters.material !== "all" && record.materialType !== historyFilters.material) return false;
+    if (historyFilters.status === "done" && !record.done) return false;
+    if (historyFilters.status === "planned" && record.done) return false;
+    return true;
+  });
+}
+
+function fillHistoryFilterSelect(selector, values, selected, allLabel) {
+  const select = $(selector);
+  if (!select) return;
+  const options = [`<option value="all">${escapeHtml(allLabel)}</option>`].concat(
+    values.map((value) => `<option value="${escapeAttr(value)}">${escapeHtml(value)}</option>`),
+  );
+  select.innerHTML = options.join("");
+  select.value = values.includes(selected) ? selected : "all";
+}
+
+function renderHistory() {
+  if (!$("#historyTableBody")) return;
+  const allRecords = historyRecords();
+  const fieldNames = [...new Set(allRecords.map((record) => record.field).filter(Boolean))];
+  const materialTypes = [...new Set(allRecords.map((record) => record.materialType))];
+  fillHistoryFilterSelect("#historyFieldFilter", fieldNames, historyFilters.field, "すべての圃場");
+  fillHistoryFilterSelect("#historyMaterialFilter", materialTypes, historyFilters.material, "すべての種別");
+  const statusSelect = $("#historyStatusFilter");
+  if (statusSelect) statusSelect.value = historyFilters.status;
+
+  const records = filteredHistoryRecords();
+  const doneCount = records.filter((record) => record.done).length;
+  const agroCount = records.filter((record) => record.materialType === "農薬").length;
+  const logCount = records.filter((record) => record.hasLog).length;
+  const kpis = [
+    ["記録件数", `${records.length}件`, "計画・報告から集計"],
+    ["実施済み散布", `${doneCount}件`, "報告が提出された記録"],
+    ["対象圃場", `${new Set(records.map((record) => record.field)).size}圃場`, "履歴に含まれる圃場数"],
+    ["農薬／肥料等", `${agroCount}／${records.length - agroCount}`, "資材種別の内訳"],
+    ["飛行ログ連携", `${logCount}件`, "散布位置・カバー率を確認可能"],
+  ];
+  $("#historyKpiGrid").innerHTML = kpis
+    .map(
+      ([label, value, note]) => `
+        <article class="kpi-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <p>${escapeHtml(note)}</p>
+        </article>
+      `,
+    )
+    .join("");
+
+  $("#historyTableBody").innerHTML = records.length
+    ? records
+        .map(
+          (record) => `
+            <tr>
+              <td>${escapeHtml(record.date)}<br><span class="muted-cell">${escapeHtml(record.time || "")}</span></td>
+              <td>${escapeHtml(record.field)}</td>
+              <td>${escapeHtml(record.crop)}</td>
+              <td>${materialTypeTag(record.materialType)}</td>
+              <td>${escapeHtml(record.material)}</td>
+              <td>${escapeHtml(record.rate)}</td>
+              <td><strong>${escapeHtml(record.total)}</strong></td>
+              <td>${escapeHtml(record.area)}<br><span class="muted-cell">${escapeHtml(record.coverage)}</span></td>
+              <td>${
+                record.hasLog
+                  ? `<button class="ghost-button tiny" data-plan-track="${escapeAttr(record.id)}" type="button">軌跡を見る</button>`
+                  : '<span class="muted-cell">—</span>'
+              }</td>
+              <td>${escapeHtml(record.method)}</td>
+              <td>${escapeHtml(record.operator)}</td>
+              <td>${record.done ? '<span class="pill green">提出済み</span>' : '<span class="pill amber">未提出</span>'}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `<tr><td colspan="12"><div class="empty-state">該当する履歴はありません。</div></td></tr>`;
+
+  renderBars("#historyFieldBars", "圃場別の散布回数", countBy(records, "field"));
+  renderBars("#historyMaterialBars", "資材種別の内訳", countBy(records, "materialType"));
+}
+
+function materialTypeTag(type) {
+  const color = type === "農薬" ? "amber" : type === "液体肥料・葉面散布" ? "green" : "blue";
+  return `<span class="pill ${color}">${escapeHtml(type)}</span>`;
+}
+
 function renderAdmin() {
   $("#adminTableBody").innerHTML = state.plans
     .slice()
@@ -1955,6 +2524,7 @@ function updatePlanFromForm() {
     "fieldName",
     "district",
     "crop",
+    "materialType",
     "pesticide",
     "purpose",
     "method",
@@ -1978,6 +2548,10 @@ function updatePlanFromForm() {
   ].forEach((name) => {
     plan[name] = form.elements[name].value.trim();
   });
+  plan.rateUnit = form.elements.rateUnit.value || "mL";
+  plan.ratePer10a = toNumber(form.elements.ratePer10a.value);
+  plan.areaHa = toNumber(form.elements.areaHa.value);
+  plan.sprayWidthM = toNumber(form.elements.sprayWidthM.value);
 }
 
 function updateWeatherFromForm() {
@@ -2239,6 +2813,7 @@ function printDocument(type) {
     precheck: buildPrecheckPrint(plan),
     report: buildReportPrint(plan),
     admin: buildAdminPrint(),
+    history: buildHistoryPrint(),
   };
   $("#printSheet").innerHTML = htmlByType[type] || "";
   document.body.classList.add("printing");
@@ -2345,6 +2920,42 @@ function buildAdminPrint() {
   `;
 }
 
+function buildHistoryPrint() {
+  const rules = activeSettings();
+  const records = filteredHistoryRecords();
+  return `
+    <article class="print-doc">
+      <h1>ドローン散布・施肥 作業履歴（防除履歴）</h1>
+      <p>出力日：${escapeHtml(formatDateTime(new Date()))} / ${escapeHtml(rules.regionName)}</p>
+      <p>計画と実施後報告から自動集計した散布・施肥の記録です。防除履歴の記帳・出荷確認用の控えとして利用できます。</p>
+      <table>
+        <thead>
+          <tr><th>実施/予定日</th><th>圃場</th><th>作物</th><th>種別</th><th>資材名</th><th>使用量(10a)・希釈</th><th>総量</th><th>範囲・カバー</th><th>方法</th><th>散布者</th><th>報告</th></tr>
+        </thead>
+        <tbody>
+          ${records
+            .map(
+              (record) => `<tr>
+                <td>${escapeHtml(record.date)} ${escapeHtml(record.time || "")}</td>
+                <td>${escapeHtml(record.field)}</td>
+                <td>${escapeHtml(record.crop)}</td>
+                <td>${escapeHtml(record.materialType)}</td>
+                <td>${escapeHtml(record.material)}</td>
+                <td>${escapeHtml(record.rate)}</td>
+                <td>${escapeHtml(record.total)}</td>
+                <td>${escapeHtml(record.area)} / ${escapeHtml(record.coverage)}</td>
+                <td>${escapeHtml(record.method)}</td>
+                <td>${escapeHtml(record.operator)}</td>
+                <td>${record.done ? "提出済み" : "未提出"}</td>
+              </tr>`,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </article>
+  `;
+}
+
 function printTable(rows) {
   return `
     <table>
@@ -2387,6 +2998,40 @@ function exportCsv() {
   link.remove();
   URL.revokeObjectURL(url);
   showToast("CSVを出力しました。");
+}
+
+function exportHistoryCsv() {
+  const records = filteredHistoryRecords();
+  const rows = [
+    ["実施/予定日", "時間", "圃場", "作物", "資材種別", "資材名", "使用量(10a)・希釈", "総量", "実施範囲", "カバー", "散布方法", "散布者", "気象", "報告"],
+    ...records.map((record) => [
+      record.date,
+      record.time,
+      record.field,
+      record.crop,
+      record.materialType,
+      record.material,
+      record.rate,
+      record.total,
+      record.area,
+      record.coverage,
+      record.method,
+      record.operator,
+      record.weather,
+      record.done ? "提出済み" : "未提出",
+    ]),
+  ];
+  const csv = `﻿${rows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `tonari-hatake-history-${dateOffset(0)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("防除・作業履歴CSVを出力しました。");
 }
 
 function getDashboardMetrics() {
@@ -2712,12 +3357,18 @@ function droneLogLabel() {
   return log.imported ? `取込済み ${log.startedAt}-${log.endedAt}` : "仮ログ表示中（散布ON/OFF確認用）";
 }
 
+function materialTerm(plan) {
+  return MATERIAL_TERMS[plan?.materialType] || "散布";
+}
+
 function buildNoticeText(plan, channel) {
   const rules = activeSettings();
+  const term = materialTerm(plan);
+  const materialLine = plan.materialType && plan.materialType !== "農薬" ? "使用資材" : "使用農薬";
   const channelLead = {
     line: "関係者のみなさまへ",
-    mail: "件名：農薬散布予定のお知らせ",
-    paper: "農薬散布予定のお知らせ",
+    mail: `件名：${term}予定のお知らせ`,
+    paper: `${term}予定のお知らせ`,
   }[channel];
   const risks = riskItemsForPlan(plan)
     .filter((item) => item.notifyTarget)
@@ -2725,12 +3376,13 @@ function buildNoticeText(plan, channel) {
     .join("\n");
   return `${channelLead}
 
-${plan.district}で以下の散布を予定しています。
+${plan.district}で以下の${term}を予定しています。
 
 散布予定：${plan.date} ${plan.timeWindow}
 散布ほ場：${plan.fieldName}
 作物：${plan.crop}
-使用農薬：${plan.pesticide}
+資材種別：${plan.materialType || "農薬"}
+${materialLine}：${plan.pesticide}
 使用目的：${plan.purpose}
 散布方法：${plan.method}
 ドローン機体：${plan.droneModel || "未入力"}
@@ -2850,6 +3502,7 @@ function createBlankPlan() {
     fieldName: "笠間市 デモほ場A",
     district: "笠間市周辺デモ",
     crop: "水稲",
+    materialType: "農薬",
     pesticide: "農薬名（サンプル）",
     purpose: "病害虫防除",
     method: "ドローン",
@@ -2867,9 +3520,14 @@ function createBlankPlan() {
     preHarvestDays: "使用条件確認中",
     amount: "",
     dilution: "",
+    ratePer10a: "",
+    rateUnit: "mL",
+    areaHa: "",
+    sprayWidthM: "",
     labelCheckedAt: dateOffset(0),
     sprayArea: "",
     notes: "",
+    droneLog: null,
     weather: defaultWeather(),
     checks: defaultChecks(false),
     notificationTargets: {},
@@ -2877,7 +3535,41 @@ function createBlankPlan() {
   };
 }
 
+// Serpentine (lawn-mower) sweep over the demo spray field, so grid coverage is meaningful.
+function serpentineFlightPoints() {
+  const x0 = 48;
+  const x1 = 60;
+  const y0 = 41.5;
+  const y1 = 49.5;
+  const rows = 12;
+  const points = [];
+  for (let r = 0; r < rows; r += 1) {
+    const y = y0 + ((y1 - y0) * r) / (rows - 1);
+    const leftToRight = r % 2 === 0;
+    const ax = leftToRight ? x0 : x1;
+    const bx = leftToRight ? x1 : x0;
+    const altitude = Number((2 + (r % 3) * 0.4).toFixed(1));
+    points.push({ x: ax, y: Number(y.toFixed(2)), altitude, sprayOn: r > 0, altitudeCheck: false, outside: false });
+    points.push({ x: bx, y: Number(y.toFixed(2)), altitude, sprayOn: true, altitudeCheck: r === rows - 1, outside: r === rows - 1 });
+  }
+  return points;
+}
+
+function loopFlightPoints() {
+  return [
+    { x: 49.8, y: 44.2, altitude: 1.2, sprayOn: false, altitudeCheck: false, outside: false },
+    { x: 51.6, y: 41.7, altitude: 2.1, sprayOn: true, altitudeCheck: false, outside: false },
+    { x: 55.4, y: 40.9, altitude: 2.4, sprayOn: true, altitudeCheck: false, outside: false },
+    { x: 59.6, y: 44.0, altitude: 3.5, sprayOn: true, altitudeCheck: true, outside: false },
+    { x: 62.2, y: 47.9, altitude: 3.8, sprayOn: false, altitudeCheck: true, outside: true },
+    { x: 56.2, y: 48.6, altitude: 2.6, sprayOn: true, altitudeCheck: false, outside: false },
+    { x: 51.2, y: 47.4, altitude: 2.2, sprayOn: true, altitudeCheck: false, outside: false },
+    { x: 49.8, y: 44.2, altitude: 1.4, sprayOn: false, altitudeCheck: false, outside: false },
+  ];
+}
+
 function createSampleDroneLog(imported = false) {
+  const points = imported ? serpentineFlightPoints() : loopFlightPoints();
   return {
     vendor: "デモSDKベンダー",
     model: "SDK対応予定機種A",
@@ -2890,18 +3582,9 @@ function createSampleDroneLog(imported = false) {
     lastSync: imported ? formatDateTime(new Date()) : "未同期",
     startedAt: "06:04",
     endedAt: "07:02",
-    sprayOnSegments: 3,
-    outsideFlight: true,
-    points: [
-      { x: 49.8, y: 44.2, altitude: 1.2, sprayOn: false, altitudeCheck: false, outside: false },
-      { x: 51.6, y: 41.7, altitude: 2.1, sprayOn: true, altitudeCheck: false, outside: false },
-      { x: 55.4, y: 40.9, altitude: 2.4, sprayOn: true, altitudeCheck: false, outside: false },
-      { x: 59.6, y: 44.0, altitude: 3.5, sprayOn: true, altitudeCheck: true, outside: false },
-      { x: 62.2, y: 47.9, altitude: 3.8, sprayOn: false, altitudeCheck: true, outside: true },
-      { x: 56.2, y: 48.6, altitude: 2.6, sprayOn: true, altitudeCheck: false, outside: false },
-      { x: 51.2, y: 47.4, altitude: 2.2, sprayOn: true, altitudeCheck: false, outside: false },
-      { x: 49.8, y: 44.2, altitude: 1.4, sprayOn: false, altitudeCheck: false, outside: false },
-    ],
+    sprayOnSegments: points.filter((point) => point.sprayOn).length,
+    outsideFlight: points.some((point) => point.outside),
+    points,
   };
 }
 
@@ -3074,6 +3757,7 @@ function createSampleState() {
     fieldName: "笠間デモほ場A",
     district: "笠間市周辺デモ",
     crop: "水稲",
+    materialType: "農薬",
     pesticide: "除草剤A（サンプル）",
     purpose: "初期除草",
     method: "ドローン",
@@ -3091,8 +3775,12 @@ function createSampleState() {
     preHarvestDays: "使用条件確認済み",
     amount: "800mL/10a",
     dilution: "8倍",
+    ratePer10a: 800,
+    rateUnit: "mL",
+    areaHa: 1.0,
+    sprayWidthM: 9,
     labelCheckedAt: dateOffset(0),
-    sprayArea: "3.2ha",
+    sprayArea: "1.0ha",
     notes: "農薬不使用ほ場が風下方向にあるため、通知と散布直前の風速確認を重点確認。",
     weather: {
       latitude: DEFAULT_WEATHER_LOCATION.latitude,
@@ -3148,6 +3836,7 @@ function createSampleState() {
     fieldName: "笠間デモほ場F",
     district: "笠間市周辺デモ",
     crop: "大豆",
+    materialType: "農薬",
     pesticide: "殺菌剤B（サンプル）",
     purpose: "病害予防",
     method: "ドローン",
@@ -3165,6 +3854,10 @@ function createSampleState() {
     preHarvestDays: "使用条件確認中",
     amount: "120L/10a",
     dilution: "1000倍",
+    ratePer10a: 120,
+    rateUnit: "L",
+    areaHa: 1.4,
+    sprayWidthM: 4,
     labelCheckedAt: dateOffset(1),
     sprayArea: "1.4ha",
     notes: "通知対象は育苗ハウスと収穫前ほ場。気象の実測は当日入力予定。",
@@ -3212,9 +3905,10 @@ function createSampleState() {
     id: "plan-drone-3",
     date: dateOffset(-1),
     timeWindow: "05:30-06:20",
-    fieldName: "笠間デモほ場G",
+    fieldName: "笠間デモほ場A",
     district: "笠間市周辺デモ",
     crop: "水稲",
+    materialType: "農薬",
     pesticide: "殺虫剤C（サンプル）",
     purpose: "害虫防除",
     method: "ドローン",
@@ -3232,9 +3926,14 @@ function createSampleState() {
     preHarvestDays: "使用条件確認済み",
     amount: "600mL/10a",
     dilution: "10倍",
+    ratePer10a: 600,
+    rateUnit: "mL",
+    areaHa: 1.0,
+    sprayWidthM: 9,
     labelCheckedAt: dateOffset(-1),
-    sprayArea: "4.0ha",
-    notes: "通知済み、実施後報告作成済みのサンプル。",
+    sprayArea: "1.0ha",
+    droneLog: createSampleDroneLog(true),
+    notes: "通知済み、実施後報告作成済みのサンプル。飛行ログからカバレッジを可視化。",
     weather: {
       latitude: DEFAULT_WEATHER_LOCATION.latitude,
       longitude: DEFAULT_WEATHER_LOCATION.longitude,
@@ -3275,9 +3974,9 @@ function createSampleState() {
       ...defaultReport(),
       doneDate: dateOffset(-1),
       doneTime: "05:32-06:18",
-      doneField: "笠間デモほ場G",
+      doneField: "笠間デモほ場A",
       donePesticide: "殺虫剤C（サンプル）",
-      doneArea: "4.0ha",
+      doneArea: "1.0ha",
       doneWeather: "北 1.4m/s",
       incident: "なし",
       inquiry: "なし",
@@ -3289,6 +3988,83 @@ function createSampleState() {
     },
   };
 
+  const plan4 = {
+    ...createBlankPlan(),
+    id: "plan-drone-4",
+    date: dateOffset(-3),
+    timeWindow: "06:30-07:10",
+    fieldName: "笠間デモほ場A",
+    district: "笠間市周辺デモ",
+    crop: "水稲",
+    materialType: "液体肥料・葉面散布",
+    pesticide: "液体葉面散布肥料（サンプル）",
+    purpose: "生育期の追肥",
+    method: "ドローン",
+    operator: "匿名散布者",
+    contact: "デモ連絡先",
+    droneModel: "SDK対応予定機種A",
+    aircraftRegistration: "DEMO-DRONE-001",
+    pilot: "匿名操縦者",
+    sprayDevice: "液剤散布装置A",
+    nozzle: "中粒径ノズル",
+    plannedAltitude: "作物上2m目安",
+    plannedSpeed: "3.5m/s",
+    pesticideRegistration: "肥料のため農薬登録番号なし",
+    preHarvestDays: "－",
+    amount: "100L/10a",
+    dilution: "500倍",
+    ratePer10a: 100,
+    rateUnit: "L",
+    areaHa: 1.0,
+    sprayWidthM: 9,
+    droneLog: createSampleDroneLog(true),
+    labelCheckedAt: dateOffset(-3),
+    sprayArea: "1.0ha",
+    notes: "農薬ではなく液体肥料の葉面散布。有機ほ場が風下にあるため、化学肥料の飛散にも配慮して通知・確認を実施。",
+    weather: {
+      ...defaultWeather(),
+      forecastDirection: "北西",
+      forecastSpeed: 1.4,
+      maxGust: 2.2,
+      temperature: 23,
+      humidity: 58,
+      rainForecast: "なし",
+      actualDirection: "北西",
+      actualSpeed: 1.3,
+      measuredAt: "06:20",
+      measuredPlace: "笠間デモほ場A 南側",
+      measurementMethod: "携帯風速計で測定",
+      measuredBy: "匿名補助者",
+      source: "Open-Meteo Forecast API（サンプル）",
+      fetchedAt: formatDateTime(new Date()),
+      weatherNotes: "肥料散布時も同様に風向・風速を記録。",
+    },
+    checks: defaultChecks(true),
+    notificationTargets: {
+      "organic-field-a": true,
+      "no-chemical-field-b": true,
+    },
+    notificationResponses: {
+      "organic-field-a": "確認しました",
+    },
+    report: {
+      ...defaultReport(),
+      doneDate: dateOffset(-3),
+      doneTime: "06:32-07:05",
+      doneField: "笠間デモほ場A",
+      donePesticide: "液体葉面散布肥料（サンプル）",
+      doneArea: "1.0ha",
+      doneWeather: "北西 1.3m/s",
+      incident: "なし",
+      inquiry: "なし",
+      reportType: "通常報告",
+      actualAmount: "100L/10a",
+      altitudeNotes: "高度要確認区間なし",
+      outsideFlight: "なし",
+      reportNotes: "化学肥料の葉面散布。有機ほ場への飛散なしを確認。",
+    },
+  };
+
   return {
     role: "sprayer",
     activePlanId: "plan-drone-1",
@@ -3296,7 +4072,7 @@ function createSampleState() {
     settings: { ...DEFAULT_SETTINGS },
     droneLog: createSampleDroneLog(false),
     fields,
-    plans: [plan1, plan2, plan3],
+    plans: [plan1, plan2, plan3, plan4],
   };
 }
 
