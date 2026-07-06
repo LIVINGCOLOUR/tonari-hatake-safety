@@ -39,6 +39,27 @@ const ROLE_ALLOWED_VIEWS = {
   admin: ["dashboard", "plans", "map", "fields", "drone", "notify", "report", "history", "admin", "sources"],
 };
 
+const EQUIPMENT_FIELDS = [
+  "droneModel", "aircraftRegistration", "pilot", "assistant",
+  "sprayDevice", "nozzle", "plannedAltitude", "plannedSpeed", "sprayWidthM",
+];
+
+const DEFAULT_EQUIPMENT = {
+  droneModel: "SDK対応予定機種A",
+  aircraftRegistration: "DEMO-DRONE-001",
+  pilot: "匿名操縦者",
+  assistant: "匿名補助者",
+  sprayDevice: "液剤散布装置A",
+  nozzle: "中粒径ノズル",
+  plannedAltitude: "作物上2m目安",
+  plannedSpeed: "3.5m/s",
+  sprayWidthM: "",
+};
+
+function equipmentTemplate() {
+  return { ...DEFAULT_EQUIPMENT, ...(state?.equipmentTemplate || {}) };
+}
+
 const MATERIAL_TYPES = ["農薬", "液体肥料・葉面散布", "その他資材"];
 
 const MATERIAL_TERMS = {
@@ -445,6 +466,9 @@ function bindEvents() {
     if (input) input.addEventListener("input", () => updatePlanTotalPreview());
   });
 
+  $("#saveEquipmentButton")?.addEventListener("click", saveEquipmentTemplate);
+  $("#applyEquipmentButton")?.addEventListener("click", applyEquipmentTemplate);
+
   $("#saveWeatherButton").addEventListener("click", () => {
     updateWeatherFromForm();
     saveState();
@@ -589,6 +613,7 @@ function bindEvents() {
 }
 
 function renderAll() {
+  document.body.dataset.role = activeRole;
   renderRoleSwitcher();
   renderRoleNavigation();
   renderPlanSelect();
@@ -723,7 +748,7 @@ function renderSprayerWorkflow(plan) {
     { title: "周辺確認", detail: `${riskItemsForPlan(plan).length}件の確認項目`, done: Boolean(plan.checks.organic && plan.checks.sensitive), view: "map" },
     { title: "近隣通知", detail: notificationLabel(plan), done: notificationIsComplete(plan), view: "notify" },
     { title: "気象記録", detail: weatherLabel(plan), done: Boolean(plan.weather.actualSpeed), view: "weather" },
-    { title: "飛行ログ", detail: droneLogLabel(), done: Boolean((state.droneLog || {}).imported), view: "drone" },
+    { title: "飛行ログ", detail: droneLogLabel(), done: Boolean(activeDroneLog().imported), view: "drone" },
     { title: "散布前チェック", detail: `${progress.done}/${progress.total}項目`, done: progress.percent >= 85, view: "checklist" },
     { title: "実施後報告", detail: plan.report.doneDate ? "提出済み" : "未提出", done: Boolean(plan.report.doneDate), view: "report" },
   ];
@@ -806,7 +831,71 @@ function renderAdminHome() {
   `;
 }
 
+function sprayGoNoGo(plan) {
+  const weather = weatherDecision(plan);
+  const w = plan.weather || {};
+  const rain = rainNeedsAttention(w);
+  const notifyComplete = notificationIsComplete(plan);
+  const unnotifiedHigh = riskItemsForPlan(plan).filter((r) => r.notifyTarget && r.level === "high" && !r.notified);
+  const factors = [
+    { label: "気象条件", status: weather.level, detail: `${weather.label}（${weatherLabel(plan)}）` },
+    { label: "降雨", status: rain ? "bad" : "good", detail: rainRiskLabel(w) },
+    { label: "近隣通知", status: notifyComplete ? "good" : "warn", detail: notificationLabel(plan) },
+    {
+      label: "風下の要確認圃場",
+      status: unnotifiedHigh.length ? "bad" : "good",
+      detail: unnotifiedHigh.length ? `${unnotifiedHigh.length}件が未通知` : "対応済み／該当なし",
+    },
+  ];
+  let verdict;
+  if (weather.level === "bad" || rain || unnotifiedHigh.length) verdict = "stop";
+  else if (weather.level === "warn" || !notifyComplete) verdict = "caution";
+  else verdict = "go";
+  const meta = {
+    go: { label: "本日 散布可", icon: "○" },
+    caution: { label: "要注意・確認あり", icon: "△" },
+    stop: { label: "延期・要対応", icon: "×" },
+  }[verdict];
+  const actions = [];
+  if (weather.level !== "good") actions.push({ view: "weather", label: "気象を確認" });
+  if (!notifyComplete) actions.push({ view: "notify", label: "近隣通知へ" });
+  if (unnotifiedHigh.length) actions.push({ view: "map", label: "風下を確認" });
+  return { verdict, ...meta, factors, actions };
+}
+
+function renderGoNoGo() {
+  const card = $("#goNoGoCard");
+  if (!card) return;
+  const plan = activePlan();
+  const g = sprayGoNoGo(plan);
+  card.className = `gonogo-card gonogo-${g.verdict}`;
+  card.innerHTML = `
+    <div class="gonogo-verdict">
+      <span class="gonogo-icon">${g.icon}</span>
+      <div>
+        <strong>${escapeHtml(g.label)}</strong>
+        <span>${escapeHtml(plan.date)} ${escapeHtml(plan.timeWindow)} ／ ${escapeHtml(plan.fieldName)}</span>
+      </div>
+    </div>
+    <div class="gonogo-factors">
+      ${g.factors
+        .map(
+          (f) => `<div class="gonogo-factor ${escapeAttr(f.status)}"><span>${escapeHtml(f.label)}</span><b>${escapeHtml(f.detail)}</b></div>`,
+        )
+        .join("")}
+    </div>
+    ${
+      g.actions.length
+        ? `<div class="gonogo-actions">${g.actions
+            .map((a) => `<button class="ghost-button" data-view-target="${escapeAttr(a.view)}" type="button">${escapeHtml(a.label)}</button>`)
+            .join("")}</div>`
+        : ""
+    }
+  `;
+}
+
 function renderDashboard() {
+  renderGoNoGo();
   const metrics = getDashboardMetrics();
   $("#kpiGrid").innerHTML = metrics
     .map(
@@ -948,6 +1037,31 @@ function renderPlanForm() {
   const progress = checkProgress(plan);
   $("#planProgressLabel").textContent = `${progress.done}/${progress.total}`;
   $("#planProgressMeter").style.width = `${progress.percent}%`;
+}
+
+function saveEquipmentTemplate() {
+  const form = $("#planForm");
+  if (!form) return;
+  const tpl = {};
+  EQUIPMENT_FIELDS.forEach((name) => {
+    const el = form.elements[name];
+    if (!el) return;
+    tpl[name] = name === "sprayWidthM" ? toNumber(el.value) : el.value.trim();
+  });
+  state.equipmentTemplate = tpl;
+  saveState();
+  showToast("機体・操縦者を既定として保存しました。以後の新規計画に自動反映されます。");
+}
+
+function applyEquipmentTemplate() {
+  const plan = activePlan();
+  const tpl = equipmentTemplate();
+  EQUIPMENT_FIELDS.forEach((name) => {
+    plan[name] = tpl[name];
+  });
+  saveState();
+  renderPlanForm();
+  showToast("既定の機体・操縦者を反映しました。");
 }
 
 function updatePlanTotalPreview(plan = activePlan()) {
@@ -1321,9 +1435,9 @@ function setGeoJsonSource(map, id, data) {
 function applyGisLayerVisibility(map, options = {}) {
   const always = Boolean(options.dashboard);
   const coverage = !always && mapLayer === "coverage";
-  const showRisk = always || mapLayer === "risk" || mapLayer === "notify";
-  const showWind = always || mapLayer === "risk" || mapLayer === "wind";
-  const showDrone = always || mapLayer === "risk" || mapLayer === "drone" || coverage;
+  const showRisk = always || mapLayer === "risk";
+  const showWind = always || mapLayer === "risk";
+  const showDrone = always || mapLayer === "drone" || coverage;
   const visibility = {
     "risk-buffer-fill": showRisk,
     "risk-buffer-line": showRisk,
@@ -1466,7 +1580,7 @@ function windZoneFeatureCollection(plan) {
 }
 
 function flightLineFeatureCollection() {
-  const points = (state.droneLog || createSampleDroneLog(false)).points || [];
+  const points = (activeDroneLog()).points || [];
   const features = [];
   for (let index = 1; index < points.length; index += 1) {
     const prev = points[index - 1];
@@ -1481,7 +1595,7 @@ function flightLineFeatureCollection() {
 }
 
 function flightPointFeatureCollection() {
-  const points = (state.droneLog || createSampleDroneLog(false)).points || [];
+  const points = (activeDroneLog()).points || [];
   return {
     type: "FeatureCollection",
     features: points
@@ -1561,7 +1675,7 @@ function dashboardFieldClipPath(field, index) {
 }
 
 function renderDashboardFlightOverlay(container) {
-  const log = state.droneLog || createSampleDroneLog(false);
+  const log = activeDroneLog();
   if (!log.points?.length) return;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("dashboard-flight-svg");
@@ -1710,7 +1824,7 @@ function initMapLibre() {
 }
 
 function renderFlightOverlay(container, mini) {
-  const log = state.droneLog || createSampleDroneLog(false);
+  const log = activeDroneLog();
   if (!log.points?.length) return;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("flight-svg");
@@ -1786,7 +1900,7 @@ function renderFieldStatus() {
 }
 
 function renderDroneView() {
-  const log = state.droneLog || createSampleDroneLog(false);
+  const log = activeDroneLog();
   const plan = activePlan();
   const summary = $("#droneSummary");
   if (summary) {
@@ -1854,16 +1968,33 @@ function updateFieldStatusFromForm() {
 function renderAltitudeChart(log) {
   const chart = $("#altitudeChart");
   if (!chart) return;
-  const max = Math.max(1, ...log.points.map((point) => point.altitude));
-  chart.innerHTML = log.points
+  const points = downsampleAltitudePoints(log.points || [], 14);
+  const max = Math.max(1, ...points.map((point) => point.altitude));
+  const showLabels = points.length <= 12;
+  chart.innerHTML = points
     .map(
       (point) => `
         <div class="altitude-bar ${point.altitudeCheck ? "check" : ""}" style="height:${Math.max(12, (point.altitude / max) * 100)}%">
-          <span>${escapeHtml(point.altitude)}m</span>
+          ${showLabels ? `<span>${escapeHtml(point.altitude)}m</span>` : ""}
         </div>
       `,
     )
     .join("");
+}
+
+// Evenly sample down to at most `maxBars`, preserving any 高度要確認 (altitudeCheck) points.
+function downsampleAltitudePoints(points, maxBars) {
+  if (points.length <= maxBars) return points;
+  const step = points.length / maxBars;
+  const picked = new Map();
+  for (let i = 0; i < maxBars; i += 1) {
+    const idx = Math.min(points.length - 1, Math.round(i * step));
+    picked.set(idx, points[idx]);
+  }
+  points.forEach((point, idx) => {
+    if (point.altitudeCheck || point.outside) picked.set(idx, point);
+  });
+  return [...picked.keys()].sort((a, b) => a - b).map((idx) => picked.get(idx));
 }
 
 function metricCard(label, value) {
@@ -3121,7 +3252,7 @@ function updateReportFromForm() {
 
 function autoFillReportFromPlan() {
   const plan = activePlan();
-  const log = state.droneLog || createSampleDroneLog(false);
+  const log = activeDroneLog();
   plan.report = {
     ...plan.report,
     doneDate: plan.report.doneDate || plan.date,
@@ -3690,7 +3821,7 @@ function renderReadinessCards(plan) {
 }
 
 function buildAdvice(plan) {
-  const log = state.droneLog || createSampleDroneLog(false);
+  const log = activeDroneLog();
   const advice = [];
   const rules = activeSettings();
   const speed = Number(plan.weather.actualSpeed || plan.weather.forecastSpeed || 0);
@@ -3739,11 +3870,11 @@ function buildAdvice(plan) {
   return advice;
 }
 
-function maxAltitude(log = state.droneLog || createSampleDroneLog(false)) {
+function maxAltitude(log = activeDroneLog()) {
   return Math.max(0, ...log.points.map((point) => point.altitude));
 }
 
-function altitudeCheckCount(log = state.droneLog || createSampleDroneLog(false)) {
+function altitudeCheckCount(log = activeDroneLog()) {
   return log.points.filter((point) => point.altitudeCheck).length;
 }
 
@@ -3753,7 +3884,7 @@ function altitudeCheckLabel() {
 }
 
 function droneLogLabel() {
-  const log = state.droneLog || createSampleDroneLog(false);
+  const log = activeDroneLog();
   return log.imported ? `取込済み ${log.startedAt}-${log.endedAt}` : "仮ログ表示中（散布ON/OFF確認用）";
 }
 
@@ -3855,6 +3986,13 @@ function activePlan() {
   return state.plans.find((plan) => plan.id === state.activePlanId) || state.plans[0];
 }
 
+// Flight log tied to the active plan; falls back to a not-imported placeholder.
+function activeDroneLog() {
+  const plan = activePlan();
+  if (plan && plan.droneLog) return plan.droneLog;
+  return createSampleDroneLog(false);
+}
+
 function activeField() {
   const editableFields = state.fields.filter((field) => field.type !== "spray");
   const selected = editableFields.find((field) => field.id === state.activeFieldId);
@@ -3908,14 +4046,7 @@ function createBlankPlan() {
     method: "ドローン",
     operator: "匿名散布者",
     contact: "デモ連絡先",
-    droneModel: "SDK対応予定機種A",
-    aircraftRegistration: "DEMO-DRONE-001",
-    pilot: "匿名操縦者",
-    assistant: "匿名補助者",
-    sprayDevice: "液剤散布装置A",
-    nozzle: "中粒径ノズル",
-    plannedAltitude: "作物上2m目安",
-    plannedSpeed: "3.5m/s",
+    ...equipmentTemplate(),
     pesticideRegistration: "登録番号サンプル",
     preHarvestDays: "使用条件確認中",
     amount: "",
@@ -3923,7 +4054,6 @@ function createBlankPlan() {
     ratePer10a: "",
     rateUnit: "mL",
     areaHa: "",
-    sprayWidthM: "",
     labelCheckedAt: dateOffset(0),
     sprayArea: "",
     notes: "",

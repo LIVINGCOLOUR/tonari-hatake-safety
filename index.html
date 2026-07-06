@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260707-ux">
+    <link rel="stylesheet" href="css/styles.css?v=20260707-ux2">
   </head>
   <body>
     <div class="app-shell">
@@ -81,6 +81,8 @@
             </div>
             <button class="primary-button" data-view-target="plans" type="button">計画登録へ</button>
           </div>
+
+          <div class="gonogo-card" id="goNoGoCard"></div>
 
           <div class="rule-banner" id="ruleBanner"></div>
 
@@ -234,6 +236,10 @@
                     <label>飛行高度予定<input name="plannedAltitude" type="text"></label>
                     <label>飛行速度予定<input name="plannedSpeed" type="text"></label>
                   </div>
+                  <div class="equipment-template-actions">
+                    <button class="ghost-button tiny" id="saveEquipmentButton" type="button">この機体・操縦者を既定に保存</button>
+                    <button class="ghost-button tiny" id="applyEquipmentButton" type="button">既定を反映</button>
+                  </div>
                 </details>
                 <details class="form-section wide-field">
                   <summary>農薬ラベル・使用条件</summary>
@@ -296,9 +302,7 @@
               <p>散布ほ場、圃場ステータス、通知範囲、風下方向、ドローン飛行ログをGIS風に表示します。</p>
             </div>
             <div class="segmented" role="group" aria-label="マップ表示">
-              <button class="segment active" data-map-layer="risk" type="button">周辺確認</button>
-              <button class="segment" data-map-layer="notify" type="button">通知</button>
-              <button class="segment" data-map-layer="wind" type="button">風下</button>
+              <button class="segment active" data-map-layer="risk" type="button">周辺・風下</button>
               <button class="segment" data-map-layer="drone" type="button">飛行ログ</button>
               <button class="segment" data-map-layer="coverage" type="button">散布カバレッジ</button>
               <button class="segment" data-map-layer="prescription" type="button">処方マップ</button>
@@ -383,14 +387,16 @@
               <h3 id="fieldsTitle">圃場ステータス登録</h3>
               <p>有機JASだけに限定せず、農薬使用状況や農薬影響を避けたい理由を登録します。</p>
             </div>
-            <div class="section-actions">
+            <div class="section-actions fields-edit-only">
               <button class="ghost-button" id="newFieldStatusButton" type="button">自分の圃場を追加</button>
               <button class="primary-button" id="saveFieldStatusButton" type="button">ステータスを保存</button>
             </div>
           </div>
 
-          <div class="form-layout">
-            <form class="panel form-panel" id="fieldStatusForm">
+          <div class="fields-readonly-note">周辺農家が登録した圃場ステータスの閲覧画面です。編集は「周辺農家」モードで行います。</div>
+
+          <div class="form-layout fields-form-layout">
+            <form class="panel form-panel fields-edit-only" id="fieldStatusForm">
               <div class="form-grid">
                 <label>圃場名<input name="name" type="text"></label>
                 <label>作物<input name="crop" type="text"></label>
@@ -899,6 +905,6 @@
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
-    <script src="js/main.js?v=20260707-ux" defer></script>
+    <script src="js/main.js?v=20260707-ux2" defer></script>
   </body>
 </html>
