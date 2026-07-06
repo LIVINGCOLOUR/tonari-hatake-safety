@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260706-coverage2">
+    <link rel="stylesheet" href="css/styles.css?v=20260707-vra">
   </head>
   <body>
     <div class="app-shell">
@@ -317,6 +317,7 @@
               <button class="segment" data-map-layer="wind" type="button">風下</button>
               <button class="segment" data-map-layer="drone" type="button">飛行ログ</button>
               <button class="segment" data-map-layer="coverage" type="button">散布カバレッジ</button>
+              <button class="segment" data-map-layer="prescription" type="button">処方マップ</button>
             </div>
           </div>
 
@@ -359,6 +360,22 @@
                   </div>
                   <div class="coverage-progress-track"><span id="coverageProgress"></span></div>
                   <div id="coverageReadout"></div>
+                </div>
+
+                <div class="map-overlay coverage-panel prescription-panel" id="prescriptionPanel">
+                  <div class="coverage-panel-head">
+                    <strong>▤ 可変施肥 処方マップ</strong>
+                    <span>施用量を色分け（少→多）</span>
+                  </div>
+                  <div class="coverage-controls">
+                    <label class="rx-import-button">
+                      処方を取込
+                      <input type="file" id="prescriptionFileInput" accept=".geojson,.json,application/geo+json,application/json" hidden>
+                    </label>
+                    <button class="ghost-button" id="loadSamplePrescriptionButton" type="button">サンプル処方</button>
+                    <button class="ghost-button" id="clearPrescriptionButton" type="button">クリア</button>
+                  </div>
+                  <div id="prescriptionReadout"></div>
                 </div>
               </div>
             </div>
@@ -907,6 +924,6 @@
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
-    <script src="js/main.js?v=20260706-coverage2" defer></script>
+    <script src="js/main.js?v=20260707-vra" defer></script>
   </body>
 </html>

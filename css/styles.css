@@ -484,6 +484,62 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.rx-import-button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  background: #2fbf6b;
+  color: #06301b;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rx-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.rx-name span {
+  font-size: 11px;
+  opacity: 0.72;
+  font-weight: 600;
+}
+
+.rx-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin: 4px 0 8px;
+}
+
+.rx-legend .rx-legend-label {
+  opacity: 0.8;
+}
+
+.rx-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rx-legend i {
+  width: 14px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
 .section-head h3 {
   font-size: 28px;
 }

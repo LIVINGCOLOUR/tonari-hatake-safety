@@ -561,6 +561,13 @@ function bindEvents() {
   $("#coveragePlayButton")?.addEventListener("click", toggleCoveragePlayback);
   $("#coverageResetButton")?.addEventListener("click", resetCoveragePlayback);
 
+  $("#prescriptionFileInput")?.addEventListener("change", (event) => {
+    importPrescriptionFile(event.target.files[0]);
+    event.target.value = "";
+  });
+  $("#loadSamplePrescriptionButton")?.addEventListener("click", loadSamplePrescription);
+  $("#clearPrescriptionButton")?.addEventListener("click", clearPrescription);
+
   document.body.addEventListener("change", (event) => {
     const response = event.target.closest("[data-notify-response]");
     if (response) {
@@ -976,6 +983,7 @@ function renderMapView() {
 
   $("#mapWindCard").innerHTML = weatherCard(plan);
   renderCoveragePanel();
+  renderPrescriptionPanel();
 }
 
 function renderDashboardGisMap() {
@@ -1085,6 +1093,7 @@ function setupGisMapLayers(map) {
       "wind-zone",
       "fields",
       "coverage-grid",
+      "prescription-zones",
       "flight-lines",
       "flight-points",
       "drone-marker",
@@ -1157,6 +1166,25 @@ function setupGisMapLayers(map) {
         "line-color": ["case", ["==", ["get", "sprayed"], 1], "#1f8f4d", "#5c6a62"],
         "line-width": 0.35,
         "line-opacity": 0.5,
+      },
+    });
+    map.addLayer({
+      id: "prescription-fill",
+      type: "fill",
+      source: "prescription-zones",
+      paint: {
+        "fill-color": ["coalesce", ["get", "_color"], "#addd8e"],
+        "fill-opacity": 0.72,
+      },
+    });
+    map.addLayer({
+      id: "prescription-outline",
+      type: "line",
+      source: "prescription-zones",
+      paint: {
+        "line-color": "#204a2b",
+        "line-width": 0.8,
+        "line-opacity": 0.55,
       },
     });
     map.addLayer({
@@ -1240,6 +1268,8 @@ function updateGisMap(map, options = {}) {
   const coverage = !options.dashboard && mapLayer === "coverage" ? coverageMapData(activePlan(), coveragePlayIndex) : null;
   setGeoJsonSource(map, "coverage-grid", coverage ? coverage.cells : emptyFeatureCollection());
   setGeoJsonSource(map, "drone-marker", coverage ? coverage.marker : emptyFeatureCollection());
+  const prescription = !options.dashboard && mapLayer === "prescription" ? prescriptionZonesFeatureCollection(activePlan()) : emptyFeatureCollection();
+  setGeoJsonSource(map, "prescription-zones", prescription);
   applyGisLayerVisibility(map, options);
 }
 
@@ -1293,6 +1323,8 @@ function applyGisLayerVisibility(map, options = {}) {
     "coverage-outline": coverage,
     "drone-marker-halo": coverage,
     "drone-marker-dot": coverage,
+    "prescription-fill": !always && mapLayer === "prescription",
+    "prescription-outline": !always && mapLayer === "prescription",
   };
   Object.entries(visibility).forEach(([layerId, visible]) => {
     if (map.getLayer(layerId)) {
@@ -2308,6 +2340,225 @@ function resetCoveragePlayback() {
   stopCoveragePlayback();
   coveragePlayIndex = null;
   updateCoverageDisplay();
+}
+
+// --- 可変施肥（VRA）処方マップの取込・表示 ---
+const PRESCRIPTION_COLORS = ["#f7fcb9", "#addd8e", "#41ab5d", "#238443", "#00441b"];
+const RATE_KEYS = [
+  "rate", "rx", "rxrate", "dose", "dosage", "amount", "qty", "quantity",
+  "target", "targetrate", "value", "n_rate", "nrate", "施用量", "施肥量", "散布量", "目標",
+];
+
+function detectRateField(props) {
+  const keys = Object.keys(props || {});
+  const isNum = (k) => props[k] !== "" && props[k] !== null && Number.isFinite(Number(props[k]));
+  const lower = keys.map((k) => String(k).toLowerCase());
+  for (const cand of RATE_KEYS) {
+    const i = lower.indexOf(cand);
+    if (i >= 0 && isNum(keys[i])) return keys[i];
+  }
+  for (const k of keys) {
+    if (/(rate|rx|dose|dosage|amount|施用|施肥|散布|目標)/i.test(k) && isNum(k)) return k;
+  }
+  for (const k of keys) {
+    if (isNum(k)) return k;
+  }
+  return null;
+}
+
+function ringAreaM2(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return 0;
+  const origin = ring[0];
+  const pts = ring.map((c) => projectMeters(c, origin));
+  let area = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    area += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+  }
+  return Math.abs(area / 2);
+}
+
+function polygonAreaHa(geom) {
+  if (!geom) return 0;
+  const ringsArea = (rings) => (rings.length ? ringAreaM2(rings[0]) - rings.slice(1).reduce((s, r) => s + ringAreaM2(r), 0) : 0);
+  let m2 = 0;
+  if (geom.type === "Polygon") m2 = ringsArea(geom.coordinates);
+  else if (geom.type === "MultiPolygon") m2 = geom.coordinates.reduce((s, poly) => s + ringsArea(poly), 0);
+  return Math.max(0, m2) / 10000;
+}
+
+function buildPrescription(features, name, unit) {
+  const polys = (features || []).filter(
+    (f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"),
+  );
+  if (!polys.length) throw new Error("ポリゴンのGeoJSONが見つかりません。");
+  const rateField = detectRateField(polys[0].properties || {});
+  if (!rateField) throw new Error("施用量（rate）の数値項目が見つかりません。");
+  const rates = polys.map((f) => Number(f.properties[rateField])).filter((n) => Number.isFinite(n));
+  const min = rates.length ? Math.min(...rates) : 0;
+  const max = rates.length ? Math.max(...rates) : 0;
+  const avg = rates.length ? rates.reduce((s, n) => s + n, 0) / rates.length : 0;
+  let totalAmount = 0;
+  let totalAreaHa = 0;
+  polys.forEach((f) => {
+    const ha = polygonAreaHa(f.geometry);
+    const rate = Number(f.properties[rateField]);
+    totalAreaHa += ha;
+    if (Number.isFinite(rate)) totalAmount += ha * rate;
+  });
+  return {
+    name: name || "処方マップ",
+    rateField,
+    unit: unit || "",
+    features: polys,
+    count: polys.length,
+    min,
+    max,
+    avg: Number(avg.toFixed(1)),
+    totalAmount: Number(totalAmount.toFixed(1)),
+    totalAreaHa: Number(totalAreaHa.toFixed(2)),
+    importedAt: formatDateTime(new Date()),
+  };
+}
+
+function parsePrescriptionText(text, name) {
+  const data = JSON.parse(text);
+  let features = [];
+  if (data.type === "FeatureCollection") features = data.features || [];
+  else if (data.type === "Feature") features = [data];
+  else if (data.type && data.coordinates) features = [{ type: "Feature", geometry: data, properties: {} }];
+  const unit = (data.unit || data.properties?.unit || "").toString();
+  return buildPrescription(features, name, unit);
+}
+
+function samplePrescription(plan) {
+  const field = coverageField(plan);
+  const ring = fieldPolygonCoordinates(field);
+  const lngs = ring.map((c) => c[0]);
+  const lats = ring.map((c) => c[1]);
+  const w = Math.min(...lngs);
+  const e = Math.max(...lngs);
+  const s = Math.min(...lats);
+  const n = Math.max(...lats);
+  const rates = [70, 90, 110, 130, 150, 120];
+  const features = rates.map((rate, i) => {
+    const y0 = n - ((n - s) * i) / rates.length;
+    const y1 = n - ((n - s) * (i + 1)) / rates.length;
+    return {
+      type: "Feature",
+      properties: { rate },
+      geometry: { type: "Polygon", coordinates: [[[w, y0], [e, y0], [e, y1], [w, y1], [w, y0]]] },
+    };
+  });
+  return buildPrescription(features, "サンプル処方（可変施肥・化学肥料）", "kg/ha");
+}
+
+function prescriptionClassOf(rate, min, max) {
+  if (!Number.isFinite(rate)) return 0;
+  const range = max - min || 1;
+  return Math.min(PRESCRIPTION_COLORS.length - 1, Math.max(0, Math.floor(((rate - min) / range) * PRESCRIPTION_COLORS.length)));
+}
+
+function prescriptionZonesFeatureCollection(plan) {
+  const rx = plan?.prescription;
+  if (!rx) return emptyFeatureCollection();
+  return {
+    type: "FeatureCollection",
+    features: rx.features.map((f) => {
+      const rate = Number(f.properties[rx.rateField]);
+      return {
+        type: "Feature",
+        geometry: f.geometry,
+        properties: {
+          _color: PRESCRIPTION_COLORS[prescriptionClassOf(rate, rx.min, rx.max)],
+          _rate: Number.isFinite(rate) ? rate : null,
+        },
+      };
+    }),
+  };
+}
+
+function renderPrescriptionPanel() {
+  const panel = $("#prescriptionPanel");
+  if (!panel) return;
+  const active = mapLayer === "prescription";
+  panel.classList.toggle("is-active", active);
+  if (active) updatePrescriptionDisplay();
+}
+
+function updatePrescriptionDisplay() {
+  if (mapLayer !== "prescription") return;
+  const plan = activePlan();
+  if (mapLibreMap && mapLibreMap.getSource("prescription-zones")) {
+    mapLibreMap.getSource("prescription-zones").setData(prescriptionZonesFeatureCollection(plan));
+  }
+  renderPrescriptionReadout(plan.prescription);
+}
+
+function renderPrescriptionReadout(rx) {
+  const readout = $("#prescriptionReadout");
+  if (!readout) return;
+  if (!rx) {
+    readout.innerHTML = `<div class="empty-state">処方マップ（GeoJSON）を取り込むと、施用量ゾーンを色分け表示します。<br>xarvio等から書き出したファイル、または「サンプル処方」でお試しください。</div>`;
+    return;
+  }
+  const range = rx.max - rx.min || 1;
+  const legend = PRESCRIPTION_COLORS.map((color, k) => {
+    const low = rx.min + (range * k) / PRESCRIPTION_COLORS.length;
+    const high = rx.min + (range * (k + 1)) / PRESCRIPTION_COLORS.length;
+    return `<span><i style="background:${color}"></i>${trimNumber(low)}–${trimNumber(high)}</span>`;
+  }).join("");
+  const totalUnit = rx.unit ? rx.unit.replace(/\/?ha$/i, "") : "";
+  readout.innerHTML = `
+    <div class="rx-name">${escapeHtml(rx.name)}<span>${escapeHtml(rx.importedAt)}</span></div>
+    <div class="coverage-figures">
+      <div><span>ゾーン数</span><strong>${rx.count}</strong></div>
+      <div><span>施用量</span><strong>${trimNumber(rx.min)}–${trimNumber(rx.max)}${escapeHtml(rx.unit)}</strong></div>
+      <div><span>平均</span><strong>${trimNumber(rx.avg)}${escapeHtml(rx.unit)}</strong></div>
+      <div><span>合計目標量</span><strong>${trimNumber(rx.totalAmount)}${escapeHtml(totalUnit)}（${trimNumber(rx.totalAreaHa)}ha）</strong></div>
+    </div>
+    <div class="rx-legend"><span class="rx-legend-label">少 → 多</span>${legend}</div>
+    <div class="coverage-track-note">施用量項目：${escapeHtml(rx.rateField)}</div>
+  `;
+}
+
+function importPrescriptionFile(file) {
+  if (!file) return;
+  const name = file.name.replace(/\.[^.]+$/, "");
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".zip") || lower.endsWith(".shp")) {
+    showToast("Shapefileは次段対応です。まずGeoJSONで取り込んでください。");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const rx = parsePrescriptionText(String(reader.result), name);
+      const plan = activePlan();
+      plan.prescription = rx;
+      saveState();
+      updatePrescriptionDisplay();
+      showToast(`処方マップ「${rx.name}」を取り込みました（${rx.count}ゾーン）。`);
+    } catch (error) {
+      showToast(`取り込めませんでした：${error.message}`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function loadSamplePrescription() {
+  const plan = activePlan();
+  plan.prescription = samplePrescription(plan);
+  saveState();
+  updatePrescriptionDisplay();
+  showToast("サンプル処方（可変施肥）を読み込みました。");
+}
+
+function clearPrescription() {
+  const plan = activePlan();
+  plan.prescription = null;
+  saveState();
+  updatePrescriptionDisplay();
+  showToast("処方マップをクリアしました。");
 }
 
 function historyRecords() {
@@ -3528,6 +3779,7 @@ function createBlankPlan() {
     sprayArea: "",
     notes: "",
     droneLog: null,
+    prescription: null,
     weather: defaultWeather(),
     checks: defaultChecks(false),
     notificationTargets: {},
@@ -4193,7 +4445,11 @@ function activeSettings() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    showToast("保存容量の上限に達しました。取り込んだ処方マップはこの表示中のみ保持されます。");
+  }
 }
 
 function countBy(items, keyOrFn) {
