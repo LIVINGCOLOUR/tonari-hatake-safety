@@ -395,6 +395,15 @@ function bindEvents() {
       return;
     }
 
+    const adminRow = event.target.closest("[data-admin-plan]");
+    if (adminRow) {
+      adminSelectedId = adminRow.dataset.adminPlan;
+      state.activePlanId = adminSelectedId;
+      saveState();
+      renderAdmin();
+      return;
+    }
+
     const rxAction = event.target.closest("[data-rx-action]");
     if (rxAction) {
       if (rxAction.dataset.rxAction === "regenerate") regeneratePrescription();
@@ -587,6 +596,14 @@ function bindEvents() {
     renderAll();
     showToast("実証ルール案を標準値に戻しました。");
   });
+  $("#adminStatusFilter")?.addEventListener("change", (event) => {
+    adminFilters.status = event.target.value;
+    renderAdmin();
+  });
+  $("#adminDistrictFilter")?.addEventListener("change", (event) => {
+    adminFilters.district = event.target.value;
+    renderAdmin();
+  });
 
   $$(".segment[data-channel]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -679,6 +696,11 @@ function switchView(viewName) {
     if (viewName === "map" && mapLibreMap) {
       mapLibreMap.resize();
       updateGisMap(mapLibreMap);
+    }
+    if (viewName === "admin") {
+      initAdminMapLibre();
+      if (adminMapLibreMap) adminMapLibreMap.resize();
+      renderAdminDetail();
     }
   });
 }
@@ -887,13 +909,8 @@ function sprayGoNoGo(plan) {
   return { verdict, ...meta, factors, actions };
 }
 
-function renderGoNoGo() {
-  const card = $("#goNoGoCard");
-  if (!card) return;
-  const plan = activePlan();
-  const g = sprayGoNoGo(plan);
-  card.className = `gonogo-card gonogo-${g.verdict}`;
-  card.innerHTML = `
+function goNoGoInner(g, plan, includeActions) {
+  return `
     <div class="gonogo-verdict">
       <span class="gonogo-icon">${g.icon}</span>
       <div>
@@ -903,19 +920,26 @@ function renderGoNoGo() {
     </div>
     <div class="gonogo-factors">
       ${g.factors
-        .map(
-          (f) => `<div class="gonogo-factor ${escapeAttr(f.status)}"><span>${escapeHtml(f.label)}</span><b>${escapeHtml(f.detail)}</b></div>`,
-        )
+        .map((f) => `<div class="gonogo-factor ${escapeAttr(f.status)}"><span>${escapeHtml(f.label)}</span><b>${escapeHtml(f.detail)}</b></div>`)
         .join("")}
     </div>
     ${
-      g.actions.length
+      includeActions && g.actions.length
         ? `<div class="gonogo-actions">${g.actions
             .map((a) => `<button class="ghost-button" data-view-target="${escapeAttr(a.view)}" type="button">${escapeHtml(a.label)}</button>`)
             .join("")}</div>`
         : ""
     }
   `;
+}
+
+function renderGoNoGo() {
+  const card = $("#goNoGoCard");
+  if (!card) return;
+  const plan = activePlan();
+  const g = sprayGoNoGo(plan);
+  card.className = `gonogo-card gonogo-${g.verdict}`;
+  card.innerHTML = goNoGoInner(g, plan, true);
 }
 
 function renderDashboard() {
@@ -3018,29 +3042,114 @@ function materialTypeTag(type) {
   return `<span class="pill ${color}">${escapeHtml(type)}</span>`;
 }
 
-function renderAdmin() {
-  $("#adminTableBody").innerHTML = state.plans
-    .slice()
-    .sort((a, b) => `${a.date} ${a.timeWindow}`.localeCompare(`${b.date} ${b.timeWindow}`))
-    .map(
-      (plan) => `
-        <tr>
-          <td>${escapeHtml(plan.date)}</td>
-          <td>${escapeHtml(plan.district)}</td>
-          <td>${escapeHtml(plan.fieldName)}</td>
-          <td>${riskTag(riskLevel(plan))}</td>
-          <td>${notificationPill(plan)}</td>
-          <td>${progressPill(plan)}</td>
-          <td>${readinessPill(plan)}</td>
-          <td>${plan.report.doneDate ? '<span class="pill green">提出済み</span>' : '<span class="pill amber">未提出</span>'}</td>
-        </tr>
-      `,
-    )
-    .join("");
+let adminSelectedId = null;
+let adminFilters = { status: "all", district: "all" };
+let adminMapLibreMap;
 
-  renderBars("#districtBars", "地区別散布件数", countBy(state.plans, "district"));
-  renderBars("#monthBars", "月別散布件数", countBy(state.plans, (plan) => plan.date.slice(0, 7)));
-  $("#readinessBreakdown").innerHTML = renderReadinessCards(activePlan());
+function adminFilteredPlans() {
+  return state.plans
+    .slice()
+    .filter((plan) => {
+      const done = Boolean(plan.report.doneDate);
+      if (adminFilters.status === "planned" && done) return false;
+      if (adminFilters.status === "done" && !done) return false;
+      if (adminFilters.district !== "all" && plan.district !== adminFilters.district) return false;
+      return true;
+    })
+    .sort((a, b) => `${b.date} ${b.timeWindow}`.localeCompare(`${a.date} ${a.timeWindow}`));
+}
+
+function renderAdmin() {
+  const tbody = $("#adminTableBody");
+  if (!tbody) return;
+  const districts = [...new Set(state.plans.map((p) => p.district).filter(Boolean))];
+  const districtSelect = $("#adminDistrictFilter");
+  if (districtSelect) {
+    districtSelect.innerHTML = [`<option value="all">すべての地区</option>`, ...districts.map((d) => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`)].join("");
+    districtSelect.value = districts.includes(adminFilters.district) ? adminFilters.district : "all";
+  }
+  const statusSelect = $("#adminStatusFilter");
+  if (statusSelect) statusSelect.value = adminFilters.status;
+
+  const rows = adminFilteredPlans();
+  if (rows.length && !rows.some((p) => p.id === adminSelectedId)) adminSelectedId = rows[0].id;
+
+  tbody.innerHTML = rows.length
+    ? rows
+        .map((plan) => {
+          const g = sprayGoNoGo(plan);
+          const done = Boolean(plan.report.doneDate);
+          const wcolor = g.verdict === "go" ? "green" : g.verdict === "caution" ? "amber" : "red";
+          return `
+            <tr class="admin-row ${plan.id === adminSelectedId ? "selected" : ""}" data-admin-plan="${escapeAttr(plan.id)}">
+              <td>${escapeHtml(plan.date)}<br><span class="muted-cell">${escapeHtml(plan.timeWindow)}</span></td>
+              <td>${escapeHtml(plan.operator)}</td>
+              <td>${escapeHtml(plan.district)}<br><span class="muted-cell">${escapeHtml(plan.fieldName)}</span></td>
+              <td>${materialTypeTag(plan.materialType || "農薬")}<br><span class="muted-cell">${escapeHtml(plan.pesticide)}</span></td>
+              <td>${done ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
+              <td><span class="pill ${wcolor}">${g.icon}</span></td>
+            </tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="6"><div class="empty-state">該当する散布はありません。</div></td></tr>`;
+
+  renderAdminDetail();
+}
+
+function renderAdminDetail() {
+  const info = $("#adminDetailInfo");
+  if (!info) return;
+  const plan = state.plans.find((p) => p.id === adminSelectedId) || state.plans[0];
+  if (!plan) {
+    info.innerHTML = `<div class="empty-state">散布を選択してください。</div>`;
+    return;
+  }
+  const g = sprayGoNoGo(plan);
+  const cov = estimateCoverage(plan);
+  const total = formatTotalAmount(plan);
+  const done = Boolean(plan.report.doneDate);
+  const rows = [
+    ["資材", `${plan.materialType || "農薬"} / ${plan.pesticide}`],
+    ["使用量・総量", `${plan.amount || (plan.ratePer10a ? plan.ratePer10a + plan.rateUnit + "/10a" : "未記録")}${total !== "—" ? `（総量 ${total}）` : ""}`],
+    ["散布範囲・カバー", `${plan.sprayArea || "未記録"}${cov.hasLog ? ` / カバー率 ${cov.coveragePct}%` : ""}`],
+    ["機体・操縦者", `${plan.droneModel || "-"}（${plan.aircraftRegistration || "登録記号-"}）/ ${plan.pilot || "-"}`],
+    ["近隣通知", notificationLabel(plan)],
+    ["散布前チェック", `${checkProgress(plan).done}/${checkProgress(plan).total} 項目`],
+    ["実施後報告", done ? `${plan.report.doneDate} 提出済み` : "未提出"],
+  ];
+  info.innerHTML = `
+    <div class="gonogo-card gonogo-${g.verdict} admin-gonogo">${goNoGoInner(g, plan, false)}</div>
+    <div class="admin-detail-rows">
+      ${rows.map(([k, v]) => `<div class="admin-detail-row"><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`).join("")}
+    </div>
+  `;
+  initAdminMapLibre();
+  if (adminMapLibreMap) {
+    adminMapLibreMap.resize();
+    updateGisMap(adminMapLibreMap, { dashboard: true });
+    const field = state.fields.find((f) => f.name === plan.fieldName) || activeSprayField();
+    if (field) adminMapLibreMap.flyTo({ center: fieldCenterLngLat(field), zoom: 16.2, duration: 500 });
+  }
+}
+
+function initAdminMapLibre() {
+  const container = $("#adminDetailMap");
+  if (!container || adminMapLibreMap || !window.maplibregl) return;
+  adminMapLibreMap = new maplibregl.Map({
+    container,
+    style: rasterMapStyle("photo"),
+    center: DEFAULT_MAP_VIEW.center,
+    zoom: DEFAULT_MAP_VIEW.zoom,
+    bearing: 0,
+    pitch: 0,
+    dragRotate: false,
+    scrollZoom: false,
+  });
+  adminMapLibreMap.on("load", () => {
+    setupGisMapLayers(adminMapLibreMap);
+    updateGisMap(adminMapLibreMap, { dashboard: true });
+    renderAdminDetail();
+  });
 }
 
 function renderRulesForm() {

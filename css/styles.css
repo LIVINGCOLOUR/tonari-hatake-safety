@@ -431,6 +431,100 @@ textarea:focus {
   margin-top: 10px;
 }
 
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-filters .select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.admin-filters select {
+  min-width: 160px;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-row {
+  cursor: pointer;
+}
+
+.admin-row:hover {
+  background: var(--surface-muted, #f0f5f2);
+}
+
+.admin-row.selected {
+  background: var(--green-2, #e6f4ec);
+  box-shadow: inset 3px 0 0 var(--green, #2d8c49);
+}
+
+.admin-detail-map {
+  height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  background: #dfe7e3;
+}
+
+.admin-gonogo {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.admin-detail-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-muted, #f0f5f2);
+  font-size: 13px;
+}
+
+.admin-detail-row span {
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-detail-row b {
+  text-align: right;
+}
+
+.admin-settings {
+  margin-top: 20px;
+}
+
+.admin-settings summary {
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 0;
+}
+
 .boundary-municipality {
   display: flex;
   flex-direction: column;
