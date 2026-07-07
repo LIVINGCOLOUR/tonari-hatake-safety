@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260707-admin">
+    <link rel="stylesheet" href="css/styles.css?v=20260707-admin-dashboard">
   </head>
   <body>
     <div class="app-shell">
@@ -30,23 +30,22 @@
           </button>
           <button class="role-option" data-role="admin" type="button">
             <span>地域管理</span>
-            <strong>全体把握</strong>
+            <strong>散布予定・実績</strong>
           </button>
         </div>
 
         <nav class="nav-list">
           <button class="nav-item active" data-roles="sprayer neighbor admin" data-view-target="dashboard" type="button"><span class="nav-icon">⌂</span><span>トップ</span></button>
-          <button class="nav-item" data-roles="sprayer admin" data-view-target="plans" type="button"><span class="nav-icon">＋</span><span>散布計画</span></button>
-          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="map" type="button"><span class="nav-icon">◇</span><span>圃場マップ</span></button>
-          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="fields" type="button"><span class="nav-icon">▦</span><span>圃場ステータス</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="plans" type="button"><span class="nav-icon">＋</span><span>散布計画</span></button>
+          <button class="nav-item" data-roles="sprayer neighbor" data-view-target="map" type="button"><span class="nav-icon">◇</span><span>圃場マップ</span></button>
+          <button class="nav-item" data-roles="neighbor" data-view-target="fields" type="button"><span class="nav-icon">▦</span><span>圃場ステータス</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
-          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
+          <button class="nav-item" data-roles="sprayer neighbor" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
-          <button class="nav-item" data-roles="sprayer admin" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
-          <button class="nav-item" data-roles="sprayer admin" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
-          <button class="nav-item" data-roles="sprayer admin" data-view-target="history" type="button"><span class="nav-icon">≡</span><span>作業履歴</span></button>
-          <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>地域管理</span></button>
-          <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="sources" type="button"><span class="nav-icon">i</span><span>データソース</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="history" type="button"><span class="nav-icon">≡</span><span>作業履歴</span></button>
+          <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>散布予定・実績</span></button>
         </nav>
 
         <div class="sidebar-actions">
@@ -79,7 +78,7 @@
               <h3 id="dashboardTitle">トップダッシュボード</h3>
               <p>地域内の予定、通知、確認不足を一覧します。</p>
             </div>
-            <button class="primary-button" data-view-target="plans" type="button">計画登録へ</button>
+            <button class="primary-button" data-roles="sprayer" data-view-target="plans" type="button">計画登録へ</button>
           </div>
 
           <div class="gonogo-card" id="goNoGoCard"></div>
@@ -97,7 +96,7 @@
                   <span class="tag tag-attention">今日の判断メモ</span>
                   <h4 id="focusPlanTitle">散布予定</h4>
                 </div>
-                <button class="icon-button" data-view-target="map" title="マップを開く" type="button">↗</button>
+                <button class="icon-button" data-roles="sprayer neighbor" data-view-target="map" title="マップを開く" type="button">↗</button>
               </div>
               <div class="dashboard-gis-map" id="dashboardGisMap">
                 <div class="dashboard-maplibre-canvas" id="dashboardMapLibreCanvas" aria-hidden="true"></div>
@@ -107,7 +106,7 @@
                   <div class="dashboard-glass-card today-card">
                     <div class="card-title-line">
                       <span class="map-sun">☼</span>
-                      <strong>散布可否の気象条件</strong>
+                      <strong id="dashboardMapCardTitle">散布可否の気象条件</strong>
                       <span id="dashboardMapDate">6/29(月)</span>
                     </div>
                     <div class="weather-strip">
@@ -811,8 +810,8 @@
         <section class="view" data-view="admin" aria-labelledby="adminTitle">
           <div class="section-head">
             <div>
-              <h3 id="adminTitle">地域管理（自治体向け）</h3>
-              <p>誰が・どこで・いつ・何を散布する／したかの予定と実績。行を選ぶと上空写真・作業詳細・気象での実施可否を表示します。</p>
+              <h3 id="adminTitle">散布予定・実績</h3>
+              <p>自治体・JA向けに、誰が・どこで・いつ・何を散布する／したかを一覧します。行を選ぶと航空写真上の対象圃場、作業詳細、気象での実施可否を確認できます。</p>
             </div>
             <button class="primary-button" id="printAdminButton" type="button">一覧PDF</button>
           </div>
@@ -832,8 +831,8 @@
             <article class="panel">
               <div class="panel-head">
                 <div>
-                  <span class="tag">散布一覧</span>
-                  <h4>予定・実績</h4>
+                  <span class="tag">地域台帳</span>
+                  <h4>散布予定・実績一覧</h4>
                 </div>
               </div>
               <div class="table-wrap large-table">
@@ -857,7 +856,7 @@
               <div class="panel-head">
                 <div>
                   <span class="tag tag-blue">詳細</span>
-                  <h4>上空写真・作業詳細・実施可否</h4>
+                  <h4>航空写真・散布域・確認状況</h4>
                 </div>
               </div>
               <div class="admin-detail-map" id="adminDetailMap"></div>
@@ -908,16 +907,18 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <div class="print-sheet" id="printSheet" aria-hidden="true"></div>
     <nav class="mobile-quickbar" aria-label="モバイル主要操作">
-      <button data-view-target="dashboard" type="button"><span>⌂</span>トップ</button>
-      <button data-view-target="weather" type="button"><span>↗</span>気象</button>
-      <button data-view-target="map" type="button"><span>◇</span>マップ</button>
-      <button data-view-target="notify" type="button"><span>✉</span>通知</button>
-      <button data-view-target="checklist" type="button"><span>✓</span>チェック</button>
-      <button data-view-target="report" type="button"><span>□</span>報告</button>
+      <button data-roles="sprayer neighbor admin" data-view-target="dashboard" type="button"><span>⌂</span>トップ</button>
+      <button data-roles="sprayer" data-view-target="weather" type="button"><span>↗</span>気象</button>
+      <button data-roles="sprayer neighbor" data-view-target="map" type="button"><span>◇</span>マップ</button>
+      <button data-roles="neighbor" data-view-target="fields" type="button"><span>▦</span>圃場</button>
+      <button data-roles="sprayer neighbor" data-view-target="notify" type="button"><span>✉</span>通知</button>
+      <button data-roles="sprayer" data-view-target="checklist" type="button"><span>✓</span>チェック</button>
+      <button data-roles="sprayer" data-view-target="report" type="button"><span>□</span>報告</button>
+      <button data-roles="admin" data-view-target="admin" type="button"><span>▤</span>散布一覧</button>
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
     <script src="vendor/shpjs/shp.min.js" defer></script>
-    <script src="js/main.js?v=20260707-admin" defer></script>
+    <script src="js/main.js?v=20260707-admin-dashboard" defer></script>
   </body>
 </html>

@@ -185,6 +185,12 @@ img {
   display: none !important;
 }
 
+body[data-role="admin"] .sidebar-actions,
+body[data-role="neighbor"] .sidebar-actions,
+body[data-role="admin"] .topbar-controls {
+  display: none;
+}
+
 .nav-icon {
   display: grid;
   width: 26px;
@@ -980,6 +986,38 @@ body[data-role="sprayer"] [data-view="fields"] .fields-form-layout {
   display: grid;
   grid-template-columns: repeat(7, minmax(120px, 1fr));
   gap: 10px;
+}
+
+.admin-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.admin-filter-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-filter-grid select,
+.admin-filter-grid input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  color: var(--ink);
+  background: #fff;
+  font-weight: 800;
+}
+
+.admin-flow {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
 .workflow-step {
@@ -2720,6 +2758,10 @@ label {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .admin-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .neighbor-home-grid {
     grid-template-columns: 1fr;
   }
@@ -2933,7 +2975,8 @@ label {
   .priority-row,
   .readiness-line,
   .flight-summary-grid,
-  .workflow-grid {
+  .workflow-grid,
+  .admin-filter-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2944,7 +2987,7 @@ label {
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     border-top: 1px solid var(--line);
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 -8px 22px rgba(17, 29, 42, 0.12);

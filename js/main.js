@@ -11,7 +11,7 @@ const VIEW_META = {
   weather: ["気象メモ", "風向・風速の記録"],
   report: ["実施後報告", "実施内容と問い合わせ記録"],
   history: ["作業履歴", "圃場ごとの散布・施肥履歴"],
-  admin: ["地域管理", "JA・生産部会・自治体向け一覧"],
+  admin: ["散布予定・実績", "地域内の散布予定・実績一覧"],
   sources: ["データソース", "根拠資料とMVP範囲"],
 };
 
@@ -28,15 +28,15 @@ const ROLE_META = {
   },
   admin: {
     label: "地域管理",
-    title: "地域全体の確認状況",
-    note: "追加確認が必要な予定、通知状況、実証ルール案を確認します。",
+    title: "散布予定・実績の確認",
+    note: "地域内で誰が、いつ、どこに、何を散布する／したかを一覧から確認します。",
   },
 };
 
 const ROLE_ALLOWED_VIEWS = {
-  sprayer: ["dashboard", "plans", "map", "fields", "drone", "notify", "checklist", "weather", "report", "history", "sources"],
-  neighbor: ["dashboard", "map", "fields", "notify", "sources"],
-  admin: ["dashboard", "plans", "map", "fields", "drone", "notify", "report", "history", "admin", "sources"],
+  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "history"],
+  neighbor: ["dashboard", "map", "fields", "notify"],
+  admin: ["dashboard", "admin"],
 };
 
 const EQUIPMENT_FIELDS = [
@@ -196,6 +196,12 @@ const DEFAULT_SETTINGS = {
   sharingScope: "関係者限定",
 };
 
+const ADMIN_REGION_OPTIONS = [
+  { prefecture: "茨城県", municipalities: ["笠間市", "水戸市", "石岡市", "つくば市"] },
+  { prefecture: "栃木県", municipalities: ["益子町", "真岡市"] },
+  { prefecture: "千葉県", municipalities: ["香取市", "成田市"] },
+];
+
 const FIELD_TYPE_META = {
   spray: ["散布ほ場", "spray"],
   organic: ["有機ほ場", "organic"],
@@ -293,6 +299,13 @@ const FIELD_LAYER_COLORS = {
   public: "#695faf",
 };
 
+const ADMIN_DASHBOARD_COLORS = {
+  done: "#2d8c49",
+  planned: "#e3a329",
+  attention: "#c94b44",
+  surrounding: "#7b8d8b",
+};
+
 // 農地区画に見えるよう、圃場を軸そろえの矩形グリッドで配置（散布ほ場は飛行ログを内包）。
 const SAMPLE_FIELD_GEOMETRY = {
   "spray-field-a": {
@@ -331,6 +344,7 @@ let activeView = "dashboard";
 let noticeChannel = "line";
 let mapLayer = "risk";
 let historyFilters = { field: "all", material: "all", status: "all" };
+let adminDashboardFilters = { prefecture: "茨城県", municipality: "笠間市", date: "" };
 let coveragePlayIndex = null;
 let coveragePlaying = false;
 let coverageTimer = null;
@@ -646,6 +660,12 @@ function bindEvents() {
   });
 
   document.body.addEventListener("change", (event) => {
+    const adminDashboardFilter = event.target.closest("[data-admin-dashboard-filter]");
+    if (adminDashboardFilter) {
+      updateAdminDashboardFilter(adminDashboardFilter.name, adminDashboardFilter.value);
+      return;
+    }
+
     const response = event.target.closest("[data-notify-response]");
     if (response) {
       setNotificationResponse(response.dataset.notifyResponse, response.value);
@@ -691,7 +711,7 @@ function switchView(viewName) {
   requestAnimationFrame(() => {
     if (viewName === "dashboard" && dashboardMapLibreMap) {
       dashboardMapLibreMap.resize();
-      updateGisMap(dashboardMapLibreMap, { dashboard: true });
+      updateGisMap(dashboardMapLibreMap, { dashboard: true, adminDashboard: activeRole === "admin" });
     }
     if (viewName === "map" && mapLibreMap) {
       mapLibreMap.resize();
@@ -855,23 +875,134 @@ function renderNeighborHome(plan) {
   `;
 }
 
-function renderAdminHome() {
+function ensureAdminDashboardFilters() {
+  const firstRegion = ADMIN_REGION_OPTIONS[0];
+  const prefectures = ADMIN_REGION_OPTIONS.map((region) => region.prefecture);
+  if (!prefectures.includes(adminDashboardFilters.prefecture)) {
+    adminDashboardFilters.prefecture = firstRegion.prefecture;
+  }
+  const municipalities = adminMunicipalitiesForPrefecture(adminDashboardFilters.prefecture);
+  if (!municipalities.includes(adminDashboardFilters.municipality)) {
+    adminDashboardFilters.municipality = municipalities[0] || "";
+  }
+  if (!adminDashboardFilters.date) {
+    adminDashboardFilters.date = dateOffset(0);
+  }
+}
+
+function adminMunicipalitiesForPrefecture(prefecture) {
+  return ADMIN_REGION_OPTIONS.find((region) => region.prefecture === prefecture)?.municipalities || ADMIN_REGION_OPTIONS[0].municipalities;
+}
+
+function updateAdminDashboardFilter(name, value) {
+  if (!["prefecture", "municipality", "date"].includes(name)) return;
+  adminDashboardFilters[name] = value;
+  if (name === "prefecture") {
+    adminDashboardFilters.municipality = adminMunicipalitiesForPrefecture(value)[0] || "";
+  }
+  ensureAdminDashboardFilters();
+  renderRoleActionPanel();
+  renderDashboard();
+}
+
+function adminDashboardDate() {
+  ensureAdminDashboardFilters();
+  return adminDashboardFilters.date;
+}
+
+function planMatchesAdminRegion(plan) {
+  ensureAdminDashboardFilters();
+  const municipality = adminDashboardFilters.municipality;
+  if (!municipality) return true;
+  const haystack = [plan.district, plan.fieldName, activeSettings().regionName, DEFAULT_WEATHER_LOCATION.label].join(" ");
+  return haystack.includes(municipality);
+}
+
+function adminRegionPlans() {
+  return state.plans.filter(planMatchesAdminRegion);
+}
+
+function adminDashboardPlans() {
+  const date = adminDashboardDate();
+  return adminRegionPlans().filter((plan) => plan.date === date);
+}
+
+function adminDashboardSummary() {
+  const date = adminDashboardDate();
+  const plans = adminDashboardPlans();
+  const regionPlans = adminRegionPlans();
+  const planned = plans.filter((plan) => !plan.report.doneDate).length;
+  const done = plans.filter((plan) => Boolean(plan.report.doneDate)).length;
+  const attention = plans.filter((plan) => riskLevel(plan) === "high").length;
+  const notifyIncomplete = plans.filter((plan) => !notificationIsComplete(plan)).length;
+  const organicNear = plans.filter((plan) =>
+    riskItemsForPlan(plan).some((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high"),
+  ).length;
+  const windNeed = plans.filter(windNeedsAttention).length;
   const today = dateOffset(0);
-  const reportMissing = state.plans.filter((plan) => plan.date <= today && !plan.report.doneDate).length;
-  const replyNeed = countNotificationResponses("時間変更希望") + countNotificationResponses("電話希望") + countNotificationResponses("収穫日につき要相談");
+  const reportMissing = regionPlans.filter((plan) => plan.date <= today && !plan.report.doneDate).length;
+  const replyNeed = regionPlans.reduce((total, plan) => {
+    const values = Object.values(plan.notificationResponses || {});
+    return total + values.filter((value) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(value)).length;
+  }, 0);
+  const readiness = plans.length
+    ? Math.round(plans.reduce((sum, plan) => sum + readinessScore(plan).value, 0) / plans.length)
+    : 100;
+  return {
+    date,
+    planned,
+    done,
+    attention,
+    notifyIncomplete,
+    organicNear,
+    windNeed,
+    reportMissing,
+    replyNeed,
+    readiness,
+    total: plans.length,
+  };
+}
+
+function renderAdminHome() {
+  ensureAdminDashboardFilters();
+  const summary = adminDashboardSummary();
+  const municipalities = adminMunicipalitiesForPrefecture(adminDashboardFilters.prefecture);
+  const prefectureOptions = ADMIN_REGION_OPTIONS.map(
+    (region) =>
+      `<option value="${escapeAttr(region.prefecture)}" ${region.prefecture === adminDashboardFilters.prefecture ? "selected" : ""}>${escapeHtml(region.prefecture)}</option>`,
+  ).join("");
+  const municipalityOptions = municipalities
+    .map((name) => `<option value="${escapeAttr(name)}" ${name === adminDashboardFilters.municipality ? "selected" : ""}>${escapeHtml(name)}</option>`)
+    .join("");
   return `
+    <div class="admin-filter-grid">
+      <label>都道府県
+        <select name="prefecture" data-admin-dashboard-filter>
+          ${prefectureOptions}
+        </select>
+      </label>
+      <label>市町村
+        <select name="municipality" data-admin-dashboard-filter>
+          ${municipalityOptions}
+        </select>
+      </label>
+      <label>対象日
+        <input name="date" data-admin-dashboard-filter type="date" value="${escapeAttr(summary.date)}">
+      </label>
+      <button class="primary-button" data-view-target="admin" type="button">散布予定・実績を見る</button>
+    </div>
     <div class="workflow-grid admin-flow">
-      <button class="workflow-step ${state.plans.some((plan) => riskLevel(plan) === "high") ? "todo" : "done"}" data-view-target="admin" type="button">
-        <span>1</span><strong>追加確認</strong><small>${state.plans.filter((plan) => riskLevel(plan) === "high").length}件</small>
+      <button class="workflow-step ${summary.attention ? "todo" : "done"}" data-view-target="admin" type="button">
+        <span>1</span><strong>要確認の散布</strong><small>${summary.attention}件</small>
       </button>
-      <button class="workflow-step ${replyNeed ? "todo" : "done"}" data-view-target="notify" type="button">
-        <span>2</span><strong>返信確認</strong><small>${replyNeed}件</small>
+      <button class="workflow-step ${summary.planned ? "todo" : "done"}" data-view-target="admin" type="button">
+        <span>2</span><strong>対象日の予定</strong><small>${summary.planned}件</small>
       </button>
-      <button class="workflow-step ${reportMissing ? "todo" : "done"}" data-view-target="report" type="button">
-        <span>3</span><strong>報告未提出</strong><small>${reportMissing}件</small>
+      <button class="workflow-step ${summary.reportMissing ? "todo" : "done"}" data-view-target="admin" type="button">
+        <span>3</span><strong>報告未提出</strong><small>${summary.reportMissing}件</small>
       </button>
-      <button class="workflow-step done" data-view-target="admin" type="button">
-        <span>4</span><strong>実証ルール案</strong><small>${escapeHtml(activeSettings().regionName)}</small>
+      <button class="workflow-step ${summary.replyNeed ? "todo" : "done"}" data-view-target="admin" type="button">
+        <span>4</span><strong>近隣返信要確認</strong><small>${summary.replyNeed}件</small>
       </button>
     </div>
   `;
@@ -936,10 +1067,35 @@ function goNoGoInner(g, plan, includeActions) {
 function renderGoNoGo() {
   const card = $("#goNoGoCard");
   if (!card) return;
+  if (activeRole === "admin") {
+    const summary = adminDashboardSummary();
+    const hasAttention = summary.attention || summary.notifyIncomplete || summary.reportMissing;
+    card.className = `gonogo-card gonogo-${hasAttention ? "caution" : "go"}`;
+    card.innerHTML = `
+      <div class="gonogo-verdict">
+        <span class="gonogo-icon">▦</span>
+        <div>
+          <strong>${escapeHtml(adminDashboardFilters.prefecture)} ${escapeHtml(adminDashboardFilters.municipality)} / ${escapeHtml(summary.date)}</strong>
+          <span>航空写真上で、対象日の散布予定と実施済み圃場を色分けします。</span>
+        </div>
+      </div>
+      <div class="gonogo-factors">
+        <div class="gonogo-factor ${summary.total ? "good" : "warn"}"><span>対象日の散布</span><b>${summary.total}件</b></div>
+        <div class="gonogo-factor ${summary.done ? "good" : "warn"}"><span>実施済み</span><b>${summary.done}件</b></div>
+        <div class="gonogo-factor ${summary.notifyIncomplete ? "warn" : "good"}"><span>通知未完了</span><b>${summary.notifyIncomplete}件</b></div>
+        <div class="gonogo-factor ${summary.attention ? "bad" : "good"}"><span>要確認</span><b>${summary.attention}件</b></div>
+      </div>
+      <div class="gonogo-actions">
+        <button class="ghost-button" data-view-target="admin" type="button">散布予定・実績で詳細確認</button>
+      </div>
+    `;
+    return;
+  }
   const plan = activePlan();
   const g = sprayGoNoGo(plan);
+  const display = activeRole === "admin" ? { ...g, actions: [{ view: "admin", label: "散布予定・実績で確認" }] } : g;
   card.className = `gonogo-card gonogo-${g.verdict}`;
-  card.innerHTML = goNoGoInner(g, plan, true);
+  card.innerHTML = goNoGoInner(display, plan, true);
 }
 
 function renderDashboard() {
@@ -956,6 +1112,11 @@ function renderDashboard() {
       `,
     )
     .join("");
+
+  if (activeRole === "admin") {
+    renderAdminDashboardContent();
+    return;
+  }
 
   const plan = activePlan();
   $("#focusPlanTitle").textContent = `${plan.date} ${plan.timeWindow} ${plan.fieldName}`;
@@ -1019,6 +1180,70 @@ function renderDashboard() {
       `,
     )
     .join("");
+}
+
+function renderAdminDashboardContent() {
+  const summary = adminDashboardSummary();
+  const plans = adminDashboardPlans().sort((a, b) => `${a.date} ${a.timeWindow}`.localeCompare(`${b.date} ${b.timeWindow}`));
+  const attentionPlans = adminRegionPlans()
+    .map((planItem) => ({ plan: planItem, score: priorityScore(planItem), level: riskLevel(planItem) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  $("#focusPlanTitle").textContent = `${adminDashboardFilters.municipality} ${summary.date} の散布状況`;
+  renderDashboardGisMap();
+
+  $("#priorityList").innerHTML = attentionPlans.length
+    ? attentionPlans
+        .map(
+          ({ plan: planItem, level }) => `
+            <button class="priority-row" type="button" data-plan-jump="${escapeAttr(planItem.id)}">
+              <span>
+                <strong>${escapeHtml(planItem.fieldName)}</strong>
+                <span>${escapeHtml(planItem.date)} ${escapeHtml(planItem.timeWindow)} / ${escapeHtml(planItem.operator)}</span>
+              </span>
+              ${riskTag(level)}
+            </button>
+          `,
+        )
+        .join("")
+    : `<div class="empty-state">この地域で追加確認が必要な散布はありません。</div>`;
+
+  $$("[data-plan-jump]").forEach((button) => {
+    button.addEventListener("click", () => {
+      adminSelectedId = button.dataset.planJump;
+      state.activePlanId = adminSelectedId;
+      saveState();
+      renderAll();
+      switchView("admin");
+    });
+  });
+
+  $("#timeline").innerHTML = [
+    { title: "地域条件", detail: `${adminDashboardFilters.prefecture} ${adminDashboardFilters.municipality}` },
+    { title: "対象日", detail: `${summary.date} / 予定 ${summary.planned}件・実施済み ${summary.done}件` },
+    { title: "航空写真表示", detail: "黄が散布予定、緑が実施済み、赤が追加確認対象です。" },
+    { title: "詳細確認", detail: "行単位の詳細は「散布予定・実績」タブで確認します。" },
+  ]
+    .map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></li>`)
+    .join("");
+
+  $("#planTableBody").innerHTML = plans.length
+    ? plans
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.date)}<br><span class="small-note">${escapeHtml(row.timeWindow)}</span></td>
+              <td>${escapeHtml(row.fieldName)}<br><span class="small-note">${escapeHtml(row.district)}</span></td>
+              <td>${escapeHtml(row.method)}<br><span class="small-note">${escapeHtml(row.materialType || "農薬")}</span></td>
+              <td>${row.report.doneDate ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
+              <td>${notificationPill(row)}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `<tr><td colspan="5"><div class="empty-state">選択した日付・市町村の散布予定や実績はありません。</div></td></tr>`;
 }
 
 function renderPlanForm() {
@@ -1166,10 +1391,42 @@ function renderDashboardGisMap() {
   if (!container) return;
   initDashboardMapLibre();
   renderDashboardMapReadouts();
-  updateGisMap(dashboardMapLibreMap, { dashboard: true });
+  updateGisMap(dashboardMapLibreMap, { dashboard: true, adminDashboard: activeRole === "admin" });
 }
 
 function renderDashboardMapReadouts() {
+  if (activeRole === "admin") {
+    const summary = adminDashboardSummary();
+    $("#dashboardMapCardTitle").textContent = "日付別散布状況";
+    $("#dashboardMapDate").textContent = summary.date;
+    const decisionEl = $("#dashboardMapDecision");
+    decisionEl.textContent = summary.attention ? "要確認あり" : summary.total ? "確認対象あり" : "予定なし";
+    decisionEl.className = summary.attention ? "status-red" : summary.total ? "status-amber" : "status-green";
+    $("#dashboardMapWind").textContent = `${summary.planned}件 予定`;
+    $("#dashboardMapRain").textContent = `実施済み ${summary.done}件 / 通知未完了 ${summary.notifyIncomplete}件`;
+    $("#dashboardMapMetrics").innerHTML = [
+      { label: "実施済み", value: `${summary.done}件`, note: "緑で表示", level: summary.done ? "good" : "warn" },
+      { label: "散布予定", value: `${summary.planned}件`, note: "黄で表示", level: summary.planned ? "warn" : "good" },
+      { label: "要確認", value: `${summary.attention}件`, note: "赤で表示", level: summary.attention ? "bad" : "good" },
+      { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣通知", level: summary.notifyIncomplete ? "warn" : "good" },
+    ]
+      .map(
+        (item) => `
+          <div>
+            <span>${escapeHtml(item.label)}</span>
+            <strong class="${item.level === "bad" ? "bad" : item.level === "warn" ? "warn" : "good"}">${escapeHtml(item.value)}</strong>
+            <small>${escapeHtml(item.note)}</small>
+          </div>
+        `,
+      )
+      .join("");
+    $("#dashboardTrackSummary").textContent = "対象日の予定・実績を航空写真に重ねて表示";
+    $("#dashboardFieldCount").textContent = `${summary.total}件`;
+    renderGisLegend($("#dashboardMapLegend"), "admin-dashboard");
+    return;
+  }
+
+  $("#dashboardMapCardTitle").textContent = "散布可否の気象条件";
   const plan = activePlan();
   const weather = plan.weather || {};
   const decision = weatherDecision(plan);
@@ -1201,17 +1458,26 @@ function renderDashboardMapReadouts() {
   renderGisLegend($("#dashboardMapLegend"));
 }
 
-function renderGisLegend(container) {
+function renderGisLegend(container, mode = "field") {
   if (!container) return;
-  container.innerHTML = [
-    ["散布ほ場", FIELD_LAYER_COLORS.spray],
-    ["有機・不使用", FIELD_LAYER_COLORS.organic],
-    ["ハウス・育苗", FIELD_LAYER_COLORS.house],
-    ["収穫直前", FIELD_LAYER_COLORS.preharvest],
-    ["水源・水路", FIELD_LAYER_COLORS.water],
-    ["施設・未確認", FIELD_LAYER_COLORS.public],
-    ["飛行ログ", "#ffd84d"],
-  ]
+  const items =
+    mode === "admin-dashboard"
+      ? [
+          ["実施済み", ADMIN_DASHBOARD_COLORS.done],
+          ["散布予定", ADMIN_DASHBOARD_COLORS.planned],
+          ["要確認", ADMIN_DASHBOARD_COLORS.attention],
+          ["周辺圃場", ADMIN_DASHBOARD_COLORS.surrounding],
+        ]
+      : [
+          ["散布ほ場", FIELD_LAYER_COLORS.spray],
+          ["有機・不使用", FIELD_LAYER_COLORS.organic],
+          ["ハウス・育苗", FIELD_LAYER_COLORS.house],
+          ["収穫直前", FIELD_LAYER_COLORS.preharvest],
+          ["水源・水路", FIELD_LAYER_COLORS.water],
+          ["施設・未確認", FIELD_LAYER_COLORS.public],
+          ["飛行ログ", "#ffd84d"],
+        ];
+  container.innerHTML = items
     .map(([label, color]) => `<span><i style="background:${color}"></i>${escapeHtml(label)}</span>`)
     .join("");
 }
@@ -1233,7 +1499,7 @@ function initDashboardMapLibre() {
   dashboardMapLibreMap.on("load", () => {
     dashboardMapLibreReady = true;
     setupGisMapLayers(dashboardMapLibreMap);
-    updateGisMap(dashboardMapLibreMap, { dashboard: true });
+    updateGisMap(dashboardMapLibreMap, { dashboard: true, adminDashboard: activeRole === "admin" });
   });
 }
 
@@ -1456,7 +1722,7 @@ function updateGisMap(map, options = {}) {
   setupGisMapLayers(map);
   if (!map.__tonariGisReady) return;
   setGeoJsonSource(map, "parcels", parcelData || emptyFeatureCollection());
-  setGeoJsonSource(map, "fields", fieldFeatureCollection());
+  setGeoJsonSource(map, "fields", options.adminDashboard ? adminDashboardFieldFeatureCollection() : fieldFeatureCollection());
   setGeoJsonSource(map, "risk-buffer", riskBufferFeatureCollection());
   setGeoJsonSource(map, "wind-zone", windZoneFeatureCollection(activePlan()));
   setGeoJsonSource(map, "flight-lines", flightLineFeatureCollection());
@@ -1504,11 +1770,12 @@ function setGeoJsonSource(map, id, data) {
 }
 
 function applyGisLayerVisibility(map, options = {}) {
-  const always = Boolean(options.dashboard);
-  const coverage = !always && mapLayer === "coverage";
-  const showRisk = always || mapLayer === "risk";
-  const showWind = always || mapLayer === "risk";
-  const showDrone = always || mapLayer === "drone" || coverage;
+  const adminDashboard = Boolean(options.adminDashboard);
+  const always = Boolean(options.dashboard) && !adminDashboard;
+  const coverage = !adminDashboard && !always && mapLayer === "coverage";
+  const showRisk = adminDashboard ? false : always || mapLayer === "risk";
+  const showWind = adminDashboard ? false : always || mapLayer === "risk";
+  const showDrone = adminDashboard ? false : always || mapLayer === "drone" || coverage;
   const visibility = {
     "risk-buffer-fill": showRisk,
     "risk-buffer-line": showRisk,
@@ -1560,6 +1827,60 @@ function fieldFeatureCollection() {
       };
     }),
   };
+}
+
+function adminDashboardFieldFeatureCollection() {
+  const plans = adminDashboardPlans();
+  const byField = new Map();
+  plans.forEach((plan) => {
+    const keys = [plan.fieldName, activeSprayField()?.name].filter(Boolean);
+    keys.forEach((key) => {
+      if (!byField.has(key)) byField.set(key, []);
+      byField.get(key).push(plan);
+    });
+  });
+  return {
+    type: "FeatureCollection",
+    features: state.fields.map((field, index) => {
+      const matches = byField.get(field.name) || (field.type === "spray" ? plans : []);
+      const status = adminDashboardFieldStatus(matches);
+      return {
+        type: "Feature",
+        id: field.id,
+        geometry: {
+          type: "Polygon",
+          coordinates: [fieldPolygonCoordinates(field, index)],
+        },
+        properties: {
+          id: field.id,
+          type: field.type,
+          name: field.name,
+          short: field.short,
+          crop: field.crop || "",
+          cultivation: field.cultivation || "",
+          distance: field.distance || "",
+          direction: field.direction || "",
+          notify: status.notify,
+          level: status.level,
+          color: status.color,
+          adminStatus: status.label,
+        },
+      };
+    }),
+  };
+}
+
+function adminDashboardFieldStatus(plans) {
+  if (!plans.length) {
+    return { label: "周辺圃場", color: ADMIN_DASHBOARD_COLORS.surrounding, level: "low", notify: 0 };
+  }
+  if (plans.some((plan) => riskLevel(plan) === "high")) {
+    return { label: "要確認", color: ADMIN_DASHBOARD_COLORS.attention, level: "high", notify: 1 };
+  }
+  if (plans.some((plan) => Boolean(plan.report.doneDate))) {
+    return { label: "実施済み", color: ADMIN_DASHBOARD_COLORS.done, level: "high", notify: 1 };
+  }
+  return { label: "散布予定", color: ADMIN_DASHBOARD_COLORS.planned, level: "high", notify: 1 };
 }
 
 function fieldPolygonCoordinates(field, index = 0) {
@@ -1727,13 +2048,14 @@ function showGisFieldPopup(map, event) {
   if (!field) return;
   new maplibregl.Popup({ closeButton: false, offset: 14, className: "gis-popup" })
     .setLngLat(event.lngLat)
-    .setHTML(gisFieldPopupHtml(field))
+    .setHTML(gisFieldPopupHtml(field, feature.properties.adminStatus))
     .addTo(map);
 }
 
-function gisFieldPopupHtml(field) {
+function gisFieldPopupHtml(field, adminStatus = "") {
   return `
     <div class="pill-line">
+      ${adminStatus ? `<span class="pill amber">${escapeHtml(adminStatus)}</span>` : ""}
       <span class="pill ${field.chemicalUse === "なし" || field.organicJas === "あり" ? "green" : "blue"}">${escapeHtml(field.cultivation || FIELD_TYPE_META[field.type]?.[0] || "未確認")}</span>
       <span class="pill ${field.notifyPreference === "希望する" ? "amber" : "green"}">${escapeHtml(field.notifyPreference || "通知候補")}</span>
     </div>
@@ -3732,6 +4054,8 @@ function exportHistoryCsv() {
 }
 
 function getDashboardMetrics() {
+  if (activeRole === "admin") return getAdminDashboardMetrics();
+
   const rules = activeSettings();
   const today = dateOffset(0);
   const tomorrow = dateOffset(1);
@@ -3752,6 +4076,21 @@ function getDashboardMetrics() {
     { label: "実施後報告未提出", value: `${reportMissing}件`, note: "散布者控え", alert: reportMissing > 0 },
     { label: "追加確認が必要な予定", value: `${highRisk}件`, note: "管理者確認", alert: highRisk > 0 },
     { label: "表示中の確認完了度", value: `${activeReadiness}`, note: "説明用指標", alert: activeReadiness < 70 },
+  ];
+}
+
+function getAdminDashboardMetrics() {
+  const rules = activeSettings();
+  const summary = adminDashboardSummary();
+  return [
+    { label: "対象日の散布予定", value: `${summary.planned}件`, note: summary.date, alert: false },
+    { label: "対象日の実施済み", value: `${summary.done}件`, note: "航空写真に緑表示", alert: false },
+    { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣通知", alert: summary.notifyIncomplete > 0 },
+    { label: `有機ほ場${rules.organicRadius}m以内`, value: `${summary.organicNear}件`, note: "周辺確認", alert: summary.organicNear > 0 },
+    { label: "風向・風速要確認", value: `${summary.windNeed}件`, note: "気象条件", alert: summary.windNeed > 0 },
+    { label: "実施後報告未提出", value: `${summary.reportMissing}件`, note: "散布者控え", alert: summary.reportMissing > 0 },
+    { label: "追加確認が必要な予定", value: `${summary.attention}件`, note: "管理者確認", alert: summary.attention > 0 },
+    { label: "対象日の確認完了度", value: `${summary.readiness}`, note: "平均指標", alert: summary.readiness < 70 },
   ];
 }
 
