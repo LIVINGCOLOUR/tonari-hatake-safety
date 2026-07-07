@@ -389,6 +389,12 @@ function bindEvents() {
       return;
     }
 
+    const parcelAdopt = event.target.closest("[data-parcel-adopt]");
+    if (parcelAdopt) {
+      adoptParcel(parcelAdopt.dataset.parcelAdopt);
+      return;
+    }
+
     const rxAction = event.target.closest("[data-rx-action]");
     if (rxAction) {
       if (rxAction.dataset.rxAction === "regenerate") regeneratePrescription();
@@ -1236,6 +1242,7 @@ function setupGisMapLayers(map) {
     [
       "risk-buffer",
       "wind-zone",
+      "parcels",
       "fields",
       "coverage-grid",
       "prescription-zones",
@@ -1248,6 +1255,18 @@ function setupGisMapLayers(map) {
       }
     });
 
+    map.addLayer({
+      id: "parcels-fill",
+      type: "fill",
+      source: "parcels",
+      paint: { "fill-color": "#7fd4ff", "fill-opacity": 0.06 },
+    });
+    map.addLayer({
+      id: "parcels-outline",
+      type: "line",
+      source: "parcels",
+      paint: { "line-color": "#39b7ff", "line-width": 0.6, "line-opacity": 0.55 },
+    });
     map.addLayer({
       id: "risk-buffer-fill",
       type: "fill",
@@ -1388,6 +1407,13 @@ function setupGisMapLayers(map) {
       },
     });
 
+    map.on("click", "parcels-fill", (event) => showParcelPopup(map, event));
+    map.on("mouseenter", "parcels-fill", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "parcels-fill", () => {
+      map.getCanvas().style.cursor = "";
+    });
     map.on("click", "field-fill", (event) => showGisFieldPopup(map, event));
     map.on("mouseenter", "field-fill", () => {
       map.getCanvas().style.cursor = "pointer";
@@ -1405,6 +1431,7 @@ function updateGisMap(map, options = {}) {
   if (!map || !map.getStyle()?.layers?.length) return;
   setupGisMapLayers(map);
   if (!map.__tonariGisReady) return;
+  setGeoJsonSource(map, "parcels", parcelData || emptyFeatureCollection());
   setGeoJsonSource(map, "fields", fieldFeatureCollection());
   setGeoJsonSource(map, "risk-buffer", riskBufferFeatureCollection());
   setGeoJsonSource(map, "wind-zone", windZoneFeatureCollection(activePlan()));
@@ -4134,8 +4161,8 @@ function importFieldBoundaries(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const fields = buildFieldsFromGeoJson(String(reader.result));
-      applyImportedFields(fields, `実際のほ場境界を取り込みました（${fields.length}区画）。`, { pin: true });
+      const features = featuresFromGeoJsonText(String(reader.result));
+      applyBoundaryFeatures(features, { pin: true, message: "実際のほ場境界を取り込みました。" });
     } catch (error) {
       showToast(`取り込めませんでした：${error.message}`);
     }
@@ -4163,8 +4190,7 @@ async function importShapefileBoundaries(file) {
         (fc?.features || []).forEach((feature) => features.push(feature));
       });
     }
-    const fields = buildFieldsFromFeatures(features);
-    applyImportedFields(fields, `Shapefileから実境界を取り込みました（${fields.length}区画）。`, { pin: true });
+    applyBoundaryFeatures(features, { pin: true, message: "Shapefileから実境界を取り込みました。" });
   } catch (error) {
     showToast(`Shapefileを取り込めませんでした：${error.message || "形式を確認してください"}`);
   }
@@ -4172,6 +4198,9 @@ async function importShapefileBoundaries(file) {
 
 // --- 市町村カタログ（data/boundaries/index.json）からの自動読込 ---
 let boundaryCatalog = [];
+let parcelData = null; // 大量筆の背景レイヤー（表示専用・非永続）
+let lastClickedParcel = null;
+const PARCEL_DISPLAY_LIMIT = 400;
 
 async function initBoundaries() {
   await loadBoundaryCatalog();
@@ -4210,25 +4239,172 @@ async function loadMunicipalityBoundary(code, options = {}) {
   const entry = boundaryCatalog.find((m) => m.code === code);
   if (!entry) return;
   try {
-    const res = await fetch(`data/boundaries/${entry.file}`, { cache: "no-store" });
+    if (!options.silent) showToast(`${entry.name}を読み込み中…`);
+    const res = await fetch(`data/boundaries/${encodeURIComponent(entry.file)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    let fields;
+    let features;
     if (entry.file.toLowerCase().endsWith(".zip")) {
       if (typeof shp === "undefined") throw new Error("Shapefileライブラリ未ロード");
-      const parsed = await shp.parseZip(await res.arrayBuffer());
-      const collections = Array.isArray(parsed) ? parsed : [parsed];
-      const features = [];
-      collections.forEach((fc) => (fc?.features || []).forEach((f) => features.push(f)));
-      fields = buildFieldsFromFeatures(features);
+      features = await featuresFromZip(await res.arrayBuffer());
     } else {
-      fields = buildFieldsFromGeoJson(await res.text());
+      features = featuresFromGeoJsonText(await res.text());
     }
-    state.boundaryMunicipality = code;
-    state.boundaryPinned = false;
-    applyImportedFields(fields, options.silent ? "" : `${entry.name}の圃場境界を読み込みました（${fields.length}区画）。`);
+    applyBoundaryFeatures(features, { code, name: entry.name, silent: options.silent });
   } catch (error) {
     if (!options.silent) showToast(`境界を読み込めませんでした：${error.message}`);
   }
+}
+
+function featuresFromGeoJsonText(text) {
+  const data = JSON.parse(text);
+  if (data.type === "FeatureCollection") return data.features || [];
+  if (data.type === "Feature") return [data];
+  if (data.type && data.coordinates) return [{ type: "Feature", geometry: data, properties: {} }];
+  return [];
+}
+
+async function featuresFromZip(buffer) {
+  const parsed = await shp.parseZip(buffer);
+  const collections = Array.isArray(parsed) ? parsed : [parsed];
+  const features = [];
+  collections.forEach((fc) => (fc?.features || []).forEach((f) => features.push(f)));
+  return features;
+}
+
+// 少数なら管理ほ場、多数（市全域の筆ポリゴン等）なら背景の筆レイヤーに振り分け。
+function applyBoundaryFeatures(features, opts = {}) {
+  const polys = features.filter((f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"));
+  if (!polys.length) throw new Error("ポリゴン境界が見つかりません。");
+  if (opts.code !== undefined) {
+    state.boundaryMunicipality = opts.code;
+    state.boundaryPinned = false;
+  }
+  if (polys.length > PARCEL_DISPLAY_LIMIT) {
+    applyParcelBackdrop(polys, opts);
+    return;
+  }
+  parcelData = null;
+  const fields = buildFieldsFromFeatures(polys);
+  applyImportedFields(fields, opts.silent ? "" : opts.message || `${opts.name || "境界"}を読み込みました（${fields.length}区画）。`, { pin: opts.pin });
+  setParcelSource();
+}
+
+function applyParcelBackdrop(polys, opts = {}) {
+  parcelData = { type: "FeatureCollection", features: polys.map((f) => ({ type: "Feature", geometry: f.geometry, properties: {} })) };
+  const first = buildFieldsFromFeatures([polys[0]]);
+  state.fields = first;
+  state.activeFieldId = undefined;
+  const plan = activePlan();
+  if (plan && first[0]) plan.fieldName = first[0].name;
+  if (opts.pin) {
+    state.boundaryPinned = true;
+    state.boundaryMunicipality = "__custom__";
+  }
+  saveState();
+  renderAll();
+  renderBoundarySelector();
+  setParcelSource();
+  requestAnimationFrame(() => fitToParcels());
+  if (!opts.silent) {
+    showToast(`${opts.name || "筆ポリゴン"}（${polys.length.toLocaleString()}筆）を背景表示しました。地図で自分のほ場をタップして登録できます。`);
+  }
+}
+
+function setParcelSource() {
+  [mapLibreMap, dashboardMapLibreMap].forEach((m) => {
+    if (m && m.getSource && m.getSource("parcels")) m.getSource("parcels").setData(parcelData || emptyFeatureCollection());
+  });
+}
+
+function eachPolygonRing(geometry, cb) {
+  if (!geometry) return;
+  if (geometry.type === "Polygon") geometry.coordinates.forEach(cb);
+  else if (geometry.type === "MultiPolygon") geometry.coordinates.forEach((poly) => poly.forEach(cb));
+}
+
+function fitToParcels() {
+  let west = Infinity;
+  let east = -Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  (parcelData?.features || []).forEach((f) =>
+    eachPolygonRing(f.geometry, (ring) =>
+      ring.forEach(([lng, lat]) => {
+        west = Math.min(west, lng);
+        east = Math.max(east, lng);
+        south = Math.min(south, lat);
+        north = Math.max(north, lat);
+      }),
+    ),
+  );
+  if (!Number.isFinite(west)) return;
+  [mapLibreMap, dashboardMapLibreMap].forEach((m) => {
+    if (!m) return;
+    m.resize();
+    m.fitBounds([[west, south], [east, north]], { padding: 40, duration: 400 });
+  });
+}
+
+function showParcelPopup(map, event) {
+  const feature = event.features?.[0];
+  if (!feature || !window.maplibregl) return;
+  lastClickedParcel = feature.geometry;
+  new maplibregl.Popup({ closeButton: true, offset: 12, className: "gis-popup" })
+    .setLngLat(event.lngLat)
+    .setHTML(
+      `<div class="parcel-popup"><strong>この筆を登録</strong><div class="pill-line">
+        <button class="ghost-button mini-button" data-parcel-adopt="spray" type="button">散布ほ場にする</button>
+        <button class="ghost-button mini-button" data-parcel-adopt="neighbor" type="button">周辺ほ場に追加</button>
+      </div></div>`,
+    )
+    .addTo(map);
+}
+
+function adoptParcel(kind) {
+  if (!lastClickedParcel) return;
+  const geo = outerRingLngLat(lastClickedParcel);
+  if (!geo || geo.length < 3) return;
+  if (kind === "spray") {
+    let spray = state.fields.find((f) => f.type === "spray");
+    if (!spray) {
+      spray = { ...createBlankField(), id: "parcel-spray", type: "spray", short: "散布", name: "散布ほ場", notifyTarget: false, owner: "自分" };
+      state.fields.unshift(spray);
+    }
+    spray.geo = geo;
+  } else {
+    const neighbor = {
+      ...createBlankField(),
+      id: `parcel-${Date.now().toString(36)}`,
+      type: "organic",
+      short: "隣接",
+      name: `隣接ほ場${state.fields.length}`,
+      geo,
+      notifyTarget: true,
+      owner: "周辺農家",
+    };
+    state.fields.push(neighbor);
+    state.activeFieldId = neighbor.id;
+  }
+  recomputeFieldDistances();
+  saveState();
+  renderAll();
+  showToast(kind === "spray" ? "この筆を散布ほ場にしました。" : "周辺ほ場に追加しました。");
+}
+
+function recomputeFieldDistances() {
+  const spray = state.fields.find((f) => f.type === "spray") || state.fields[0];
+  if (!spray) return;
+  const center = fieldCenterLngLat(spray);
+  state.fields.forEach((f) => {
+    if (f === spray) {
+      f.distance = 0;
+      f.direction = "中心";
+      return;
+    }
+    const c = fieldCenterLngLat(f);
+    f.distance = Math.round(haversineMeters(center, c));
+    f.direction = bearingToDirection(bearingBetween(center, c));
+  });
 }
 
 function resetToMunicipality() {
