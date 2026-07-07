@@ -1,0 +1,14 @@
+{
+  "municipalities": [
+    {
+      "code": "082163",
+      "name": "笠間市（デモ）",
+      "file": "kasama.geojson"
+    },
+    {
+      "code": "082163b",
+      "name": "友部エリア（デモ）",
+      "file": "tomobe.geojson"
+    }
+  ]
+}

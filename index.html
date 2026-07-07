@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>となり畑セーフティ MVP</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260707-shp">
+    <link rel="stylesheet" href="css/styles.css?v=20260707-catalog">
   </head>
   <body>
     <div class="app-shell">
@@ -366,15 +366,18 @@
                     <h4>実際のほ場を取込</h4>
                   </div>
                 </div>
+                <label class="select-label boundary-municipality">
+                  対象市町村
+                  <select id="boundaryMunicipalitySelect"></select>
+                </label>
                 <div class="field-import-actions">
                   <label class="rx-import-button">
-                    GeoJSON / Shapefileを取込
+                    個別に取込（GeoJSON / Shapefile）
                     <input type="file" id="fieldBoundaryInput" accept=".geojson,.json,.zip,.shp,application/geo+json,application/json,application/zip" hidden>
                   </label>
-                  <button class="ghost-button" id="loadSampleBoundaryButton" type="button">サンプル境界</button>
-                  <button class="ghost-button" id="resetBoundaryButton" type="button">デモに戻す</button>
+                  <button class="ghost-button" id="resetBoundaryButton" type="button">市町村データに戻す</button>
                 </div>
-                <p class="small-note">農水省の筆ポリゴンやTopcon等の圃場境界を、GeoJSONまたはShapefile（.shp/.dbf/.prjのzip）で取り込むと、実在のほ場をなぞって表示します。座標系(.prj)は自動でWGS84に変換します。</p>
+                <p class="small-note"><code>data/boundaries/</code> に市町村ごとの境界（GeoJSON / Shapefileのzip）を置き <code>index.json</code> に登録すると、上の一覧から選べます。選ぶと起動時にもその市町村の実ほ場を表示します（座標系.prjは自動でWGS84変換）。</p>
               </article>
               <article class="panel">
                 <div class="panel-head">
@@ -923,6 +926,6 @@
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
     <script src="vendor/shpjs/shp.min.js" defer></script>
-    <script src="js/main.js?v=20260707-shp" defer></script>
+    <script src="js/main.js?v=20260707-catalog" defer></script>
   </body>
 </html>

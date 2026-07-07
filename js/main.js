@@ -357,6 +357,7 @@ function init() {
   renderAll();
   const initialView = location.hash.replace("#", "");
   switchView(VIEW_META[initialView] ? initialView : "dashboard");
+  initBoundaries();
 }
 
 function bindEvents() {
@@ -611,8 +612,10 @@ function bindEvents() {
     importFieldBoundaries(event.target.files[0]);
     event.target.value = "";
   });
-  $("#loadSampleBoundaryButton")?.addEventListener("click", loadSampleFieldBoundaries);
-  $("#resetBoundaryButton")?.addEventListener("click", resetFieldBoundaries);
+  $("#boundaryMunicipalitySelect")?.addEventListener("change", (event) => {
+    if (event.target.value && event.target.value !== "__custom__") loadMunicipalityBoundary(event.target.value);
+  });
+  $("#resetBoundaryButton")?.addEventListener("click", resetToMunicipality);
   $("#createPrescriptionButton")?.addEventListener("click", createPrescription);
   document.body.addEventListener("input", (event) => {
     const rateInput = event.target.closest("[data-rx-rate]");
@@ -1125,6 +1128,7 @@ function renderMapView() {
   $("#mapWindCard").innerHTML = weatherCard(plan);
   renderCoveragePanel();
   renderPrescriptionPanel();
+  renderBoundarySelector();
 }
 
 function renderDashboardGisMap() {
@@ -4104,15 +4108,20 @@ function buildFieldsFromFeatures(rawFeatures) {
   return fields;
 }
 
-function applyImportedFields(fields, message) {
+function applyImportedFields(fields, message, options = {}) {
   state.fields = fields;
   const plan = activePlan();
   if (plan && fields[0]) plan.fieldName = fields[0].name;
   state.activeFieldId = fields.find((f) => f.type !== "spray")?.id;
+  if (options.pin) {
+    state.boundaryPinned = true;
+    state.boundaryMunicipality = "__custom__";
+  }
   saveState();
   renderAll();
+  renderBoundarySelector();
   requestAnimationFrame(() => focusVisibleMaps("all"));
-  showToast(message);
+  if (message) showToast(message);
 }
 
 function importFieldBoundaries(file) {
@@ -4126,7 +4135,7 @@ function importFieldBoundaries(file) {
   reader.onload = () => {
     try {
       const fields = buildFieldsFromGeoJson(String(reader.result));
-      applyImportedFields(fields, `実際のほ場境界を取り込みました（${fields.length}区画）。`);
+      applyImportedFields(fields, `実際のほ場境界を取り込みました（${fields.length}区画）。`, { pin: true });
     } catch (error) {
       showToast(`取り込めませんでした：${error.message}`);
     }
@@ -4155,22 +4164,81 @@ async function importShapefileBoundaries(file) {
       });
     }
     const fields = buildFieldsFromFeatures(features);
-    applyImportedFields(fields, `Shapefileから実境界を取り込みました（${fields.length}区画）。`);
+    applyImportedFields(fields, `Shapefileから実境界を取り込みました（${fields.length}区画）。`, { pin: true });
   } catch (error) {
     showToast(`Shapefileを取り込めませんでした：${error.message || "形式を確認してください"}`);
   }
 }
 
-function loadSampleFieldBoundaries() {
-  const geoFields = createSampleState().fields.map((field) => {
-    const ring = fieldPolygonCoordinates(field);
-    const open = ring.slice(0, -1);
-    return { ...field, geo: open };
-  });
-  applyImportedFields(geoFields, "サンプルの実境界（geo）を読み込みました。");
+// --- 市町村カタログ（data/boundaries/index.json）からの自動読込 ---
+let boundaryCatalog = [];
+
+async function initBoundaries() {
+  await loadBoundaryCatalog();
+  if (state.boundaryPinned) {
+    renderBoundarySelector();
+    return;
+  }
+  const code = boundaryCatalog.find((m) => m.code === state.boundaryMunicipality)?.code || boundaryCatalog[0]?.code;
+  if (code) await loadMunicipalityBoundary(code, { silent: true });
+  else renderBoundarySelector();
 }
 
-function resetFieldBoundaries() {
+async function loadBoundaryCatalog() {
+  try {
+    const res = await fetch("data/boundaries/index.json", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      boundaryCatalog = Array.isArray(data.municipalities) ? data.municipalities : [];
+    }
+  } catch (error) {
+    boundaryCatalog = [];
+  }
+  renderBoundarySelector();
+}
+
+function renderBoundarySelector() {
+  const select = $("#boundaryMunicipalitySelect");
+  if (!select) return;
+  const options = boundaryCatalog.map((m) => `<option value="${escapeAttr(m.code)}">${escapeHtml(m.name)}</option>`);
+  if (state.boundaryPinned) options.unshift(`<option value="__custom__">（取込データ）</option>`);
+  select.innerHTML = options.join("") || `<option value="">（カタログ未配置）</option>`;
+  select.value = state.boundaryPinned ? "__custom__" : state.boundaryMunicipality || boundaryCatalog[0]?.code || "";
+}
+
+async function loadMunicipalityBoundary(code, options = {}) {
+  const entry = boundaryCatalog.find((m) => m.code === code);
+  if (!entry) return;
+  try {
+    const res = await fetch(`data/boundaries/${entry.file}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let fields;
+    if (entry.file.toLowerCase().endsWith(".zip")) {
+      if (typeof shp === "undefined") throw new Error("Shapefileライブラリ未ロード");
+      const parsed = await shp.parseZip(await res.arrayBuffer());
+      const collections = Array.isArray(parsed) ? parsed : [parsed];
+      const features = [];
+      collections.forEach((fc) => (fc?.features || []).forEach((f) => features.push(f)));
+      fields = buildFieldsFromFeatures(features);
+    } else {
+      fields = buildFieldsFromGeoJson(await res.text());
+    }
+    state.boundaryMunicipality = code;
+    state.boundaryPinned = false;
+    applyImportedFields(fields, options.silent ? "" : `${entry.name}の圃場境界を読み込みました（${fields.length}区画）。`);
+  } catch (error) {
+    if (!options.silent) showToast(`境界を読み込めませんでした：${error.message}`);
+  }
+}
+
+function resetToMunicipality() {
+  state.boundaryPinned = false;
+  saveState();
+  const code = boundaryCatalog.find((m) => m.code === state.boundaryMunicipality)?.code || boundaryCatalog[0]?.code;
+  if (code) {
+    loadMunicipalityBoundary(code);
+    return;
+  }
   state.fields = createSampleState().fields;
   state.activeFieldId = state.fields.find((f) => f.type !== "spray")?.id;
   saveState();

@@ -431,6 +431,22 @@ textarea:focus {
   margin-top: 10px;
 }
 
+.boundary-municipality {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.boundary-municipality select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
 .field-import-actions {
   display: flex;
   flex-wrap: wrap;
