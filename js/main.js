@@ -4058,8 +4058,13 @@ function buildFieldsFromGeoJson(text) {
   if (data.type === "FeatureCollection") features = data.features || [];
   else if (data.type === "Feature") features = [data];
   else if (data.type && data.coordinates) features = [{ type: "Feature", geometry: data, properties: {} }];
+  return buildFieldsFromFeatures(features);
+}
+
+function buildFieldsFromFeatures(rawFeatures) {
+  const features = Array.isArray(rawFeatures) ? rawFeatures : [];
   const polys = features.filter((f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"));
-  if (!polys.length) throw new Error("ポリゴンのGeoJSONが見つかりません。");
+  if (!polys.length) throw new Error("ポリゴン境界が見つかりません。");
   const fields = polys.map((f, i) => {
     const geo = outerRingLngLat(f.geometry);
     const props = f.properties || {};
@@ -4114,7 +4119,7 @@ function importFieldBoundaries(file) {
   if (!file) return;
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".zip") || lower.endsWith(".shp")) {
-    showToast("Shapefileは次段対応です。GeoJSON（筆ポリゴン等）で取り込んでください。");
+    importShapefileBoundaries(file);
     return;
   }
   const reader = new FileReader();
@@ -4127,6 +4132,33 @@ function importFieldBoundaries(file) {
     }
   };
   reader.readAsText(file);
+}
+
+// Shapefile (.zip: shp/dbf/prj, or a single .shp) via shpjs; reprojects to WGS84.
+async function importShapefileBoundaries(file) {
+  if (typeof shp === "undefined") {
+    showToast("Shapefile読み込みライブラリが未ロードです。少し待って再試行してください。");
+    return;
+  }
+  showToast("Shapefileを解析中…");
+  try {
+    const buffer = await file.arrayBuffer();
+    let features = [];
+    if (file.name.toLowerCase().endsWith(".shp")) {
+      const geometries = await shp.parseShp(buffer);
+      features = (geometries || []).map((geometry) => ({ type: "Feature", geometry, properties: {} }));
+    } else {
+      const parsed = await shp.parseZip(buffer);
+      const collections = Array.isArray(parsed) ? parsed : [parsed];
+      collections.forEach((fc) => {
+        (fc?.features || []).forEach((feature) => features.push(feature));
+      });
+    }
+    const fields = buildFieldsFromFeatures(features);
+    applyImportedFields(fields, `Shapefileから実境界を取り込みました（${fields.length}区画）。`);
+  } catch (error) {
+    showToast(`Shapefileを取り込めませんでした：${error.message || "形式を確認してください"}`);
+  }
 }
 
 function loadSampleFieldBoundaries() {
