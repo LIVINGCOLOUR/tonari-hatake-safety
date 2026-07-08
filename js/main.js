@@ -35,12 +35,10 @@ const ROLE_META = {
 };
 
 const ROLE_ALLOWED_VIEWS = {
-  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "history", "profile"],
+  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "profile"],
   neighbor: ["dashboard", "map", "fields", "notify", "profile"],
   admin: ["dashboard", "admin", "profile"],
 };
-
-const DEMO_ALLOWED_VIEWS = Object.keys(VIEW_META);
 
 const PROFILE_ROLE_LABELS = {
   sprayer: "散布者",
@@ -467,9 +465,12 @@ function profileIsRegistered() {
   return Boolean(activeProfile().registered && ROLE_META[activeProfile().role]);
 }
 
+function currentNavigationRole() {
+  return profileRole(state) || activeRole || "sprayer";
+}
+
 function allowedViewsForCurrentMode() {
-  if (!profileIsRegistered()) return DEMO_ALLOWED_VIEWS;
-  return ROLE_ALLOWED_VIEWS[activeProfile().role] || ROLE_ALLOWED_VIEWS.sprayer;
+  return ROLE_ALLOWED_VIEWS[currentNavigationRole()] || ROLE_ALLOWED_VIEWS.sprayer;
 }
 
 function init() {
@@ -827,7 +828,6 @@ function renderAll() {
   document.body.dataset.role = activeRole;
   document.body.dataset.profileRegistered = profileIsRegistered() ? "true" : "false";
   renderRoleSwitcher();
-  renderRoleNavigation();
   renderProfileModeBanner();
   renderPlanSelect();
   renderRuleBanner();
@@ -846,6 +846,7 @@ function renderAll() {
   renderRulesForm();
   renderProfileForm();
   renderSources();
+  renderRoleNavigation();
 }
 
 function switchView(viewName) {
@@ -910,12 +911,13 @@ function renderRoleSwitcher() {
 }
 
 function renderRoleNavigation() {
+  const allowedViews = allowedViewsForCurrentMode();
+  const currentRole = currentNavigationRole();
   $$("[data-view-target]").forEach((item) => {
-    const roles = item.dataset.roles?.split(/\s+/);
+    const roles = item.dataset.roles?.split(/\s+/).filter(Boolean);
     const viewTarget = item.dataset.viewTarget;
-    const visible = profileIsRegistered()
-      ? roleAllowsView(viewTarget)
-      : true;
+    const roleVisible = !roles?.length || roles.includes(currentRole);
+    const visible = Boolean(viewTarget && roleVisible && allowedViews.includes(viewTarget));
     item.classList.toggle("role-hidden", !visible);
   });
 }
@@ -928,8 +930,8 @@ function renderProfileModeBanner() {
     banner.innerHTML = `
       <div>
         <span class="tag tag-attention">未登録デモモード</span>
-        <strong>すべての画面を確認できます。</strong>
-        <span>プロフィール登録後は、選択した利用区分の画面だけ表示されます。</span>
+        <strong>ロール切替で各画面を確認できます。</strong>
+        <span>現在の利用区分に必要なタブだけ表示しています。プロフィール登録後は選択した利用区分で固定されます。</span>
       </div>
       <button class="secondary-button" data-view-target="profile" type="button">プロフィール登録</button>
     `;
@@ -1012,7 +1014,6 @@ function renderSprayerWorkflow(plan) {
   const postSteps = [
     { title: "飛行ログ", detail: droneLogLabel(plan.droneLog || createSampleDroneLog(false)), done: Boolean(plan.droneLog?.imported), view: "drone" },
     { title: "実施後報告", detail: plan.report.doneDate ? "提出済み" : "未提出", done: Boolean(plan.report.doneDate), view: "report" },
-    { title: "作業履歴反映", detail: plan.report.doneDate ? "履歴に反映済み" : "報告後に反映", done: Boolean(plan.report.doneDate), view: "history" },
   ];
   const renderSteps = (steps, offset = 0) =>
     steps
@@ -1659,6 +1660,7 @@ function renderGoNoGo() {
 }
 
 function renderDashboard() {
+  renderDashboardChrome();
   renderGoNoGo();
   const metrics = getDashboardMetrics();
   $("#kpiGrid").innerHTML = metrics
@@ -1744,6 +1746,84 @@ function renderDashboard() {
       `,
     )
     .join("");
+}
+
+function renderDashboardChrome() {
+  const configByRole = {
+    sprayer: {
+      title: "トップダッシュボード",
+      description: "今日の散布前に必要な確認、通知、記録不足を一覧します。",
+      mapTag: "散布前確認メモ",
+      mapButtonTarget: "map",
+      mapButtonRoles: "sprayer",
+      mapButtonTitle: "圃場マップを開く",
+    },
+    neighbor: {
+      title: "周辺農家ダッシュボード",
+      description: "自分の圃場に関係する散布通知、返信状況、公開範囲を確認します。",
+      mapTag: "関係する散布通知",
+      mapButtonTarget: "map",
+      mapButtonRoles: "neighbor",
+      mapButtonTitle: "圃場マップを開く",
+    },
+    admin: {
+      title: "地域管理ダッシュボード",
+      description: "地域内の散布予定・通知・報告の確認状況を日付別に確認します。",
+      mapTag: "日付別散布状況",
+      mapButtonTarget: "admin",
+      mapButtonRoles: "admin",
+      mapButtonTitle: "散布予定・実績を開く",
+    },
+  };
+  const config = configByRole[activeRole] || configByRole.sprayer;
+  const title = $("#dashboardTitle");
+  if (title) {
+    title.textContent = config.title;
+    const description = title.closest(".section-head")?.querySelector("p");
+    if (description) description.textContent = config.description;
+  }
+  const mapPanel = $(".dashboard-map-panel");
+  const mapTag = mapPanel?.querySelector(".panel-head .tag");
+  if (mapTag) mapTag.textContent = config.mapTag;
+  const mapButton = mapPanel?.querySelector(".panel-head [data-view-target]");
+  if (mapButton) {
+    mapButton.dataset.viewTarget = config.mapButtonTarget;
+    mapButton.dataset.roles = config.mapButtonRoles;
+    mapButton.title = config.mapButtonTitle;
+  }
+
+  const mapControls = $$(".map-control-row", $("#dashboardGisMap"));
+  if (activeRole === "admin") {
+    const labels = [
+      ["spray", "◎ 対象日の散布へ"],
+      ["all", "□ 全体表示"],
+      ["spray", "▣ 要確認を確認"],
+    ];
+    mapControls.forEach((button, index) => {
+      const label = labels[index];
+      if (!label) return;
+      button.dataset.mapFocus = label[0];
+      button.textContent = label[1];
+    });
+    return;
+  }
+  const labels = activeRole === "neighbor"
+    ? [
+        ["spray", "◎ 関係する圃場へ"],
+        ["all", "□ 全体表示"],
+        ["wind", "↓ 風下確認"],
+      ]
+    : [
+        ["spray", "◎ 散布ほ場へ"],
+        ["all", "□ 全体表示"],
+        ["wind", "↓ 風下確認"],
+      ];
+  mapControls.forEach((button, index) => {
+    const label = labels[index];
+    if (!label) return;
+    button.dataset.mapFocus = label[0];
+    button.textContent = label[1];
+  });
 }
 
 function renderNeighborDashboardContent() {
@@ -2039,9 +2119,49 @@ function renderDashboardMapReadouts() {
         `,
       )
       .join("");
+    const trackTitle = $("#dashboardGisMap .track-card strong");
+    if (trackTitle) trackTitle.textContent = "▦ 散布予定・実績";
     $("#dashboardTrackSummary").textContent = "対象日の予定・実績を航空写真に重ねて表示";
     $("#dashboardFieldCount").textContent = `${summary.total}件`;
     renderGisLegend($("#dashboardMapLegend"), "admin-dashboard");
+    return;
+  }
+
+  if (activeRole === "neighbor") {
+    const field = activeField();
+    const notices = neighborRelevantNotices();
+    const pending = notices.filter((notice) => notice.response === "未回答");
+    const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました");
+    const windAttention = notices.filter((notice) => noticeWindSummary(notice).label.includes("要確認"));
+    const nextPlan = notices[0]?.plan;
+    $("#dashboardMapCardTitle").textContent = "関係する散布通知";
+    $("#dashboardMapDate").textContent = nextPlan ? nextPlan.date : "近日予定なし";
+    const decisionEl = $("#dashboardMapDecision");
+    decisionEl.textContent = pending.length ? "未返信あり" : notices.length ? "確認済み" : "通知なし";
+    decisionEl.className = pending.length ? "status-amber" : "status-green";
+    $("#dashboardMapWind").textContent = `${notices.length}件 予定`;
+    $("#dashboardMapRain").textContent = `風下要確認 ${windAttention.length}件 / 相談中 ${consulting.length}件`;
+    $("#dashboardMapMetrics").innerHTML = [
+      { label: "未返信", value: `${pending.length}件`, note: "通知返信", level: pending.length ? "warn" : "good" },
+      { label: "近日予定", value: `${notices.length}件`, note: "関係通知", level: notices.length ? "warn" : "good" },
+      { label: "風下確認", value: `${windAttention.length}件`, note: "風向確認", level: windAttention.length ? "warn" : "good" },
+      { label: "公開範囲", value: field.publicScope || "概略共有", note: "圃場情報", level: "good" },
+    ]
+      .map(
+        (item) => `
+          <div>
+            <span>${escapeHtml(item.label)}</span>
+            <strong class="${item.level === "bad" ? "bad" : item.level === "warn" ? "warn" : "good"}">${escapeHtml(item.value)}</strong>
+            <small>${escapeHtml(item.note)}</small>
+          </div>
+        `,
+      )
+      .join("");
+    const trackTitle = $("#dashboardGisMap .track-card strong");
+    if (trackTitle) trackTitle.textContent = "◇ 通知対象範囲";
+    $("#dashboardTrackSummary").textContent = "自分の圃場と関係する散布予定を航空写真に重ねて表示";
+    $("#dashboardFieldCount").textContent = `${notices.length}件`;
+    renderGisLegend($("#dashboardMapLegend"));
     return;
   }
 
@@ -2072,6 +2192,8 @@ function renderDashboardMapReadouts() {
       `,
     )
     .join("");
+  const trackTitle = $("#dashboardGisMap .track-card strong");
+  if (trackTitle) trackTitle.textContent = "↗ 作業軌跡";
   $("#dashboardTrackSummary").textContent = droneLogLabel();
   $("#dashboardFieldCount").textContent = `${state.fields.length}件`;
   renderGisLegend($("#dashboardMapLegend"));
