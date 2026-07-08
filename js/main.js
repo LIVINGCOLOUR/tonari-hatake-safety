@@ -1,13 +1,14 @@
 const STORAGE_KEY = "tonariHatakeSafetyMvp.v3.coverage";
 
 const VIEW_META = {
+  profile: ["初期設定・プロフィール", "利用区分、対象市町村、公開範囲"],
   dashboard: ["トップダッシュボード", "地域内の散布予定と確認状況"],
   plans: ["散布計画登録", "散布前に必要な情報を記録"],
   map: ["圃場マップ", "散布ほ場・周辺圃場・飛行ログ"],
   fields: ["圃場ステータス", "農薬使用状況と通知希望"],
   drone: ["ドローン連携", "飛行ログと散布実績の確認"],
   notify: ["近隣通知", "通知文と通知履歴"],
-  checklist: ["散布前チェック", "確認完了度と未完了項目"],
+  checklist: ["散布前チェック", "確認進捗と未完了項目"],
   weather: ["気象メモ", "風向・風速の記録"],
   report: ["実施後報告", "実施内容と問い合わせ記録"],
   history: ["作業履歴", "圃場ごとの散布・施肥履歴"],
@@ -18,13 +19,13 @@ const VIEW_META = {
 const ROLE_META = {
   sprayer: {
     label: "散布者",
-    title: "今日の散布前後の確認",
-    note: "計画、周辺確認、通知、気象、ドローンログ、報告を順に処理します。",
+    title: "今日の散布前に必要な確認",
+    note: "未完了タスクと次に必要な対応を先に確認します。",
   },
   neighbor: {
     label: "周辺農家",
-    title: "自分の圃場と通知への返信",
-    note: "農薬不使用・有機JAS・収穫前などのステータス登録と、散布通知への返信を行います。",
+    title: "あなたに関係する散布通知",
+    note: "自分の圃場、未返信通知、公開範囲を確認します。",
   },
   admin: {
     label: "地域管理",
@@ -34,10 +35,36 @@ const ROLE_META = {
 };
 
 const ROLE_ALLOWED_VIEWS = {
-  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "history"],
-  neighbor: ["dashboard", "map", "fields", "notify"],
-  admin: ["dashboard", "admin"],
+  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "history", "profile"],
+  neighbor: ["dashboard", "map", "fields", "notify", "profile"],
+  admin: ["dashboard", "admin", "profile"],
 };
+
+const DEMO_ALLOWED_VIEWS = Object.keys(VIEW_META);
+
+const PROFILE_ROLE_LABELS = {
+  sprayer: "散布者",
+  neighbor: "周辺農家",
+  admin: "地域管理",
+};
+
+const CONTACT_METHOD_LABELS = {
+  phone: "電話",
+  line: "LINE",
+  email: "メール",
+  paper: "紙",
+};
+
+const VISIBILITY_OPTIONS = [
+  ["private", "非公開"],
+  ["selfOnly", "自分のみ"],
+  ["notificationTargetsOnly", "通知対象のみ"],
+  ["relatedOnly", "関係者限定"],
+  ["managerOnly", "地域管理者まで"],
+  ["municipalityJa", "自治体・JA共有"],
+];
+
+const PREFERRED_BOUNDARY_NAMES = ["笠間市", "水戸市", "石岡市", "つくば市", "益子町", "真岡市", "香取市", "成田市"];
 
 const EQUIPMENT_FIELDS = [
   "droneModel", "aircraftRegistration", "pilot", "assistant",
@@ -57,7 +84,7 @@ const DEFAULT_EQUIPMENT = {
 };
 
 function equipmentTemplate() {
-  return { ...DEFAULT_EQUIPMENT, ...(state?.equipmentTemplate || {}) };
+  return { ...DEFAULT_EQUIPMENT, ...profileEquipmentTemplate(), ...(state?.equipmentTemplate || {}) };
 }
 
 const MATERIAL_TYPES = ["農薬", "液体肥料・葉面散布", "その他資材"];
@@ -115,13 +142,18 @@ const CHECK_ITEMS = [
   },
   {
     id: "wind",
-    title: "風向・風速を確認した",
-    detail: "予報と実測の両方を確認し、測定場所を記録。",
+    title: "現地実測の風向・風速を記録した",
+    detail: "散布直前の実測値、測定場所、測定者を記録。",
+  },
+  {
+    id: "weatherForecast",
+    title: "API予報を取得した",
+    detail: "Open-Meteo等の予報値、対象時刻、取得時刻を記録。",
   },
   {
     id: "weatherEnv",
-    title: "高温・低湿度・降雨予報を確認した",
-    detail: "気温、湿度、最大瞬間風速、降雨予報を記録。",
+    title: "散布者が気象条件を確認した",
+    detail: "予報と現地実測を見た上で、散布者が確認済みにした記録。",
   },
   {
     id: "aircraft",
@@ -186,9 +218,9 @@ const SOURCES = [
 const DEFAULT_SETTINGS = {
   regionName: "笠間市周辺を想定した実証デモ",
   managerName: "地域管理者",
-  organicRadius: 100,
-  notifyRadius: 160,
-  sensitiveRadius: 160,
+  organicRadius: 300,
+  notifyRadius: 360,
+  sensitiveRadius: 300,
   windCaution: 2.5,
   windLimit: 3,
   noticeDeadlineDays: 1,
@@ -201,6 +233,60 @@ const ADMIN_REGION_OPTIONS = [
   { prefecture: "栃木県", municipalities: ["益子町", "真岡市"] },
   { prefecture: "千葉県", municipalities: ["香取市", "成田市"] },
 ];
+
+function defaultProfile() {
+  return {
+    registered: false,
+    role: null,
+    name: "",
+    organizationName: "",
+    municipality: "",
+    district: "",
+    addressDetail: "",
+    phone: "",
+    email: "",
+    preferredContactMethod: "phone",
+    affiliation: "",
+    targetMunicipalities: [],
+    visibility: {
+      name: "relatedOnly",
+      phone: "notificationTargetsOnly",
+      addressDetail: "private",
+      fieldLocation: "relatedOnly",
+      cropStatus: "relatedOnly",
+      notificationReplies: "relatedOnly",
+    },
+    sprayer: {
+      defaultMethod: "ドローン",
+      drones: [],
+      defaultDroneId: null,
+      droneModel: "",
+      aircraftRegistration: "",
+      remoteId: "",
+      defaultPilot: "",
+      defaultAssistant: "",
+      defaultSprayDevice: "",
+      defaultNozzle: "",
+      defaultAltitude: "",
+      defaultSpeed: "",
+      logImportMethod: "sample",
+    },
+    neighbor: {
+      notificationPreference: "nearbyAndDownwind",
+      contactTimeNote: "",
+      defaultFieldId: null,
+      defaultCultivation: "農薬使用なし",
+    },
+    admin: {
+      organizationType: "",
+      managedMunicipalities: [],
+      managedDistricts: [],
+      ruleSetName: "",
+      sharingScope: "関係者限定",
+    },
+    boundaryLoadStatus: {},
+  };
+}
 
 const FIELD_TYPE_META = {
   spray: ["散布ほ場", "spray"],
@@ -339,7 +425,7 @@ const SAMPLE_FIELD_GEOMETRY = {
 };
 
 let state = loadState();
-let activeRole = state?.role || "sprayer";
+let activeRole = profileRole(state) || state?.role || "sprayer";
 let activeView = "dashboard";
 let noticeChannel = "line";
 let mapLayer = "risk";
@@ -359,12 +445,32 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 
 document.addEventListener("DOMContentLoaded", init);
 
+function activeProfile() {
+  state.profile = normalizeProfile(state.profile);
+  return state.profile;
+}
+
+function profileRole(source = state) {
+  const profile = source?.profile;
+  return profile?.registered && ROLE_META[profile.role] ? profile.role : null;
+}
+
+function profileIsRegistered() {
+  return Boolean(activeProfile().registered && ROLE_META[activeProfile().role]);
+}
+
+function allowedViewsForCurrentMode() {
+  if (!profileIsRegistered()) return DEMO_ALLOWED_VIEWS;
+  return ROLE_ALLOWED_VIEWS[activeProfile().role] || ROLE_ALLOWED_VIEWS.sprayer;
+}
+
 function init() {
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
     state = createSampleState();
   }
   state = normalizeState(state);
-  activeRole = state.role || "sprayer";
+  activeRole = profileRole(state) || state.role || "sprayer";
+  state.role = activeRole;
   saveState();
 
   bindEvents();
@@ -376,9 +482,25 @@ function init() {
 
 function bindEvents() {
   document.body.addEventListener("click", (event) => {
-    const roleTarget = event.target.closest("[data-role]");
+    const roleTarget = event.target.closest("#roleSwitcher [data-role]");
     if (roleTarget) {
       setRole(roleTarget.dataset.role);
+      return;
+    }
+
+    const profileRoleButton = event.target.closest("[data-profile-role]");
+    if (profileRoleButton) {
+      const form = $("#profileForm");
+      if (form) {
+        form.elements.role.value = profileRoleButton.dataset.profileRole;
+        renderProfileRoleOptions(profileRoleButton.dataset.profileRole);
+      }
+      return;
+    }
+
+    const profileBoundaryLoad = event.target.closest("[data-profile-boundary-load]");
+    if (profileBoundaryLoad) {
+      loadProfileBoundary(profileBoundaryLoad.dataset.profileBoundaryLoad);
       return;
     }
 
@@ -393,7 +515,7 @@ function bindEvents() {
 
     const notifyAction = event.target.closest("[data-notify-action]");
     if (notifyAction) {
-      setNotificationResponse(notifyAction.dataset.notifyAction, notifyAction.dataset.response);
+      setNotificationResponse(notifyAction.dataset.notifyAction, notifyAction.dataset.response, notifyAction.dataset.notifyPlan);
       return;
     }
 
@@ -507,6 +629,7 @@ function bindEvents() {
 
   $("#saveEquipmentButton")?.addEventListener("click", saveEquipmentTemplate);
   $("#applyEquipmentButton")?.addEventListener("click", applyEquipmentTemplate);
+  $("#applyProfileToPlanButton")?.addEventListener("click", applyProfileToActivePlan);
 
   $("#saveWeatherButton").addEventListener("click", () => {
     updateWeatherFromForm();
@@ -523,6 +646,13 @@ function bindEvents() {
     event.preventDefault();
     updateWeatherFromForm();
   });
+
+  $("#profileForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveProfileFromForm();
+  });
+
+  $("#resetProfileButton")?.addEventListener("click", resetProfileToDemoMode);
 
   $("#reportForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -660,6 +790,18 @@ function bindEvents() {
   });
 
   document.body.addEventListener("change", (event) => {
+    const targetMunicipality = event.target.closest("input[name='targetMunicipality']");
+    if (targetMunicipality) {
+      const profile = activeProfile();
+      profile.targetMunicipalities = $$("input[name='targetMunicipality']:checked", $("#profileForm")).map((input) => input.value);
+      if (targetMunicipality.checked && !profile.boundaryLoadStatus[targetMunicipality.value]) {
+        profile.boundaryLoadStatus[targetMunicipality.value] = "notLoaded";
+      }
+      targetMunicipality.closest(".municipality-chip")?.classList.toggle("selected", targetMunicipality.checked);
+      renderBoundaryStatus(profile);
+      return;
+    }
+
     const adminDashboardFilter = event.target.closest("[data-admin-dashboard-filter]");
     if (adminDashboardFilter) {
       updateAdminDashboardFilter(adminDashboardFilter.name, adminDashboardFilter.value);
@@ -668,15 +810,17 @@ function bindEvents() {
 
     const response = event.target.closest("[data-notify-response]");
     if (response) {
-      setNotificationResponse(response.dataset.notifyResponse, response.value);
+      setNotificationResponse(response.dataset.notifyResponse, response.value, response.dataset.notifyPlan);
     }
   });
 }
 
 function renderAll() {
   document.body.dataset.role = activeRole;
+  document.body.dataset.profileRegistered = profileIsRegistered() ? "true" : "false";
   renderRoleSwitcher();
   renderRoleNavigation();
+  renderProfileModeBanner();
   renderPlanSelect();
   renderRuleBanner();
   renderRoleActionPanel();
@@ -692,12 +836,13 @@ function renderAll() {
   renderHistory();
   renderAdmin();
   renderRulesForm();
+  renderProfileForm();
   renderSources();
 }
 
 function switchView(viewName) {
   if (!roleAllowsView(viewName)) {
-    viewName = "dashboard";
+    viewName = roleAllowsView("dashboard") ? "dashboard" : "profile";
   }
   activeView = viewName;
   $$(".view").forEach((view) => view.classList.toggle("active", view.dataset.view === viewName));
@@ -727,6 +872,10 @@ function switchView(viewName) {
 
 function setRole(role) {
   if (!ROLE_META[role]) return;
+  if (profileIsRegistered()) {
+    showToast("プロフィール登録後は利用区分が固定されています。変更する場合はプロフィール設定を更新してください。");
+    return;
+  }
   activeRole = role;
   state.role = role;
   saveState();
@@ -740,12 +889,15 @@ function setRole(role) {
 }
 
 function roleAllowsView(viewName) {
-  return (ROLE_ALLOWED_VIEWS[activeRole] || ROLE_ALLOWED_VIEWS.sprayer).includes(viewName);
+  return allowedViewsForCurrentMode().includes(viewName);
 }
 
 function renderRoleSwitcher() {
-  $$("[data-role]").forEach((button) => {
+  const switcher = $("#roleSwitcher");
+  if (switcher) switcher.classList.toggle("role-switcher-locked", profileIsRegistered());
+  $$("#roleSwitcher [data-role]").forEach((button) => {
     button.classList.toggle("active", button.dataset.role === activeRole);
+    button.disabled = profileIsRegistered();
   });
 }
 
@@ -753,9 +905,36 @@ function renderRoleNavigation() {
   $$("[data-view-target]").forEach((item) => {
     const roles = item.dataset.roles?.split(/\s+/);
     const viewTarget = item.dataset.viewTarget;
-    const visible = roles ? roles.includes(activeRole) : roleAllowsView(viewTarget);
+    const visible = profileIsRegistered()
+      ? roleAllowsView(viewTarget)
+      : true;
     item.classList.toggle("role-hidden", !visible);
   });
+}
+
+function renderProfileModeBanner() {
+  const banner = $("#profileModeBanner");
+  if (!banner) return;
+  const profile = activeProfile();
+  if (!profile.registered) {
+    banner.innerHTML = `
+      <div>
+        <span class="tag tag-attention">未登録デモモード</span>
+        <strong>すべての画面を確認できます。</strong>
+        <span>プロフィール登録後は、選択した利用区分の画面だけ表示されます。</span>
+      </div>
+      <button class="secondary-button" data-view-target="profile" type="button">プロフィール登録</button>
+    `;
+    return;
+  }
+  banner.innerHTML = `
+    <div>
+      <span class="tag tag-green">${escapeHtml(PROFILE_ROLE_LABELS[profile.role] || "登録済み")}</span>
+      <strong>${escapeHtml(profile.name || profile.organizationName || "プロフィール登録済み")}</strong>
+      <span>${escapeHtml(profile.municipality || "対象市町村未設定")} / ${escapeHtml(profile.district || "地区未設定")}。この表示は本番認証ではなく、localStorage上のUI制御です。</span>
+    </div>
+    <button class="ghost-button" data-view-target="profile" type="button">プロフィール設定</button>
+  `;
 }
 
 function renderPlanSelect() {
@@ -770,15 +949,19 @@ function renderRuleBanner() {
   const rules = activeSettings();
   const plan = activePlan();
   const score = readinessScore(plan);
+  const progress = checkProgress(plan);
+  const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
+  const notified = targets.filter((item) => plan.notificationTargets[item.id]).length;
   $("#ruleBanner").innerHTML = `
     <div>
-      <span class="tag tag-green">実証ルール案</span>
-      <strong>${escapeHtml(rules.regionName)}</strong>
-      <span>実証用仮設定：重点確認 ${escapeHtml(rules.organicRadius)}m / 通知候補 ${escapeHtml(rules.notifyRadius)}m / 風速 ${escapeHtml(rules.windLimit)}m/s以上は延期検討</span>
+      <span class="tag tag-green">確認進捗</span>
+      <strong>${score.value} / 100</strong>
+      <span>チェック ${progress.done}/${progress.total} / 通知 ${notified}/${targets.length} / 気象 ${weatherCheckSummary(plan)} / ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"} / 報告 ${plan.report.doneDate ? "提出済み" : "未提出"}</span>
     </div>
-    <div class="score-badge ${score.level}">
-      <span>確認完了度</span>
-      <strong>${score.value}</strong>
+    <div class="rule-compact-note">
+      <span>実証ルール案</span>
+      <strong>${escapeHtml(rules.regionName)}</strong>
+      <span>重点確認 ${escapeHtml(rules.organicRadius)}m / 通知候補 ${escapeHtml(rules.notifyRadius)}m / 距離は実証用仮設定です。</span>
     </div>
   `;
 }
@@ -809,68 +992,289 @@ function renderRoleActionPanel() {
 
 function renderSprayerWorkflow(plan) {
   const progress = checkProgress(plan);
-  const steps = [
+  const actions = nextActionsForSprayer(plan);
+  const remainingActions = actions.slice(1, 5);
+  const preSteps = [
     { title: "計画登録", detail: `${plan.fieldName} / ${plan.timeWindow}`, done: Boolean(plan.fieldName && plan.pesticide), view: "plans" },
     { title: "周辺確認", detail: `${riskItemsForPlan(plan).length}件の確認項目`, done: Boolean(plan.checks.organic && plan.checks.sensitive), view: "map" },
     { title: "近隣通知", detail: notificationLabel(plan), done: notificationIsComplete(plan), view: "notify" },
-    { title: "気象記録", detail: weatherLabel(plan), done: Boolean(plan.weather.actualSpeed), view: "weather" },
-    { title: "飛行ログ", detail: droneLogLabel(), done: Boolean(activeDroneLog().imported), view: "drone" },
+    { title: "気象確認", detail: weatherCheckSummary(plan), done: Boolean(plan.checks.weatherEnv && plan.checks.wind), view: "weather" },
     { title: "散布前チェック", detail: `${progress.done}/${progress.total}項目`, done: progress.percent >= 85, view: "checklist" },
-    { title: "実施後報告", detail: plan.report.doneDate ? "提出済み" : "未提出", done: Boolean(plan.report.doneDate), view: "report" },
   ];
+  const postSteps = [
+    { title: "飛行ログ", detail: droneLogLabel(plan.droneLog || createSampleDroneLog(false)), done: Boolean(plan.droneLog?.imported), view: "drone" },
+    { title: "実施後報告", detail: plan.report.doneDate ? "提出済み" : "未提出", done: Boolean(plan.report.doneDate), view: "report" },
+    { title: "作業履歴反映", detail: plan.report.doneDate ? "履歴に反映済み" : "報告後に反映", done: Boolean(plan.report.doneDate), view: "history" },
+  ];
+  const renderSteps = (steps, offset = 0) =>
+    steps
+      .map(
+        (step, index) => `
+          <button class="workflow-step ${step.done ? "done" : "todo"}" data-view-target="${escapeAttr(step.view)}" type="button">
+            <span>${index + 1 + offset}</span>
+            <strong>${escapeHtml(step.title)}</strong>
+            <small>${escapeHtml(step.detail)}</small>
+          </button>
+        `,
+      )
+      .join("");
   return `
-    <div class="workflow-grid">
-      ${steps
-        .map(
-          (step, index) => `
-            <button class="workflow-step ${step.done ? "done" : "todo"}" data-view-target="${escapeAttr(step.view)}" type="button">
-              <span>${index + 1}</span>
-              <strong>${escapeHtml(step.title)}</strong>
-              <small>${escapeHtml(step.detail)}</small>
-            </button>
-          `,
-        )
-        .join("")}
+    <div class="next-action-panel">
+      <div class="next-action-primary">
+        <span class="tag tag-attention">次に必要な対応</span>
+        <strong>${escapeHtml(actions[0]?.title || "未完了タスクはありません")}</strong>
+        <span>${escapeHtml(actions[0]?.detail || "散布後は実施後報告とドローンログを残してください。")}</span>
+        <button class="primary-button" data-view-target="${escapeAttr(actions[0]?.view || "report")}" type="button">${escapeHtml(actions[0]?.title ? "この対応を開く" : "報告画面を開く")}</button>
+      </div>
+      <div class="next-action-list">
+        ${
+          remainingActions.length
+            ? remainingActions
+                .map(
+                  (action) => `
+                    <button class="next-action-row" data-view-target="${escapeAttr(action.view)}" type="button">
+                      <span>${escapeHtml(action.title)}</span>
+                      <small>${escapeHtml(action.detail)}</small>
+                    </button>
+                  `,
+                )
+                .join("")
+            : `<div class="next-action-row is-static"><span>次の記録に進めます</span><small>散布後はログ取込と実施後報告を残してください。</small></div>`
+        }
+      </div>
+    </div>
+    <div class="workflow-section">
+      <div class="workflow-section-head"><strong>散布前タスク</strong><span>周辺確認、通知、気象、チェックを先に確認します。</span></div>
+      <div class="workflow-grid">${renderSteps(preSteps)}</div>
+    </div>
+    <div class="workflow-section">
+      <div class="workflow-section-head"><strong>散布後タスク</strong><span>ログと報告を記録として残します。</span></div>
+      <div class="workflow-grid compact-workflow">${renderSteps(postSteps, preSteps.length)}</div>
     </div>
   `;
 }
 
 function renderNeighborHome(plan) {
-  const notices = riskItemsForPlan(plan)
-    .filter((item) => item.notifyTarget)
-    .slice(0, 4);
+  const notices = neighborRelevantNotices().slice(0, 4);
+  const field = activeField();
+  const profile = activeProfile();
+  const pending = notices.filter((notice) => notice.response === "未回答").length;
+  const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました").length;
   return `
+    <div class="neighbor-inbox-summary">
+      <article>
+        <span>未返信通知</span>
+        <strong>${pending}件</strong>
+      </article>
+      <article>
+        <span>近日散布予定</span>
+        <strong>${notices.length}件</strong>
+      </article>
+      <article>
+        <span>相談中</span>
+        <strong>${consulting}件</strong>
+      </article>
+      <article>
+        <span>公開範囲</span>
+        <strong>${escapeHtml(field.publicScope || "概略のみ共有")}</strong>
+      </article>
+    </div>
     <div class="neighbor-home-grid">
       <div class="neighbor-card">
         <strong>自分の圃場</strong>
-        <span>${escapeHtml(activeField().name)} / ${escapeHtml(activeField().cultivation || "未登録")}</span>
+        <span>${escapeHtml(field.name)} / ${escapeHtml(profile.municipality || field.municipality || "市町村未設定")} ${escapeHtml(profile.district || field.district || "")}</span>
+        <div class="field-mini-grid">
+          <div><span>作物</span><strong>${escapeHtml(field.crop || "未登録")}</strong></div>
+          <div><span>農薬使用ステータス</span><strong>${escapeHtml(field.cultivation || "未登録")}</strong></div>
+          <div><span>有機JAS</span><strong>${escapeHtml(field.organicJas || "未回答")}</strong></div>
+          <div><span>通知希望</span><strong>${escapeHtml(field.notifyPreference || "通知未確認")}</strong></div>
+        </div>
+        <span class="small-note">公開範囲：${escapeHtml(field.publicScope || "概略のみ共有")}</span>
+        <span class="small-note">最終更新日：${escapeHtml(field.updatedAt || "デモデータ")}</span>
         <div class="form-actions compact-actions">
-          <button class="secondary-button" data-view-target="fields" type="button">圃場を編集</button>
+          <button class="secondary-button" data-view-target="fields" type="button">圃場・公開範囲を編集</button>
           <button class="ghost-button" data-view-target="map" type="button">地図で確認</button>
         </div>
       </div>
       <div class="neighbor-card">
-        <strong>届いている散布通知</strong>
+        <strong>あなたに関係する散布予定</strong>
         <div class="notice-response-list">
           ${
             notices.length
-              ? notices
-                  .map(
-                    (notice) => `
-                      <div class="notice-response-row">
-                        <span>${escapeHtml(notice.name)} / ${escapeHtml(notice.distanceLabel)}</span>
-                        <div class="pill-line">
-                          <button class="pill-button" data-notify-action="${escapeAttr(notice.id)}" data-response="確認しました" type="button">確認</button>
-                          <button class="pill-button amber" data-notify-action="${escapeAttr(notice.id)}" data-response="時間変更希望" type="button">時間相談</button>
-                        </div>
-                      </div>
-                    `,
-                  )
-                  .join("")
+              ? notices.map(renderNeighborNoticeCard).join("")
               : `<div class="empty-state">現在の通知候補はありません。</div>`
           }
         </div>
       </div>
+    </div>
+    ${privacyScopeCard(field)}
+  `;
+}
+
+function renderNeighborNoticeCard(notice) {
+  const wind = noticeWindSummary(notice);
+  const reason = notificationReason(notice);
+  const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
+  const distanceClass = notice.level === "high" ? "red" : notice.level === "medium" ? "amber" : "green";
+  return `
+    <div class="notice-response-row notice-card">
+      <div class="notice-card-head">
+        <div>
+          <strong>${escapeHtml(notice.plan.date)} ${escapeHtml(notice.plan.timeWindow)}</strong>
+          <span>${escapeHtml(notice.plan.fieldName)} / ${escapeHtml(notice.plan.pesticide)}</span>
+        </div>
+        <span class="pill ${responseClass}">${escapeHtml(notice.response)}</span>
+      </div>
+      <div class="notice-card-metrics">
+        <div>
+          <span>距離</span>
+          <strong>${escapeHtml(notice.distanceLabel)}</strong>
+        </div>
+        <div>
+          <span>風下</span>
+          <strong>${escapeHtml(wind.short)}</strong>
+        </div>
+        <div>
+          <span>対象圃場</span>
+          <strong>${escapeHtml(notice.name)}</strong>
+        </div>
+      </div>
+      <div class="pill-line">
+        <span class="pill ${distanceClass}">${escapeHtml(riskLevelLabel(notice.level))}</span>
+        <span class="pill ${wind.className}">${escapeHtml(wind.label)}</span>
+        <span class="pill blue">${escapeHtml(notice.plan.materialType || "農薬")}</span>
+      </div>
+      <span class="small-note">通知理由：${escapeHtml(reason)}</span>
+      <span class="small-note">${escapeHtml(wind.detail)}</span>
+      <div class="pill-line notice-actions">
+        <button class="pill-button" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="確認しました" type="button">確認しました</button>
+        <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="時間変更希望" type="button">時間を相談</button>
+        <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="電話希望" type="button">電話で相談</button>
+        <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="収穫日につき要相談" type="button">収穫・作業あり</button>
+      </div>
+    </div>
+  `;
+}
+
+function notificationReason(notice) {
+  const rules = activeSettings();
+  if (["organic", "noChemical"].includes(notice.type) && notice.distance <= rules.organicRadius) {
+    return `農薬不使用圃場として登録済み、重点確認距離${rules.organicRadius}m以内`;
+  }
+  const wind = noticeWindSummary(notice);
+  if (wind.label.includes("要確認")) return "風下方向に位置";
+  if (notice.type === "preharvest") return "収穫予定時期が近い圃場として登録済み";
+  if (notice.type === "house") return "育苗・ハウス換気の調整対象";
+  return `通知対象距離${rules.notifyRadius}m以内`;
+}
+
+function noticeWindSummary(notice) {
+  const weather = notice.plan.weather || {};
+  const direction = weather.actualDirection || weather.forecastDirection || "未入力";
+  const downwind = direction && direction !== "未入力" ? downwindDirection(direction) : "未確認";
+  const isDownwind = downwind !== "未確認" && notice.direction === downwind;
+  return {
+    short: downwind,
+    label: isDownwind ? "風下方向：要確認" : `風下 ${downwind}`,
+    className: isDownwind ? "amber" : "green",
+    detail: `風向 ${direction} / 風下 ${downwind} / あなたの圃場は散布ほ場から${notice.direction}側です。`,
+  };
+}
+
+function nextActionsForSprayer(plan) {
+  const actions = [];
+  riskItemsForPlan(plan)
+    .filter((item) => item.notifyTarget && !item.notified)
+    .slice(0, 2)
+    .forEach((item) => actions.push({ title: `${item.name}へ通知`, detail: item.message, view: "notify" }));
+  if (!plan.checks.weatherForecast) {
+    actions.push({ title: "API予報を取得", detail: "Open-Meteoの予報値を散布予定時刻に合わせて取得します。", view: "weather" });
+  }
+  if (!plan.weather.actualSpeed || !plan.checks.wind) {
+    actions.push({ title: "散布直前に風速を実測", detail: "現地の風向・風速、測定場所、測定者を記録します。", view: "weather" });
+  }
+  if (!plan.checks.weatherEnv) {
+    actions.push({ title: "散布者確認を記録", detail: "予報と実測を見た上で、確認済みチェックを入れます。", view: "weather" });
+  }
+  if (!plan.checks.dips) {
+    actions.push({ title: "DIPS飛行計画を確認", detail: "V1では確認記録としてチェックを残します。", view: "checklist" });
+  }
+  if (!plan.droneLog?.imported) {
+    actions.push({ title: "散布後にドローンログ取込", detail: "飛行ルート、高度、散布ON/OFFログを記録に紐付けます。", view: "drone" });
+  }
+  if (!plan.report.doneDate && plan.date <= dateOffset(0)) {
+    actions.push({ title: "実施後報告を作成", detail: "実施日時、気象、問い合わせ有無を散布者控えとして残します。", view: "report" });
+  }
+  return actions;
+}
+
+function weatherCheckSummary(plan) {
+  const parts = [
+    plan.checks.weatherForecast ? "予報取得済み" : "予報未取得",
+    plan.checks.weatherEnv ? "散布者確認済み" : "散布者未確認",
+    plan.checks.wind ? "実測済み" : "実測未入力",
+  ];
+  return parts.join(" / ");
+}
+
+function neighborRelevantNotices() {
+  const since = dateOffset(-1);
+  const fieldId = activeField().id;
+  return state.plans
+    .filter((plan) => plan.date >= since)
+    .flatMap((plan) =>
+      riskItemsForPlan(plan)
+        .filter((item) => item.notifyTarget && item.id === fieldId)
+        .map((item) => ({
+          ...item,
+          plan,
+          response: notificationResponse(plan, item.id),
+        })),
+    )
+    .sort((a, b) => {
+      const responseRank = (response) => (response === "未回答" ? 0 : response === "確認しました" ? 2 : 1);
+      const responseA = responseRank(a.response);
+      const responseB = responseRank(b.response);
+      return responseA - responseB || `${a.plan.date} ${a.plan.timeWindow}`.localeCompare(`${b.plan.date} ${b.plan.timeWindow}`);
+    });
+}
+
+function privacyScopeCard(field) {
+  const rows = [
+    ["圃場位置", "概略", "自分のみ詳細", "必要時詳細"],
+    ["栽培ステータス", "表示", "自分のみ編集", "表示"],
+    ["連絡先", "通知対象のみ", "自分のみ", "管理用"],
+    ["返信内容", "関係者のみ", "自分", "管理者"],
+  ];
+  const scope = field.publicScope || "概略のみ共有";
+  const reassurance = scope === "自分のみ"
+    ? "現在は自分だけが詳細を確認できます。通知対象への共有は行いません。"
+    : scope === "通知対象に詳細共有"
+      ? "通知対象の散布者にだけ、確認に必要な詳細を共有します。"
+      : scope === "地域管理者まで詳細共有"
+        ? "地域管理者まで詳細を共有し、散布者には通知に必要な範囲で表示します。"
+        : "現在は圃場の概略と通知希望だけを共有します。連絡先の詳細は広く表示しません。";
+  return `
+    <div class="privacy-scope-card">
+      <div>
+        <span class="tag tag-blue">公開範囲</span>
+        <strong>${escapeHtml(scope)}</strong>
+        <span>${escapeHtml(reassurance)}</span>
+        <button class="ghost-button" data-view-target="profile" type="button">公開範囲を変更する</button>
+      </div>
+      <details class="privacy-scope-detail">
+        <summary>公開範囲を確認</summary>
+        <div class="privacy-scope-grid">
+          <div class="scope-header"><b>情報</b><span>散布者</span><span>自分</span><span>地域管理</span></div>
+          ${rows
+            .map(
+              ([info, sprayer, neighbor, admin]) => `
+                <div><b>${escapeHtml(info)}</b><span>${escapeHtml(sprayer)}</span><span>${escapeHtml(neighbor)}</span><span>${escapeHtml(admin)}</span></div>
+              `,
+            )
+            .join("")}
+        </div>
+      </details>
     </div>
   `;
 }
@@ -939,6 +1343,10 @@ function adminDashboardSummary() {
     riskItemsForPlan(plan).some((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high"),
   ).length;
   const windNeed = plans.filter(windNeedsAttention).length;
+  const droneMissing = plans.filter((plan) => !plan.droneLog?.imported).length;
+  const altitudeNeed = plans.filter((plan) => !plan.checks.altitude || altitudeCheckCount(plan.droneLog || activeDroneLog()) > 0).length;
+  const inquiry = regionPlans.filter((plan) => plan.report?.inquiry && plan.report.inquiry !== "なし").length;
+  const unregisteredNear = plans.filter((plan) => riskItemsForPlan(plan).some((risk) => risk.unregistered || risk.type === "public")).length;
   const today = dateOffset(0);
   const reportMissing = regionPlans.filter((plan) => plan.date <= today && !plan.report.doneDate).length;
   const replyNeed = regionPlans.reduce((total, plan) => {
@@ -956,6 +1364,10 @@ function adminDashboardSummary() {
     notifyIncomplete,
     organicNear,
     windNeed,
+    droneMissing,
+    altitudeNeed,
+    inquiry,
+    unregisteredNear,
     reportMissing,
     replyNeed,
     readiness,
@@ -975,6 +1387,9 @@ function renderAdminHome() {
     .map((name) => `<option value="${escapeAttr(name)}" ${name === adminDashboardFilters.municipality ? "selected" : ""}>${escapeHtml(name)}</option>`)
     .join("");
   return `
+    <div class="admin-disclaimer">
+      この画面は散布の許可・承認を行うものではありません。散布計画、近隣通知、気象確認、実施後報告の記録状況を一覧化するための実証用画面です。
+    </div>
     <div class="admin-filter-grid">
       <label>都道府県
         <select name="prefecture" data-admin-dashboard-filter>
@@ -1005,6 +1420,111 @@ function renderAdminHome() {
         <span>4</span><strong>近隣返信要確認</strong><small>${summary.replyNeed}件</small>
       </button>
     </div>
+    <div class="admin-queue-grid">
+      ${adminQueueItems(summary)
+        .map(
+          (item) => `
+            <button class="queue-chip ${item.count ? "todo" : "done"}" data-view-target="admin" type="button">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(String(item.count))}件</strong>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function adminQueueItems(summary) {
+  return [
+    { label: "通知未完了", count: summary.notifyIncomplete },
+    { label: "風向風速要確認", count: summary.windNeed },
+    { label: "報告未提出", count: summary.reportMissing },
+    { label: "ドローンログ未取込", count: summary.droneMissing },
+    { label: "高度要確認", count: summary.altitudeNeed },
+    { label: "問い合わせあり", count: summary.inquiry },
+    { label: "未登録圃場近接", count: summary.unregisteredNear },
+  ];
+}
+
+function adminAttentionReasons(plan) {
+  const reasons = [];
+  const risks = riskItemsForPlan(plan);
+  const unnotified = risks.filter((risk) => risk.notifyTarget && !plan.notificationTargets[risk.id]);
+  const organicNear = risks.filter((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high");
+  const consulting = Object.entries(plan.notificationResponses || {})
+    .filter(([, response]) => response && response !== "未回答" && response !== "確認しました")
+    .map(([fieldId, response]) => {
+      const field = state.fields.find((item) => item.id === fieldId);
+      return `${field?.name || fieldId}：${response}`;
+    });
+  if (organicNear.length) {
+    reasons.push({
+      level: "red",
+      title: "農薬不使用ほ場近接",
+      detail: organicNear.slice(0, 2).map((risk) => `${risk.name} ${risk.distanceLabel}`).join("、"),
+    });
+  }
+  if (unnotified.length) {
+    reasons.push({
+      level: "amber",
+      title: "通知未完了",
+      detail: `${unnotified.slice(0, 2).map((risk) => risk.name).join("、")}${unnotified.length > 2 ? " ほか" : ""}`,
+    });
+  }
+  if (windNeedsAttention(plan)) {
+    reasons.push({ level: "amber", title: "風向風速要確認", detail: weatherLabel(plan) });
+  }
+  if (!plan.checks.weatherEnv) {
+    reasons.push({ level: "amber", title: "散布者の気象確認未記録", detail: weatherCheckSummary(plan) });
+  }
+  if (!plan.droneLog?.imported) {
+    reasons.push({ level: "amber", title: "ドローンログ未取込", detail: "散布ON/OFF・高度・軌跡が未連携です。" });
+  }
+  const altitudeIssues = plan.droneLog?.imported ? altitudeCheckCount(plan.droneLog) : 0;
+  if (!plan.checks.altitude || altitudeIssues > 0) {
+    reasons.push({
+      level: altitudeIssues > 0 ? "red" : "amber",
+      title: "高度要確認",
+      detail: altitudeIssues > 0 ? `${altitudeIssues}区間で予定高度との差を確認` : "飛行高度予定の確認が未完了です。",
+    });
+  }
+  if (plan.date <= dateOffset(0) && !plan.report.doneDate) {
+    reasons.push({ level: "amber", title: "実施後報告未提出", detail: "対象日を過ぎた散布の報告が未提出です。" });
+  }
+  if (consulting.length) {
+    reasons.push({ level: "blue", title: "近隣返信要確認", detail: consulting.slice(0, 2).join("、") });
+  }
+  if (plan.report?.inquiry && plan.report.inquiry !== "なし") {
+    reasons.push({ level: "blue", title: "問い合わせあり", detail: plan.report.inquiry });
+  }
+  return reasons.length ? reasons : [{ level: "green", title: "追加確認なし", detail: "通知・気象・報告の記録に大きな未完了はありません。" }];
+}
+
+function renderAdminReasonChips(plan, limit = 3) {
+  return adminAttentionReasons(plan)
+    .slice(0, limit)
+    .map((reason) => `<span class="pill ${escapeAttr(reason.level)}">${escapeHtml(reason.title)}</span>`)
+    .join("");
+}
+
+function renderAdminReasonPanel(plan) {
+  return `
+    <div class="admin-reason-panel">
+      <strong>要確認理由</strong>
+      <div class="admin-reason-list">
+        ${adminAttentionReasons(plan)
+          .map(
+            (reason) => `
+              <div class="admin-reason-row">
+                <span class="pill ${escapeAttr(reason.level)}">${escapeHtml(reason.title)}</span>
+                <b>${escapeHtml(reason.detail)}</b>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -1029,9 +1549,9 @@ function sprayGoNoGo(plan) {
   else if (weather.level === "warn" || !notifyComplete) verdict = "caution";
   else verdict = "go";
   const meta = {
-    go: { label: "本日 散布可", icon: "○" },
-    caution: { label: "要注意・確認あり", icon: "△" },
-    stop: { label: "延期・要対応", icon: "×" },
+    go: { label: "記録上の確認状況：条件内", icon: "記" },
+    caution: { label: "追加確認が必要", icon: "確" },
+    stop: { label: "散布前に追加確認が必要です", icon: "確" },
   }[verdict];
   const actions = [];
   if (weather.level !== "good") actions.push({ view: "weather", label: "気象を確認" });
@@ -1075,18 +1595,50 @@ function renderGoNoGo() {
       <div class="gonogo-verdict">
         <span class="gonogo-icon">▦</span>
         <div>
-          <strong>${escapeHtml(adminDashboardFilters.prefecture)} ${escapeHtml(adminDashboardFilters.municipality)} / ${escapeHtml(summary.date)}</strong>
-          <span>航空写真上で、対象日の散布予定と実施済み圃場を色分けします。</span>
+          <strong>本日確認が必要な案件 ${escapeHtml(String(summary.attention + summary.notifyIncomplete + summary.reportMissing + summary.droneMissing + summary.altitudeNeed))}件</strong>
+          <span>${escapeHtml(adminDashboardFilters.prefecture)} ${escapeHtml(adminDashboardFilters.municipality)} / ${escapeHtml(summary.date)}。この画面は散布の許可・承認を行うものではありません。</span>
         </div>
       </div>
       <div class="gonogo-factors">
-        <div class="gonogo-factor ${summary.total ? "good" : "warn"}"><span>対象日の散布</span><b>${summary.total}件</b></div>
-        <div class="gonogo-factor ${summary.done ? "good" : "warn"}"><span>実施済み</span><b>${summary.done}件</b></div>
+        <div class="gonogo-factor ${summary.inquiry ? "warn" : "good"}"><span>問い合わせあり</span><b>${summary.inquiry}件</b></div>
+        <div class="gonogo-factor ${summary.reportMissing ? "warn" : "good"}"><span>報告未提出</span><b>${summary.reportMissing}件</b></div>
+        <div class="gonogo-factor ${summary.droneMissing ? "warn" : "good"}"><span>ログ未取込</span><b>${summary.droneMissing}件</b></div>
         <div class="gonogo-factor ${summary.notifyIncomplete ? "warn" : "good"}"><span>通知未完了</span><b>${summary.notifyIncomplete}件</b></div>
-        <div class="gonogo-factor ${summary.attention ? "bad" : "good"}"><span>要確認</span><b>${summary.attention}件</b></div>
+        <div class="gonogo-factor ${summary.altitudeNeed ? "warn" : "good"}"><span>高度要確認</span><b>${summary.altitudeNeed}件</b></div>
       </div>
       <div class="gonogo-actions">
         <button class="ghost-button" data-view-target="admin" type="button">散布予定・実績で詳細確認</button>
+      </div>
+    `;
+    return;
+  }
+  if (activeRole === "neighbor") {
+    const notices = neighborRelevantNotices();
+    const pending = notices.filter((notice) => notice.response === "未回答");
+    const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました");
+    const headline = pending.length
+      ? "未返信の散布通知があります"
+      : consulting.length
+        ? "未返信はありません。相談中の案件があります"
+        : "現在の通知状況：未返信なし";
+    card.className = `gonogo-card gonogo-${pending.length ? "caution" : "go"}`;
+    card.innerHTML = `
+      <div class="gonogo-verdict">
+        <span class="gonogo-icon">通</span>
+        <div>
+          <strong>${escapeHtml(headline)}</strong>
+          <span>あなたの圃場に関係する散布予定と返信状況を表示しています。</span>
+        </div>
+      </div>
+      <div class="gonogo-factors">
+        <div class="gonogo-factor ${pending.length ? "warn" : "good"}"><span>未返信通知</span><b>${pending.length}件</b></div>
+        <div class="gonogo-factor ${notices.length ? "warn" : "good"}"><span>近日散布予定</span><b>${notices.length}件</b></div>
+        <div class="gonogo-factor ${consulting.length ? "warn" : "good"}"><span>相談中</span><b>${consulting.length}件</b></div>
+        <div class="gonogo-factor good"><span>公開範囲</span><b>${escapeHtml(activeField().publicScope || "概略のみ共有")}</b></div>
+      </div>
+      <div class="gonogo-actions">
+        <button class="ghost-button" data-view-target="notify" type="button">通知に返信</button>
+        <button class="ghost-button" data-view-target="fields" type="button">公開範囲を確認</button>
       </div>
     `;
     return;
@@ -1115,6 +1667,10 @@ function renderDashboard() {
 
   if (activeRole === "admin") {
     renderAdminDashboardContent();
+    return;
+  }
+  if (activeRole === "neighbor") {
+    renderNeighborDashboardContent();
     return;
   }
 
@@ -1182,6 +1738,59 @@ function renderDashboard() {
     .join("");
 }
 
+function renderNeighborDashboardContent() {
+  const field = activeField();
+  const notices = neighborRelevantNotices();
+  $("#focusPlanTitle").textContent = `${field.name} に関係する散布予定`;
+  renderDashboardGisMap();
+
+  $("#priorityList").innerHTML = notices.length
+    ? notices
+        .slice(0, 5)
+        .map((notice) => {
+          const wind = noticeWindSummary(notice);
+          const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
+          return `
+            <button class="priority-row" type="button" data-view-target="notify">
+              <span>
+                <strong>${escapeHtml(notice.plan.date)} ${escapeHtml(notice.plan.timeWindow)} ${escapeHtml(notice.plan.fieldName)}</strong>
+                <span>${escapeHtml(notice.plan.pesticide)} / 距離 ${escapeHtml(notice.distanceLabel)} / ${escapeHtml(wind.label)}</span>
+              </span>
+              <span class="pill ${responseClass}">${escapeHtml(notice.response)}</span>
+            </button>
+          `;
+        })
+        .join("")
+    : `<div class="empty-state">あなたに関係する近日の散布通知はありません。</div>`;
+
+  $("#timeline").innerHTML = [
+    { title: "自分の圃場", detail: `${field.name} / ${field.cultivation || "未登録"} / ${field.notifyPreference || "通知未確認"}` },
+    { title: "公開範囲", detail: field.publicScope || "概略のみ共有" },
+    { title: "未返信通知", detail: `${notices.filter((notice) => notice.response === "未回答").length}件` },
+    { title: "次の操作", detail: "通知への返信、連絡方法、公開範囲を確認します。" },
+  ]
+    .map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></li>`)
+    .join("");
+
+  $("#planTableBody").innerHTML = notices.length
+    ? notices
+        .map((notice) => {
+          const wind = noticeWindSummary(notice);
+          const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
+          return `
+            <tr>
+              <td>${escapeHtml(notice.plan.date)}<br><span class="small-note">${escapeHtml(notice.plan.timeWindow)}</span></td>
+              <td>${escapeHtml(notice.plan.fieldName)}<br><span class="small-note">距離 ${escapeHtml(notice.distanceLabel)}</span></td>
+              <td>${escapeHtml(notice.plan.method)}<br><span class="small-note">${escapeHtml(notice.plan.pesticide)}</span></td>
+              <td><span class="pill ${wind.className}">${escapeHtml(wind.label)}</span></td>
+              <td><span class="pill ${responseClass}">${escapeHtml(notice.response)}</span></td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="5"><div class="empty-state">近日の通知はありません。</div></td></tr>`;
+}
+
 function renderAdminDashboardContent() {
   const summary = adminDashboardSummary();
   const plans = adminDashboardPlans().sort((a, b) => `${a.date} ${a.timeWindow}`.localeCompare(`${b.date} ${b.timeWindow}`));
@@ -1202,6 +1811,7 @@ function renderAdminDashboardContent() {
               <span>
                 <strong>${escapeHtml(planItem.fieldName)}</strong>
                 <span>${escapeHtml(planItem.date)} ${escapeHtml(planItem.timeWindow)} / ${escapeHtml(planItem.operator)}</span>
+                <span class="pill-line">${renderAdminReasonChips(planItem, 2)}</span>
               </span>
               ${riskTag(level)}
             </button>
@@ -1223,8 +1833,9 @@ function renderAdminDashboardContent() {
   $("#timeline").innerHTML = [
     { title: "地域条件", detail: `${adminDashboardFilters.prefecture} ${adminDashboardFilters.municipality}` },
     { title: "対象日", detail: `${summary.date} / 予定 ${summary.planned}件・実施済み ${summary.done}件` },
+    { title: "確認キュー", detail: `通知未完了 ${summary.notifyIncomplete}件 / 報告未提出 ${summary.reportMissing}件 / ドローンログ未取込 ${summary.droneMissing}件` },
     { title: "航空写真表示", detail: "黄が散布予定、緑が実施済み、赤が追加確認対象です。" },
-    { title: "詳細確認", detail: "行単位の詳細は「散布予定・実績」タブで確認します。" },
+    { title: "位置づけ", detail: "散布の許可・承認ではなく、記録状況と追加確認対象の一覧です。" },
   ]
     .map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></li>`)
     .join("");
@@ -1426,7 +2037,7 @@ function renderDashboardMapReadouts() {
     return;
   }
 
-  $("#dashboardMapCardTitle").textContent = "散布可否の気象条件";
+  $("#dashboardMapCardTitle").textContent = "散布前確認支援";
   const plan = activePlan();
   const weather = plan.weather || {};
   const decision = weatherDecision(plan);
@@ -2266,11 +2877,14 @@ function renderFieldStatus() {
     const candidate = activeField();
     Object.entries({
       name: candidate.name,
+      municipality: candidate.municipality,
+      district: candidate.district,
       crop: candidate.crop,
       cultivation: candidate.cultivation,
       chemicalUse: candidate.chemicalUse,
       organicJas: candidate.organicJas,
       notifyPreference: candidate.notifyPreference,
+      publicScope: candidate.publicScope,
       contactMethod: candidate.contactMethod,
       harvestWindow: candidate.harvestWindow,
       avoidReason: candidate.avoidReason,
@@ -2292,6 +2906,7 @@ function renderFieldStatus() {
           <div class="pill-line">
             <span class="pill ${field.chemicalUse === "なし" || field.organicJas === "あり" ? "green" : field.unregistered ? "amber" : "blue"}">${escapeHtml(field.cultivation || FIELD_TYPE_META[field.type]?.[0] || "未確認")}</span>
             <span class="pill ${field.notifyPreference === "希望する" ? "amber" : "green"}">${escapeHtml(field.notifyPreference || "通知候補")}</span>
+            <span class="pill blue">${escapeHtml(field.publicScope || "概略のみ共有")}</span>
           </div>
           <strong>${escapeHtml(field.name)}</strong>
           <span>${escapeHtml(field.crop || "作物未登録")} / ${escapeHtml(field.avoidReason || "理由未登録")}</span>
@@ -2346,7 +2961,7 @@ function updateFieldStatusFromForm() {
   const form = $("#fieldStatusForm");
   const target = activeField();
   if (!target || !form) return;
-  ["name", "crop", "cultivation", "chemicalUse", "organicJas", "notifyPreference", "contactMethod", "harvestWindow", "avoidReason"].forEach((name) => {
+  ["name", "municipality", "district", "crop", "cultivation", "chemicalUse", "organicJas", "notifyPreference", "publicScope", "contactMethod", "harvestWindow", "avoidReason"].forEach((name) => {
     target[name] = form.elements[name].value.trim();
   });
   ["seedling", "house", "waterNear", "unregistered"].forEach((name) => {
@@ -2366,6 +2981,7 @@ function updateFieldStatusFromForm() {
     target.type = "public";
     target.short = "未確";
   }
+  target.updatedAt = dateOffset(0);
 }
 
 function renderAltitudeChart(log) {
@@ -2423,7 +3039,7 @@ function renderNotification() {
               <span class="pill ${item.notified ? "green" : "amber"}">${item.notified ? "通知済み" : "未通知"}</span>
               <label class="response-select">
                 返信
-                <select data-notify-response="${escapeAttr(item.id)}">
+                <select data-notify-plan="${escapeAttr(plan.id)}" data-notify-response="${escapeAttr(item.id)}">
                   ${NOTICE_RESPONSE_OPTIONS.map((option) => `<option ${response === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
                 </select>
               </label>
@@ -2500,6 +3116,9 @@ function renderWeather() {
     const input = form.elements[name];
     if (input) input.value = value ?? "";
   });
+  if (form.elements.weatherConfirmed) {
+    form.elements.weatherConfirmed.checked = Boolean(plan.checks.weatherEnv);
+  }
 
   const downwind = downwindDirection(plan.weather.actualDirection || plan.weather.forecastDirection);
   $("#windCompass b").textContent = downwind;
@@ -2519,6 +3138,11 @@ function renderWeatherApiStatus(plan) {
       <span class="tag ${weather.source ? "tag-blue" : "tag-attention"}">${escapeHtml(source)}</span>
       <strong>${escapeHtml(weather.locationLabel || DEFAULT_WEATHER_LOCATION.label)}</strong>
       <span class="small-note">取得時刻：${escapeHtml(fetchedAt)} / 対象：${escapeHtml(targetTime)}</span>
+    </div>
+    <div class="weather-check-strip">
+      <span class="pill ${plan.checks.weatherForecast ? "green" : "amber"}">予報${plan.checks.weatherForecast ? "取得済み" : "未取得"}</span>
+      <span class="pill ${plan.checks.weatherEnv ? "green" : "amber"}">散布者${plan.checks.weatherEnv ? "確認済み" : "未確認"}</span>
+      <span class="pill ${plan.checks.wind ? "green" : "amber"}">現地実測${plan.checks.wind ? "済み" : "未入力"}</span>
     </div>
     <p>API予報は散布判断の補助です。散布直前の現地実測は別途記録してください。</p>
   `;
@@ -3399,9 +4023,7 @@ function renderAdmin() {
   tbody.innerHTML = rows.length
     ? rows
         .map((plan) => {
-          const g = sprayGoNoGo(plan);
           const done = Boolean(plan.report.doneDate);
-          const wcolor = g.verdict === "go" ? "green" : g.verdict === "caution" ? "amber" : "red";
           return `
             <tr class="admin-row ${plan.id === adminSelectedId ? "selected" : ""}" data-admin-plan="${escapeAttr(plan.id)}">
               <td>${escapeHtml(plan.date)}<br><span class="muted-cell">${escapeHtml(plan.timeWindow)}</span></td>
@@ -3409,7 +4031,7 @@ function renderAdmin() {
               <td>${escapeHtml(plan.district)}<br><span class="muted-cell">${escapeHtml(plan.fieldName)}</span></td>
               <td>${materialTypeTag(plan.materialType || "農薬")}<br><span class="muted-cell">${escapeHtml(plan.pesticide)}</span></td>
               <td>${done ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
-              <td><span class="pill ${wcolor}">${g.icon}</span></td>
+              <td><div class="pill-line">${renderAdminReasonChips(plan, 2)}</div></td>
             </tr>`;
         })
         .join("")
@@ -3441,6 +4063,7 @@ function renderAdminDetail() {
   ];
   info.innerHTML = `
     <div class="gonogo-card gonogo-${g.verdict} admin-gonogo">${goNoGoInner(g, plan, false)}</div>
+    ${renderAdminReasonPanel(plan)}
     <div class="admin-detail-rows">
       ${rows.map(([k, v]) => `<div class="admin-detail-row"><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`).join("")}
     </div>
@@ -3501,6 +4124,391 @@ function updateSettingsFromForm() {
     next.windCaution = next.windLimit;
   }
   state.settings = next;
+}
+
+function renderProfileForm() {
+  const form = $("#profileForm");
+  if (!form) return;
+  const profile = activeProfile();
+  form.elements.role.value = profile.role || "";
+  renderProfileRoleOptions(profile.role);
+  setFormValue(form, "name", profile.name);
+  setFormValue(form, "organizationName", profile.organizationName);
+  setFormValue(form, "municipality", profile.municipality);
+  setFormValue(form, "district", profile.district);
+  setFormValue(form, "addressDetail", profile.addressDetail);
+  setFormValue(form, "phone", profile.phone);
+  setFormValue(form, "email", profile.email);
+  setFormValue(form, "preferredContactMethod", profile.preferredContactMethod);
+  setFormValue(form, "affiliation", profile.affiliation || "個人");
+
+  setFormValue(form, "sprayer_defaultMethod", profile.sprayer.defaultMethod);
+  setFormValue(form, "sprayer_droneModel", profile.sprayer.droneModel);
+  setFormValue(form, "sprayer_aircraftRegistration", profile.sprayer.aircraftRegistration);
+  setFormValue(form, "sprayer_remoteId", profile.sprayer.remoteId);
+  setFormValue(form, "sprayer_defaultPilot", profile.sprayer.defaultPilot);
+  setFormValue(form, "sprayer_defaultAssistant", profile.sprayer.defaultAssistant);
+  setFormValue(form, "sprayer_defaultSprayDevice", profile.sprayer.defaultSprayDevice);
+  setFormValue(form, "sprayer_defaultNozzle", profile.sprayer.defaultNozzle);
+  setFormValue(form, "sprayer_defaultAltitude", profile.sprayer.defaultAltitude);
+  setFormValue(form, "sprayer_defaultSpeed", profile.sprayer.defaultSpeed);
+  setFormValue(form, "sprayer_logImportMethod", profile.sprayer.logImportMethod);
+
+  setFormValue(form, "neighbor_notificationPreference", profile.neighbor.notificationPreference);
+  setFormValue(form, "neighbor_contactTimeNote", profile.neighbor.contactTimeNote);
+  setFormValue(form, "neighbor_defaultCultivation", profile.neighbor.defaultCultivation);
+
+  setFormValue(form, "admin_organizationType", profile.admin.organizationType || "自治体");
+  setFormValue(form, "admin_managedDistricts", profile.admin.managedDistricts.join(", "));
+  setFormValue(form, "admin_ruleSetName", profile.admin.ruleSetName || activeSettings().regionName);
+  setFormValue(form, "admin_organicRadius", activeSettings().organicRadius);
+  setFormValue(form, "admin_notifyRadius", activeSettings().notifyRadius);
+  setFormValue(form, "admin_sensitiveRadius", activeSettings().sensitiveRadius);
+  setFormValue(form, "admin_windCaution", activeSettings().windCaution);
+  setFormValue(form, "admin_windLimit", activeSettings().windLimit);
+  setFormValue(form, "admin_noticeDeadlineDays", activeSettings().noticeDeadlineDays);
+  setFormValue(form, "admin_reportDeadlineDays", activeSettings().reportDeadlineDays);
+  setFormValue(form, "admin_sharingScope", profile.admin.sharingScope || activeSettings().sharingScope);
+
+  renderVisibilitySelects(form, profile);
+  renderMunicipalityChips(profile);
+  renderBoundaryStatus(profile);
+}
+
+function setFormValue(form, name, value) {
+  const input = form.elements[name];
+  if (input) input.value = value ?? "";
+}
+
+function renderProfileRoleOptions(selectedRole) {
+  $$("[data-profile-role]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.profileRole === selectedRole);
+  });
+  $$("[data-profile-settings]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.profileSettings === selectedRole);
+  });
+}
+
+function renderVisibilitySelects(form, profile) {
+  Object.keys(profile.visibility).forEach((key) => {
+    const select = form.elements[`visibility_${key}`];
+    if (!select) return;
+    select.innerHTML = VISIBILITY_OPTIONS.map(
+      ([value, label]) => `<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`,
+    ).join("");
+    select.value = profile.visibility[key] || "relatedOnly";
+  });
+}
+
+function profileBoundaryChoices() {
+  const entries = boundaryCatalog.length ? boundaryCatalog : [];
+  const preferred = entries.filter((entry) => PREFERRED_BOUNDARY_NAMES.some((name) => entry.name.includes(name)));
+  return preferred.length ? preferred : entries;
+}
+
+function renderMunicipalityChips(profile) {
+  const wrap = $("#profileMunicipalityChips");
+  if (!wrap) return;
+  const choices = profileBoundaryChoices();
+  wrap.innerHTML = choices.length
+    ? choices
+        .map((entry) => {
+          const checked = profile.targetMunicipalities.includes(entry.code);
+          const isZip = entry.file.toLowerCase().endsWith(".zip");
+          return `
+            <label class="municipality-chip ${checked ? "selected" : ""}">
+              <input type="checkbox" name="targetMunicipality" value="${escapeAttr(entry.code)}" ${checked ? "checked" : ""}>
+              <span>${escapeHtml(entry.name)}</span>
+              <small>${isZip ? "手動読込" : "軽量"}</small>
+            </label>
+          `;
+        })
+        .join("")
+    : `<div class="empty-state">市町村カタログを読み込み中です。</div>`;
+}
+
+function renderBoundaryStatus(profile) {
+  const wrap = $("#profileBoundaryStatus");
+  if (!wrap) return;
+  const entries = profileBoundaryChoices().filter((entry) => profile.targetMunicipalities.includes(entry.code));
+  wrap.innerHTML = entries.length
+    ? entries
+        .map((entry) => {
+          const status = profile.boundaryLoadStatus[entry.code] || "notLoaded";
+          const isZip = entry.file.toLowerCase().endsWith(".zip");
+          return `
+            <div class="boundary-status-row">
+              <div>
+                <strong>${escapeHtml(entry.name)}</strong>
+                <span>${escapeHtml(boundaryStatusLabel(status))} / ${escapeHtml(isZip ? "筆ポリゴンzip" : "軽量GeoJSON")}</span>
+              </div>
+              ${
+                isZip
+                  ? `<button class="ghost-button tiny" data-profile-boundary-load="${escapeAttr(entry.code)}" type="button">筆ポリゴンを読み込む</button>`
+                  : `<span class="pill ${status === "loaded" ? "green" : status === "failed" ? "red" : "amber"}">${escapeHtml(boundaryStatusLabel(status))}</span>`
+              }
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="empty-state">対象市町村を選択すると境界データの読込状態を表示します。</div>`;
+}
+
+function boundaryStatusLabel(status) {
+  return {
+    notLoaded: "未読込",
+    loading: "読込中",
+    loaded: "読込済み",
+    failed: "読込失敗",
+  }[status] || "未読込";
+}
+
+function saveProfileFromForm() {
+  const form = $("#profileForm");
+  if (!form) return;
+  const role = form.elements.role.value;
+  if (!ROLE_META[role]) {
+    showToast("利用区分を選択してください。");
+    return;
+  }
+  const selectedMunicipalities = $$("input[name='targetMunicipality']:checked", form).map((input) => input.value);
+  const current = activeProfile();
+  const profile = {
+    ...current,
+    registered: true,
+    role,
+    name: form.elements.name.value.trim(),
+    organizationName: form.elements.organizationName.value.trim(),
+    municipality: form.elements.municipality.value.trim(),
+    district: form.elements.district.value.trim(),
+    addressDetail: form.elements.addressDetail.value.trim(),
+    phone: form.elements.phone.value.trim(),
+    email: form.elements.email.value.trim(),
+    preferredContactMethod: form.elements.preferredContactMethod.value,
+    affiliation: form.elements.affiliation.value,
+    targetMunicipalities: selectedMunicipalities,
+    visibility: {
+      name: form.elements.visibility_name.value,
+      phone: form.elements.visibility_phone.value,
+      addressDetail: form.elements.visibility_addressDetail.value,
+      fieldLocation: form.elements.visibility_fieldLocation.value,
+      cropStatus: form.elements.visibility_cropStatus.value,
+      notificationReplies: form.elements.visibility_notificationReplies.value,
+    },
+    sprayer: {
+      ...current.sprayer,
+      defaultMethod: form.elements.sprayer_defaultMethod.value,
+      droneModel: form.elements.sprayer_droneModel.value.trim(),
+      aircraftRegistration: form.elements.sprayer_aircraftRegistration.value.trim(),
+      remoteId: form.elements.sprayer_remoteId.value.trim(),
+      defaultPilot: form.elements.sprayer_defaultPilot.value.trim(),
+      defaultAssistant: form.elements.sprayer_defaultAssistant.value.trim(),
+      defaultSprayDevice: form.elements.sprayer_defaultSprayDevice.value.trim(),
+      defaultNozzle: form.elements.sprayer_defaultNozzle.value.trim(),
+      defaultAltitude: form.elements.sprayer_defaultAltitude.value.trim(),
+      defaultSpeed: form.elements.sprayer_defaultSpeed.value.trim(),
+      logImportMethod: form.elements.sprayer_logImportMethod.value,
+    },
+    neighbor: {
+      ...current.neighbor,
+      notificationPreference: form.elements.neighbor_notificationPreference.value,
+      contactTimeNote: form.elements.neighbor_contactTimeNote.value.trim(),
+      defaultCultivation: form.elements.neighbor_defaultCultivation.value,
+    },
+    admin: {
+      ...current.admin,
+      organizationType: form.elements.admin_organizationType.value,
+      managedMunicipalities: selectedMunicipalities,
+      managedDistricts: form.elements.admin_managedDistricts.value.split(",").map((item) => item.trim()).filter(Boolean),
+      ruleSetName: form.elements.admin_ruleSetName.value.trim(),
+      sharingScope: form.elements.admin_sharingScope.value,
+    },
+    boundaryLoadStatus: selectedMunicipalities.reduce((acc, code) => {
+      acc[code] = current.boundaryLoadStatus[code] || "notLoaded";
+      return acc;
+    }, {}),
+  };
+  state.profile = normalizeProfile(profile);
+  state.role = role;
+  activeRole = role;
+  if (role === "admin") {
+    state.settings = {
+      ...activeSettings(),
+      regionName: profile.admin.ruleSetName || activeSettings().regionName,
+      managerName: profile.name || profile.organizationName || activeSettings().managerName,
+      organicRadius: toPositiveNumber(form.elements.admin_organicRadius.value, DEFAULT_SETTINGS.organicRadius),
+      notifyRadius: toPositiveNumber(form.elements.admin_notifyRadius.value, DEFAULT_SETTINGS.notifyRadius),
+      sensitiveRadius: toPositiveNumber(form.elements.admin_sensitiveRadius.value, DEFAULT_SETTINGS.sensitiveRadius),
+      windCaution: toPositiveNumber(form.elements.admin_windCaution.value, DEFAULT_SETTINGS.windCaution),
+      windLimit: toPositiveNumber(form.elements.admin_windLimit.value, DEFAULT_SETTINGS.windLimit),
+      noticeDeadlineDays: toPositiveNumber(form.elements.admin_noticeDeadlineDays.value, DEFAULT_SETTINGS.noticeDeadlineDays),
+      reportDeadlineDays: toPositiveNumber(form.elements.admin_reportDeadlineDays.value, DEFAULT_SETTINGS.reportDeadlineDays),
+      sharingScope: profile.admin.sharingScope,
+    };
+  }
+  if (role === "sprayer") {
+    applyProfileToActivePlan({ silent: true });
+  }
+  if (role === "neighbor") {
+    applyNeighborProfileToField();
+  }
+  saveState();
+  renderAll();
+  switchView("dashboard");
+  loadProfileLightBoundaries();
+  showToast("プロフィールを保存しました。");
+}
+
+function resetProfileToDemoMode() {
+  if (!confirm("プロフィールだけをリセットして未登録デモモードに戻しますか？")) return;
+  state.profile = defaultProfile();
+  state.role = "sprayer";
+  activeRole = "sprayer";
+  saveState();
+  renderAll();
+  switchView("profile");
+  showToast("未登録デモモードに戻しました。");
+}
+
+function registeredProfileFor(role) {
+  if (!state?.profile) return null;
+  const profile = normalizeProfile(state.profile);
+  return profile.registered && profile.role === role ? profile : null;
+}
+
+function profileEquipmentTemplate() {
+  const profile = registeredProfileFor("sprayer");
+  if (!profile) return {};
+  return {
+    droneModel: profile.sprayer.droneModel,
+    aircraftRegistration: profile.sprayer.aircraftRegistration,
+    pilot: profile.sprayer.defaultPilot,
+    assistant: profile.sprayer.defaultAssistant,
+    sprayDevice: profile.sprayer.defaultSprayDevice,
+    nozzle: profile.sprayer.defaultNozzle,
+    plannedAltitude: profile.sprayer.defaultAltitude,
+    plannedSpeed: profile.sprayer.defaultSpeed,
+  };
+}
+
+function profilePlanDefaults() {
+  const profile = registeredProfileFor("sprayer");
+  if (!profile) return {};
+  return {
+    method: profile.sprayer.defaultMethod || "ドローン",
+    operator: profile.name || profile.organizationName || "匿名散布者",
+    contact: profile.phone || profile.email || "デモ連絡先",
+    district: [profile.municipality, profile.district].filter(Boolean).join(" ") || "笠間市周辺デモ",
+  };
+}
+
+function profileWeatherDefaults() {
+  const profile = registeredProfileFor("sprayer") || registeredProfileFor("neighbor") || registeredProfileFor("admin");
+  if (!profile) return {};
+  const label = [profile.municipality, profile.district].filter(Boolean).join(" ");
+  return label ? { locationLabel: label } : {};
+}
+
+function profileFieldDefaults() {
+  const profile = registeredProfileFor("neighbor");
+  if (!profile) return {};
+  return {
+    owner: profile.name || profile.organizationName || "自分",
+    municipality: profile.municipality,
+    district: profile.district,
+    contactMethod: CONTACT_METHOD_LABELS[profile.preferredContactMethod] || "電話",
+    cultivation: profile.neighbor.defaultCultivation || "農薬使用なし",
+    notifyPreference: notificationPreferenceLabel(profile.neighbor.notificationPreference),
+    publicScope: visibilityLabel(profile.visibility.fieldLocation),
+  };
+}
+
+function applyProfileToActivePlan(options = {}) {
+  const profile = activeProfile();
+  if (!profile.registered || profile.role !== "sprayer") {
+    if (!options.silent) showToast("散布者プロフィールを登録すると反映できます。");
+    return;
+  }
+  const plan = activePlan();
+  plan.method = profile.sprayer.defaultMethod || plan.method;
+  plan.operator = profile.name || profile.organizationName || plan.operator;
+  plan.contact = profile.phone || profile.email || plan.contact;
+  plan.district = [profile.municipality, profile.district].filter(Boolean).join(" ") || plan.district;
+  plan.weather = { ...defaultWeather(), ...(plan.weather || {}), ...profileWeatherDefaults() };
+  Object.entries(profileEquipmentTemplate()).forEach(([key, value]) => {
+    if (value) plan[key] = value;
+  });
+  state.equipmentTemplate = { ...state.equipmentTemplate, ...profileEquipmentTemplate() };
+  saveState();
+  renderPlanForm();
+  if (!options.silent) showToast("プロフィールの散布者情報を計画に反映しました。");
+}
+
+function applyNeighborProfileToField() {
+  const profile = activeProfile();
+  if (!profile.registered || profile.role !== "neighbor") return;
+  const field = activeField();
+  field.owner = profile.name || profile.organizationName || "自分";
+  field.contactMethod = CONTACT_METHOD_LABELS[profile.preferredContactMethod] || field.contactMethod;
+  field.cultivation = profile.neighbor.defaultCultivation || field.cultivation;
+  field.notifyPreference = notificationPreferenceLabel(profile.neighbor.notificationPreference);
+  field.publicScope = visibilityLabel(profile.visibility.fieldLocation);
+  if (profile.municipality && !field.municipality) field.municipality = profile.municipality;
+  if (profile.district && !field.district) field.district = profile.district;
+  field.updatedAt = dateOffset(0);
+}
+
+function notificationPreferenceLabel(value) {
+  return {
+    allNearby: "すべての近隣散布",
+    nearbyOnly: "近接時のみ",
+    downwindOnly: "風下方向のみ",
+    agrochemicalOnly: "農薬散布のみ",
+    asNeeded: "必要時のみ",
+    nearbyAndDownwind: "近接・風下時",
+  }[value] || "必要時のみ";
+}
+
+function visibilityLabel(value) {
+  return Object.fromEntries(VISIBILITY_OPTIONS)[value] || "関係者限定";
+}
+
+async function loadProfileLightBoundaries() {
+  const profile = activeProfile();
+  if (!profile.targetMunicipalities.length || !boundaryCatalog.length) return;
+  const entries = boundaryCatalog.filter(
+    (entry) => profile.targetMunicipalities.includes(entry.code) && !entry.file.toLowerCase().endsWith(".zip"),
+  );
+  if (!entries.length) return;
+  const features = [];
+  for (const entry of entries) {
+    profile.boundaryLoadStatus[entry.code] = "loading";
+    try {
+      const res = await fetch(`data/boundaries/${encodeURIComponent(entry.file)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      featuresFromGeoJsonText(await res.text()).forEach((feature) => features.push(feature));
+      profile.boundaryLoadStatus[entry.code] = "loaded";
+    } catch (error) {
+      profile.boundaryLoadStatus[entry.code] = "failed";
+    }
+  }
+  if (features.length) {
+    applyBoundaryFeatures(features, { silent: true, name: "プロフィール対象市町村" });
+  }
+  saveState();
+  renderAll();
+  requestAnimationFrame(() => focusVisibleMaps("all"));
+}
+
+async function loadProfileBoundary(code) {
+  const profile = activeProfile();
+  profile.boundaryLoadStatus[code] = "loading";
+  saveState();
+  renderProfileForm();
+  const ok = await loadMunicipalityBoundary(code);
+  profile.boundaryLoadStatus[code] = ok ? "loaded" : "failed";
+  saveState();
+  renderProfileForm();
 }
 
 function renderBars(selector, title, counts) {
@@ -3594,7 +4602,9 @@ function updateWeatherFromForm() {
     measuredBy: form.elements.measuredBy.value.trim(),
     weatherNotes: form.elements.weatherNotes.value.trim(),
   };
-  plan.checks.weatherEnv = Boolean(plan.weather.humidity || plan.weather.maxGust || plan.weather.rainForecast);
+  plan.checks.weatherForecast = Boolean(plan.weather.source || plan.weather.fetchedAt || plan.weather.forecastSpeed || plan.weather.maxGust || plan.weather.rainForecast);
+  plan.checks.wind = Boolean(plan.weather.actualSpeed && plan.weather.measuredAt && plan.weather.measuredPlace);
+  plan.checks.weatherEnv = Boolean(form.elements.weatherConfirmed?.checked);
 }
 
 async function fetchWeatherForecast() {
@@ -3632,7 +4642,7 @@ async function fetchWeatherForecast() {
       ...plan.weather,
       latitude,
       longitude,
-      locationLabel: DEFAULT_WEATHER_LOCATION.label,
+      locationLabel: weather.locationLabel || DEFAULT_WEATHER_LOCATION.label,
       forecastDirection: degreesToDirection(directionDegrees),
       forecastSpeed: roundOne(speed),
       maxGust: roundOne(gust),
@@ -3644,7 +4654,7 @@ async function fetchWeatherForecast() {
       forecastTargetTime: forecast.time || current.time || "",
       weatherNotes: plan.weather.weatherNotes || "Open-Meteoの予報値を自動取得。散布直前に現地実測を記録してください。",
     };
-    plan.checks.weatherEnv = true;
+    plan.checks.weatherForecast = true;
     saveState();
     renderAll();
     showToast("気象情報を自動取得しました。");
@@ -3801,14 +4811,15 @@ function markSelectedTargetsNotified() {
   showToast("通知履歴を更新しました。");
 }
 
-function setNotificationResponse(fieldId, response) {
-  const plan = activePlan();
+function setNotificationResponse(fieldId, response, planId = "") {
+  const plan = state.plans.find((item) => item.id === planId) || activePlan();
   plan.notificationResponses = plan.notificationResponses || {};
   plan.notificationResponses[fieldId] = response || "未回答";
   if (response && response !== "未回答") {
     plan.notificationTargets[fieldId] = true;
   }
   plan.checks.notice = notificationIsComplete(plan);
+  state.activePlanId = plan.id;
   saveState();
   renderAll();
   showToast(`返信を「${response || "未回答"}」に更新しました。`);
@@ -3868,7 +4879,7 @@ function buildPrecheckPrint(plan) {
     <article class="print-doc">
       <h1>農薬散布前 確認記録</h1>
       <p>確認状況：${progress.done} / ${progress.total} 項目</p>
-      <p>確認完了度：${readinessScore(plan).value}</p>
+      <p>確認進捗：${readinessScore(plan).value}</p>
       <p>実証ルール案：${escapeHtml(rules.regionName)} / 有機ほ場 ${escapeHtml(rules.organicRadius)}m以内重点確認 / 通知 ${escapeHtml(rules.notifyRadius)}m以内 / 風速 ${escapeHtml(rules.windLimit)}m/s以上は延期検討</p>
       ${printTable([
         ["散布予定", `${plan.date} ${plan.timeWindow}`],
@@ -3915,7 +4926,7 @@ function buildAdminPrint() {
       <p>実証ルール案：${escapeHtml(rules.regionName)} / 有機ほ場 ${escapeHtml(rules.organicRadius)}m以内重点確認 / 通知 ${escapeHtml(rules.notifyRadius)}m以内 / 風速 ${escapeHtml(rules.windLimit)}m/s以上は延期検討</p>
       <table>
         <thead>
-          <tr><th>日付</th><th>地区</th><th>ほ場</th><th>周辺確認</th><th>通知</th><th>チェック</th><th>確認完了度</th><th>報告</th></tr>
+          <tr><th>日付</th><th>地区</th><th>ほ場</th><th>周辺確認</th><th>通知</th><th>チェック</th><th>確認進捗</th><th>報告</th></tr>
         </thead>
         <tbody>
           ${state.plans
@@ -3987,7 +4998,7 @@ function printTable(rows) {
 
 function exportCsv() {
   const rows = [
-    ["日付", "時間", "地区", "ほ場", "作物", "農薬", "方法", "周辺確認", "通知", "チェック", "確認完了度", "報告"],
+    ["日付", "時間", "地区", "ほ場", "作物", "農薬", "方法", "周辺確認", "通知", "チェック", "確認進捗", "報告"],
     ...state.plans.map((plan) => {
       const progress = checkProgress(plan);
       return [
@@ -4055,6 +5066,7 @@ function exportHistoryCsv() {
 
 function getDashboardMetrics() {
   if (activeRole === "admin") return getAdminDashboardMetrics();
+  if (activeRole === "neighbor") return getNeighborDashboardMetrics();
 
   const rules = activeSettings();
   const today = dateOffset(0);
@@ -4075,7 +5087,21 @@ function getDashboardMetrics() {
     { label: "風向・風速要確認", value: `${windNeed}件`, note: "気象メモ", alert: windNeed > 0 },
     { label: "実施後報告未提出", value: `${reportMissing}件`, note: "散布者控え", alert: reportMissing > 0 },
     { label: "追加確認が必要な予定", value: `${highRisk}件`, note: "管理者確認", alert: highRisk > 0 },
-    { label: "表示中の確認完了度", value: `${activeReadiness}`, note: "説明用指標", alert: activeReadiness < 70 },
+    { label: "表示中の確認進捗", value: `${activeReadiness}`, note: "説明用指標", alert: activeReadiness < 70 },
+  ];
+}
+
+function getNeighborDashboardMetrics() {
+  const notices = neighborRelevantNotices();
+  const field = activeField();
+  const pending = notices.filter((notice) => notice.response === "未回答").length;
+  const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました").length;
+  return [
+    { label: "未返信通知", value: `${pending}件`, note: "通知インボックス", alert: pending > 0 },
+    { label: "近日散布予定", value: `${notices.length}件`, note: "自分に関係", alert: notices.length > 0 },
+    { label: "時間変更・電話相談", value: `${consulting}件`, note: "返信履歴", alert: consulting > 0 },
+    { label: "公開範囲", value: field.publicScope || "概略のみ共有", note: "圃場情報", alert: false },
+    { label: "通知希望", value: field.notifyPreference || "未確認", note: field.name, alert: field.notifyPreference === "未確認" },
   ];
 }
 
@@ -4084,13 +5110,14 @@ function getAdminDashboardMetrics() {
   const summary = adminDashboardSummary();
   return [
     { label: "対象日の散布予定", value: `${summary.planned}件`, note: summary.date, alert: false },
-    { label: "対象日の実施済み", value: `${summary.done}件`, note: "航空写真に緑表示", alert: false },
     { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣通知", alert: summary.notifyIncomplete > 0 },
-    { label: `有機ほ場${rules.organicRadius}m以内`, value: `${summary.organicNear}件`, note: "周辺確認", alert: summary.organicNear > 0 },
     { label: "風向・風速要確認", value: `${summary.windNeed}件`, note: "気象条件", alert: summary.windNeed > 0 },
     { label: "実施後報告未提出", value: `${summary.reportMissing}件`, note: "散布者控え", alert: summary.reportMissing > 0 },
+    { label: `有機ほ場${rules.organicRadius}m以内`, value: `${summary.organicNear}件`, note: "周辺確認", alert: summary.organicNear > 0 },
+    { label: "ドローンログ未取込", value: `${summary.droneMissing}件`, note: "飛行ログ", alert: summary.droneMissing > 0 },
+    { label: "高度要確認", value: `${summary.altitudeNeed}件`, note: "作業軌跡", alert: summary.altitudeNeed > 0 },
+    { label: "問い合わせあり", value: `${summary.inquiry}件`, note: "実施後報告", alert: summary.inquiry > 0 },
     { label: "追加確認が必要な予定", value: `${summary.attention}件`, note: "管理者確認", alert: summary.attention > 0 },
-    { label: "対象日の確認完了度", value: `${summary.readiness}`, note: "平均指標", alert: summary.readiness < 70 },
   ];
 }
 
@@ -4180,15 +5207,15 @@ function weatherDecision(plan) {
   const gust = Number(weather.maxGust || 0);
   const rain = rainNeedsAttention(weather);
   if (!weather.actualSpeed) {
-    return { label: "△ 実測待ち", className: "status-amber", level: "warn" };
+    return { label: "実測待ち", className: "status-amber", level: "warn" };
   }
   if (speed >= rules.windLimit || gust >= rules.windLimit + 2 || rain) {
-    return { label: "× 延期検討", className: "status-red", level: "bad" };
+    return { label: "延期検討条件あり", className: "status-red", level: "bad" };
   }
   if (speed >= rules.windCaution || gust >= rules.windCaution + 1) {
-    return { label: "△ 再測定", className: "status-amber", level: "warn" };
+    return { label: "再測定推奨", className: "status-amber", level: "warn" };
   }
-  return { label: "○ 条件内", className: "status-green", level: "good" };
+  return { label: "記録上は条件内", className: "status-green", level: "good" };
 }
 
 function mapWeatherMetrics(plan) {
@@ -4213,7 +5240,7 @@ function mapWeatherMetrics(plan) {
       note: "飛散・姿勢乱れ確認",
       level: gust >= rules.windLimit + 2 ? "bad" : gust >= rules.windCaution + 1 ? "warn" : "good",
     },
-    { label: "判定", value: decision.label.replace(/^[△×○]\s*/, ""), note: rainRiskLabel(weather), level: decision.level },
+    { label: "確認状況", value: decision.label, note: rainRiskLabel(weather), level: decision.level },
   ];
 }
 
@@ -4306,7 +5333,7 @@ function renderReadinessCards(plan) {
   return `
     <div class="readiness-card">
       <div class="score-badge ${score.level}">
-        <span>確認完了度</span>
+        <span>確認進捗</span>
         <strong>${score.value}</strong>
       </div>
       <div class="readiness-lines">
@@ -4388,8 +5415,7 @@ function altitudeCheckLabel() {
   return count ? `${count}点 要確認` : "なし";
 }
 
-function droneLogLabel() {
-  const log = activeDroneLog();
+function droneLogLabel(log = activeDroneLog()) {
   return log.imported ? `取込済み ${log.startedAt}-${log.endedAt}` : "仮ログ表示中（散布ON/OFF確認用）";
 }
 
@@ -4548,28 +5574,31 @@ function buildFieldsFromFeatures(rawFeatures) {
     const geo = outerRingLngLat(f.geometry);
     const props = f.properties || {};
     const name = props.name || props["圃場名"] || props.field || props.NAME || props.label || `取込ほ場${i + 1}`;
-    const isSpray = i === 0;
+    const featureType = importedFieldType(props.type || props["種別"], i);
+    const isSpray = featureType === "spray";
+    const defaults = importedFieldDefaults(featureType);
     return {
-      id: `imported-${i}-${Date.now().toString(36)}`,
-      type: isSpray ? "spray" : "noChemical",
+      id: importedFieldId(name, featureType, i),
+      type: featureType,
       name: String(name),
-      short: isSpray ? "散布" : "不使",
+      short: defaults.short,
       crop: String(props.crop || props["作物"] || "未登録"),
-      cultivation: isSpray ? "農薬使用あり" : "未登録・未回答",
-      chemicalUse: isSpray ? "あり" : "未回答",
-      organicJas: "未回答",
-      notifyPreference: isSpray ? "必要時のみ" : "希望する",
-      contactMethod: "未確認",
-      harvestWindow: "未登録",
-      avoidReason: "",
-      seedling: false,
-      house: false,
-      waterNear: false,
-      unregistered: false,
+      cultivation: defaults.cultivation,
+      chemicalUse: defaults.chemicalUse,
+      organicJas: defaults.organicJas,
+      notifyPreference: defaults.notifyPreference,
+      contactMethod: defaults.contactMethod,
+      publicScope: "概略のみ共有",
+      harvestWindow: defaults.harvestWindow,
+      avoidReason: defaults.avoidReason,
+      seedling: featureType === "house",
+      house: featureType === "house",
+      waterNear: featureType === "water",
+      unregistered: featureType === "public",
       geo,
       distance: 0,
       direction: isSpray ? "中心" : "-",
-      notifyTarget: !isSpray,
+      notifyTarget: !isSpray && featureType !== "public",
       owner: isSpray ? "自分" : "周辺農家",
     };
   });
@@ -4581,6 +5610,120 @@ function buildFieldsFromFeatures(rawFeatures) {
     field.direction = bearingToDirection(bearingBetween(sprayCenter, c));
   });
   return fields;
+}
+
+function importedFieldType(rawType, index) {
+  const value = String(rawType || "").trim();
+  const aliases = {
+    spray: "spray",
+    organic: "organic",
+    noChemical: "noChemical",
+    house: "house",
+    preharvest: "preharvest",
+    water: "water",
+    bee: "bee",
+    public: "public",
+    散布: "spray",
+    有機: "organic",
+    農薬不使用: "noChemical",
+    ハウス: "house",
+    収穫前: "preharvest",
+    水路: "water",
+    公共: "public",
+  };
+  return aliases[value] || (index === 0 ? "spray" : "noChemical");
+}
+
+function importedFieldId(name, type, index) {
+  return knownDemoFieldMeta(name)?.id || `imported-${type}-${index}-${Date.now().toString(36)}`;
+}
+
+function knownDemoFieldMeta(name) {
+  return {
+    笠間デモほ場A: { id: "spray-field-a", type: "spray" },
+    農薬不使用ほ場B: { id: "organic-field-a", type: "organic" },
+    農薬不使用ほ場C: { id: "no-chemical-field-b", type: "noChemical" },
+    育苗ハウスD: { id: "seedling-house-c", type: "house" },
+    収穫前ほ場E: { id: "preharvest-field-d", type: "preharvest" },
+    共有水路F: { id: "water-channel-d", type: "water" },
+    地域施設G: { id: "facility-e", type: "public" },
+  }[String(name)];
+}
+
+function importedFieldDefaults(type) {
+  const defaults = {
+    spray: {
+      short: "散布",
+      cultivation: "農薬使用あり",
+      chemicalUse: "あり",
+      organicJas: "なし",
+      notifyPreference: "必要時のみ",
+      contactMethod: "アプリ内通知",
+      harvestWindow: "9月中旬",
+      avoidReason: "散布計画の対象ほ場",
+    },
+    organic: {
+      short: "不使",
+      cultivation: "有機JAS",
+      chemicalUse: "なし",
+      organicJas: "あり",
+      notifyPreference: "希望する",
+      contactMethod: "LINE",
+      harvestWindow: "収穫前",
+      avoidReason: "出荷前の農薬影響回避を希望",
+    },
+    noChemical: {
+      short: "不使",
+      cultivation: "有機JASではないが農薬不使用",
+      chemicalUse: "なし",
+      organicJas: "なし",
+      notifyPreference: "希望する",
+      contactMethod: "メール",
+      harvestWindow: "7月上旬",
+      avoidReason: "直売向けの農薬不使用表示を守りたい",
+    },
+    house: {
+      short: "育苗",
+      cultivation: "農薬使用あり",
+      chemicalUse: "あり",
+      organicJas: "なし",
+      notifyPreference: "必要時のみ",
+      contactMethod: "アプリ内通知",
+      harvestWindow: "育苗中",
+      avoidReason: "換気時間帯の調整が必要",
+    },
+    preharvest: {
+      short: "収穫",
+      cultivation: "農薬使用あり",
+      chemicalUse: "あり",
+      organicJas: "なし",
+      notifyPreference: "希望する",
+      contactMethod: "紙",
+      harvestWindow: "3日以内",
+      avoidReason: "収穫直前のため事前連絡を希望",
+    },
+    water: {
+      short: "水路",
+      cultivation: "未登録・未回答",
+      chemicalUse: "未回答",
+      organicJas: "未回答",
+      notifyPreference: "必要時のみ",
+      contactMethod: "アプリ内通知",
+      harvestWindow: "なし",
+      avoidReason: "水路近接のため飛散・流入を避けたい",
+    },
+    public: {
+      short: "施設",
+      cultivation: "未登録・未回答",
+      chemicalUse: "未回答",
+      organicJas: "未回答",
+      notifyPreference: "未確認",
+      contactMethod: "未確認",
+      harvestWindow: "なし",
+      avoidReason: "人の出入りがある時間帯を確認したい",
+    },
+  };
+  return defaults[type] || defaults.noChemical;
 }
 
 function applyImportedFields(fields, message, options = {}) {
@@ -4652,6 +5795,11 @@ const PARCEL_DISPLAY_LIMIT = 400;
 
 async function initBoundaries() {
   await loadBoundaryCatalog();
+  if (profileIsRegistered() && activeProfile().targetMunicipalities.length) {
+    await loadProfileLightBoundaries();
+    renderBoundarySelector();
+    return;
+  }
   if (state.boundaryPinned) {
     renderBoundarySelector();
     return;
@@ -4672,6 +5820,7 @@ async function loadBoundaryCatalog() {
     boundaryCatalog = [];
   }
   renderBoundarySelector();
+  renderProfileForm();
 }
 
 function renderBoundarySelector() {
@@ -4685,7 +5834,7 @@ function renderBoundarySelector() {
 
 async function loadMunicipalityBoundary(code, options = {}) {
   const entry = boundaryCatalog.find((m) => m.code === code);
-  if (!entry) return;
+  if (!entry) return false;
   try {
     if (!options.silent) showToast(`${entry.name}を読み込み中…`);
     const res = await fetch(`data/boundaries/${encodeURIComponent(entry.file)}`, { cache: "no-store" });
@@ -4698,8 +5847,10 @@ async function loadMunicipalityBoundary(code, options = {}) {
       features = featuresFromGeoJsonText(await res.text());
     }
     applyBoundaryFeatures(features, { code, name: entry.name, silent: options.silent });
+    return true;
   } catch (error) {
     if (!options.silent) showToast(`境界を読み込めませんでした：${error.message}`);
+    return false;
   }
 }
 
@@ -4882,9 +6033,12 @@ function createBlankField() {
     chemicalUse: "なし",
     organicJas: "なし",
     notifyPreference: "希望する",
+    publicScope: "概略のみ共有",
     contactMethod: "LINE",
     harvestWindow: "",
     avoidReason: "農薬影響を避けたい",
+    municipality: "",
+    district: "",
     seedling: false,
     house: false,
     waterNear: false,
@@ -4897,6 +6051,8 @@ function createBlankField() {
     direction: "南東",
     notifyTarget: true,
     owner: "自分",
+    updatedAt: dateOffset(0),
+    ...profileFieldDefaults(),
   };
 }
 
@@ -4914,6 +6070,7 @@ function createBlankPlan() {
     method: "ドローン",
     operator: "匿名散布者",
     contact: "デモ連絡先",
+    ...profilePlanDefaults(),
     ...equipmentTemplate(),
     pesticideRegistration: "登録番号サンプル",
     preHarvestDays: "使用条件確認中",
@@ -4927,7 +6084,7 @@ function createBlankPlan() {
     notes: "",
     droneLog: null,
     prescription: null,
-    weather: defaultWeather(),
+    weather: { ...defaultWeather(), ...profileWeatherDefaults() },
     checks: defaultChecks(false),
     notificationTargets: {},
     report: defaultReport(),
@@ -5211,6 +6368,7 @@ function createSampleState() {
       sensitive: true,
       notice: false,
       wind: true,
+      weatherForecast: true,
       weatherEnv: true,
       aircraft: true,
       dips: true,
@@ -5223,7 +6381,6 @@ function createSampleState() {
     },
     notificationResponses: {
       "water-channel-d": "確認しました",
-      "organic-field-a": "時間変更希望",
     },
     report: defaultReport(),
   };
@@ -5287,6 +6444,7 @@ function createSampleState() {
       amount: true,
       organic: true,
       sensitive: true,
+      weatherForecast: true,
       aircraft: true,
       altitude: false,
     },
@@ -5295,7 +6453,7 @@ function createSampleState() {
       "water-channel-d": true,
     },
     notificationResponses: {
-      "organic-field-a": "確認しました",
+      "organic-field-a": "電話希望",
     },
     report: defaultReport(),
   };
@@ -5465,6 +6623,7 @@ function createSampleState() {
   };
 
   return {
+    profile: defaultProfile(),
     role: "sprayer",
     activePlanId: "plan-drone-1",
     activeFieldId: "organic-field-a",
@@ -5537,6 +6696,10 @@ function loadState() {
 
 function normalizeState(input) {
   const next = input || createSampleState();
+  next.profile = normalizeProfile(next.profile);
+  if (next.profile.registered && ROLE_META[next.profile.role]) {
+    next.role = next.profile.role;
+  }
   next.role = ROLE_META[next.role] ? next.role : "sprayer";
   next.settings = { ...DEFAULT_SETTINGS, ...(next.settings || {}) };
   next.droneLog = {
@@ -5547,23 +6710,30 @@ function normalizeState(input) {
   if (!next.droneLog.imported) {
     next.droneLog.points = createSampleDroneLog(false).points;
   }
+  if (next.settings.organicRadius === 100 && next.settings.notifyRadius === 160 && next.settings.sensitiveRadius === 160) {
+    next.settings.organicRadius = DEFAULT_SETTINGS.organicRadius;
+    next.settings.notifyRadius = DEFAULT_SETTINGS.notifyRadius;
+    next.settings.sensitiveRadius = DEFAULT_SETTINGS.sensitiveRadius;
+  }
   next.fields = Array.isArray(next.fields) && next.fields.length ? next.fields : createSampleState().fields;
   next.fields = next.fields.map((field) => {
-    const sampleGeometry = SAMPLE_FIELD_GEOMETRY[field.id] || {};
+    const known = knownDemoFieldMeta(field.name);
+    const migratedField = known && String(field.id || "").startsWith("imported-") ? { ...field, id: known.id, type: known.type } : field;
+    const sampleGeometry = SAMPLE_FIELD_GEOMETRY[migratedField.id] || {};
     return {
       crop: "未登録",
       cultivation: "未登録・未回答",
       chemicalUse: "未回答",
       organicJas: "未回答",
-      notifyPreference: field.notifyTarget ? "希望する" : "未確認",
+      notifyPreference: migratedField.notifyTarget ? "希望する" : "未確認",
       contactMethod: "未確認",
       harvestWindow: "未登録",
       avoidReason: "",
       seedling: false,
       house: false,
-      waterNear: field.type === "water",
+      waterNear: migratedField.type === "water",
       unregistered: false,
-      ...field,
+      ...migratedField,
       ...sampleGeometry,
     };
   });
@@ -5584,6 +6754,27 @@ function normalizeState(input) {
   next.activePlanId = next.plans.some((plan) => plan.id === next.activePlanId)
     ? next.activePlanId
     : next.plans[0]?.id;
+  return next;
+}
+
+function normalizeProfile(input) {
+  const base = defaultProfile();
+  const profile = input || {};
+  const next = {
+    ...base,
+    ...profile,
+    visibility: { ...base.visibility, ...(profile.visibility || {}) },
+    sprayer: { ...base.sprayer, ...(profile.sprayer || {}) },
+    neighbor: { ...base.neighbor, ...(profile.neighbor || {}) },
+    admin: { ...base.admin, ...(profile.admin || {}) },
+    boundaryLoadStatus: { ...base.boundaryLoadStatus, ...(profile.boundaryLoadStatus || {}) },
+  };
+  next.registered = Boolean(next.registered && ROLE_META[next.role]);
+  next.role = ROLE_META[next.role] ? next.role : null;
+  next.targetMunicipalities = Array.isArray(next.targetMunicipalities) ? next.targetMunicipalities : [];
+  next.admin.managedMunicipalities = Array.isArray(next.admin.managedMunicipalities) ? next.admin.managedMunicipalities : [];
+  next.admin.managedDistricts = Array.isArray(next.admin.managedDistricts) ? next.admin.managedDistricts : [];
+  next.sprayer.drones = Array.isArray(next.sprayer.drones) ? next.sprayer.drones : [];
   return next;
 }
 

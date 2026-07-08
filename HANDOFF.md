@@ -57,7 +57,7 @@ http://localhost:8080/
 ## Current Feature Map
 
 - Dashboard:
-  - go/no-go card
+  - pre-spray confirmation status card
   - readiness workflow
   - KPI cards
   - aerial-photo map preview
@@ -98,7 +98,7 @@ http://localhost:8080/
   - municipality-oriented list
   - planned/done filter
   - district filter
-  - click row to show aerial map, detail, and go/no-go
+  - click row to show aerial map, detail, and confirmation status
 
 ## Known Risks
 
