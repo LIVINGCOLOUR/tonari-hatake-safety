@@ -64,7 +64,8 @@ const VISIBILITY_OPTIONS = [
   ["municipalityJa", "自治体・JA共有"],
 ];
 
-const PREFERRED_BOUNDARY_NAMES = ["笠間市", "水戸市", "石岡市", "つくば市", "益子町", "真岡市", "香取市", "成田市"];
+const PREFERRED_BOUNDARY_NAMES = ["友部", "笠間市", "水戸市", "石岡市", "つくば市", "益子町", "真岡市", "香取市", "成田市"];
+const DEFAULT_BOUNDARY_MUNICIPALITY = "082163b";
 
 const EQUIPMENT_FIELDS = [
   "droneModel", "aircraftRegistration", "pilot", "assistant",
@@ -332,17 +333,17 @@ const DIRECTION_BEARING = {
   北西: 315,
 };
 
-// デモの既定範囲（笠間市周辺の農地寄り・近似）。実境界を取り込むと自動でその範囲に切り替わる。
+// デモの既定範囲（友部寄りの谷筋農地）。実境界を取り込むと自動でその範囲に切り替わる。
 const DEMO_MAP_BOUNDS = {
-  west: 140.2732,
-  east: 140.2892,
-  north: 36.3646,
-  south: 36.3526,
+  west: 140.3102,
+  east: 140.3152,
+  north: 36.3911,
+  south: 36.3820,
 };
 
 const DEFAULT_MAP_VIEW = {
-  center: [140.2812, 36.3586],
-  zoom: 15.6,
+  center: [140.31275, 36.38655],
+  zoom: 15.25,
   bearing: 0,
 };
 
@@ -392,35 +393,42 @@ const ADMIN_DASHBOARD_COLORS = {
   surrounding: "#7b8d8b",
 };
 
-// 農地区画に見えるよう、圃場を軸そろえの矩形グリッドで配置（散布ほ場は飛行ログを内包）。
+// 添付の航空写真で見える谷筋の畑境界に合わせたデモ圃場。geo は実座標、geoShape は旧データ用の保険。
 const SAMPLE_FIELD_GEOMETRY = {
   "spray-field-a": {
-    x: 45, y: 39, w: 16, h: 12,
-    geoShape: [[45, 39], [61, 39], [61, 51], [45, 51]],
+    x: 40, y: 38, w: 20, h: 12,
+    geo: [[140.312185, 36.387676], [140.313201, 36.387447], [140.313059, 36.386499], [140.312043, 36.386695]],
+    geoShape: [[38, 48], [48, 47], [47, 57], [38, 58]],
   },
   "no-chemical-field-b": {
-    x: 64, y: 39, w: 16, h: 12,
-    geoShape: [[64, 39], [80, 39], [80, 51], [64, 51]],
+    x: 39, y: 52, w: 21, h: 14,
+    geo: [[140.312043, 36.386532], [140.313059, 36.386303], [140.312937, 36.385159], [140.311881, 36.385388]],
+    geoShape: [[39, 59], [49, 58], [48, 68], [40, 70]],
   },
   "organic-field-a": {
-    x: 64, y: 54, w: 16, h: 12,
-    geoShape: [[64, 54], [80, 54], [80, 66], [64, 66]],
+    x: 25, y: 26, w: 23, h: 13,
+    geo: [[140.311434, 36.388755], [140.312591, 36.388526], [140.312449, 36.387644], [140.311312, 36.387856]],
+    geoShape: [[49, 48], [58, 47], [57, 59], [48, 58]],
   },
   "seedling-house-c": {
-    x: 45, y: 54, w: 16, h: 12,
-    geoShape: [[45, 54], [61, 54], [61, 66], [45, 66]],
+    x: 32, y: 84, w: 36, h: 6,
+    geo: [[140.311779, 36.383393], [140.313587, 36.383524], [140.313668, 36.383033], [140.311881, 36.382903]],
+    geoShape: [[27, 74], [39, 74], [39, 79], [28, 79]],
   },
   "preharvest-field-d": {
-    x: 27, y: 39, w: 16, h: 12,
-    geoShape: [[27, 39], [43, 39], [43, 51], [27, 51]],
+    x: 58, y: 20, w: 22, h: 19,
+    geo: [[140.313059, 36.38905], [140.314155, 36.388804], [140.313952, 36.387415], [140.312855, 36.387693]],
+    geoShape: [[50, 32], [59, 31], [57, 44], [49, 45]],
   },
   "water-channel-d": {
-    x: 27, y: 54, w: 16, h: 12,
-    geoShape: [[27, 54], [43, 54], [43, 66], [27, 66]],
+    x: 12, y: 4, w: 43, h: 93,
+    geo: [[140.310764, 36.390717], [140.311109, 36.390717], [140.312998, 36.382249], [140.312612, 36.382183]],
+    geoShape: [[60, 25], [63, 25], [49, 81], [47, 81]],
   },
   "facility-e": {
-    x: 45, y: 26, w: 16, h: 12,
-    geoShape: [[45, 26], [61, 26], [61, 38], [45, 38]],
+    x: 66, y: 70, w: 23, h: 10,
+    geo: [[140.313708, 36.384652], [140.314846, 36.384472], [140.314683, 36.383671], [140.313546, 36.383818]],
+    geoShape: [[61, 52], [67, 52], [66, 59], [60, 60]],
   },
 };
 
@@ -5804,7 +5812,9 @@ async function initBoundaries() {
     renderBoundarySelector();
     return;
   }
-  const code = boundaryCatalog.find((m) => m.code === state.boundaryMunicipality)?.code || boundaryCatalog[0]?.code;
+  const code = boundaryCatalog.find((m) => m.code === state.boundaryMunicipality)?.code
+    || boundaryCatalog.find((m) => m.code === DEFAULT_BOUNDARY_MUNICIPALITY)?.code
+    || boundaryCatalog[0]?.code;
   if (code) await loadMunicipalityBoundary(code, { silent: true });
   else renderBoundarySelector();
 }
@@ -5829,7 +5839,9 @@ function renderBoundarySelector() {
   const options = boundaryCatalog.map((m) => `<option value="${escapeAttr(m.code)}">${escapeHtml(m.name)}</option>`);
   if (state.boundaryPinned) options.unshift(`<option value="__custom__">（取込データ）</option>`);
   select.innerHTML = options.join("") || `<option value="">（カタログ未配置）</option>`;
-  select.value = state.boundaryPinned ? "__custom__" : state.boundaryMunicipality || boundaryCatalog[0]?.code || "";
+  select.value = state.boundaryPinned
+    ? "__custom__"
+    : state.boundaryMunicipality || boundaryCatalog.find((m) => m.code === DEFAULT_BOUNDARY_MUNICIPALITY)?.code || boundaryCatalog[0]?.code || "";
 }
 
 async function loadMunicipalityBoundary(code, options = {}) {
@@ -6699,6 +6711,9 @@ function normalizeState(input) {
   next.profile = normalizeProfile(next.profile);
   if (next.profile.registered && ROLE_META[next.profile.role]) {
     next.role = next.profile.role;
+  }
+  if (!next.boundaryPinned && (!next.boundaryMunicipality || next.boundaryMunicipality === "082163")) {
+    next.boundaryMunicipality = DEFAULT_BOUNDARY_MUNICIPALITY;
   }
   next.role = ROLE_META[next.role] ? next.role : "sprayer";
   next.settings = { ...DEFAULT_SETTINGS, ...(next.settings || {}) };
