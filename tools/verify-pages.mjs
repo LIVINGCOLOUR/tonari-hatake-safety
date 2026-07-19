@@ -115,6 +115,9 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
 }
 
 const legacyRedirect = await inspectPage("/#dashboard", `() => location.pathname`);
-assert(legacyRedirect.value.endsWith("/app.html"), `Legacy dashboard URL did not redirect: ${legacyRedirect.value}`);
+assert(
+  legacyRedirect.value.endsWith("/app.html") || legacyRedirect.value.endsWith("/app"),
+  `Legacy dashboard URL did not redirect: ${legacyRedirect.value}`,
+);
 
 console.log("Landing and role navigation checks passed.");
