@@ -8,13 +8,15 @@
 
 Cloudflare Pages: https://tonari-hatake-safety.pages.dev/
 
+紹介ページは `/`、MVP本体は `/app.html` です。紹介ページから未登録デモの3ロールへ直接移動できます。
+
 GitHub: https://github.com/LIVINGCOLOUR/tonari-hatake-safety
 
 GitHubリポジトリはprivateです。Cloudflare PagesのURLは公開URLなので、URLを知っている人は閲覧できます。
 
 ## ローカルでの開き方
 
-このMVPは `fetch()` で `data/boundaries/index.json` や境界データを読むため、`index.html` を `file://` で直接開くと市町村カタログが読み込めません。
+このMVPは `fetch()` で `data/boundaries/index.json` や境界データを読むため、`app.html` を `file://` で直接開くと市町村カタログが読み込めません。`index.html` はサービス紹介ページです。
 
 ローカル確認はHTTPサーバー経由で開いてください。
 
@@ -60,7 +62,10 @@ http://localhost:8080/
 
 ## データ構成
 
-- `index.html`: 画面構造
+- `index.html`: サービス紹介ページ
+- `app.html`: MVP画面構造
+- `css/landing.css`: 紹介ページのスタイル
+- `js/landing.js`: 紹介ページのナビゲーション
 - `css/styles.css`: UIスタイル
 - `js/main.js`: 状態管理、描画、地図、気象取得、境界取込、VRA、CSV/PDF処理
 - `vendor/maplibre-gl/`: MapLibre GL JS

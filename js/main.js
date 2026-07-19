@@ -478,6 +478,10 @@ function init() {
     state = createSampleState();
   }
   state = normalizeState(state);
+  const requestedRole = new URLSearchParams(location.search).get("role");
+  if (!profileRole(state) && ROLE_META[requestedRole]) {
+    state.role = requestedRole;
+  }
   activeRole = profileRole(state) || state.role || "sprayer";
   state.role = activeRole;
   saveState();
