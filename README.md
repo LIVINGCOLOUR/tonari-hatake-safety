@@ -67,7 +67,11 @@ http://localhost:8080/
 - `css/landing.css`: 紹介ページのスタイル
 - `js/landing.js`: 紹介ページのナビゲーション
 - `css/styles.css`: UIスタイル
-- `js/main.js`: 状態管理、描画、地図、気象取得、境界取込、VRA、CSV/PDF処理
+- `js/main.js`: UI状態、描画、地図、気象取得、境界取込IO、VRA、CSV/PDF処理
+- `js/domain/state.mjs`: 保存形式と圃場参照の移行
+- `js/domain/geometry.mjs`: WGS84形状、距離、方位、安定ハッシュ
+- `js/domain/import.mjs`: 圃場取込の正規化、来歴、外部参照、重複排除
+- `INTEGRATIONS.md`: xarvio/WAGRI連携の対応範囲、項目対応、認証境界
 - `vendor/maplibre-gl/`: MapLibre GL JS
 - `vendor/turf/`: Turf.js
 - `vendor/shpjs/`: Shapefile読込
@@ -92,6 +96,8 @@ http://localhost:8080/
 ## 設計方針
 
 法的な判定や原因断定ではなく、散布前後の確認状況を「未確認」「要確認」「記録済み」として扱います。目的は、散布者、周辺農家、JA、自治体が同じ情報を見て、農薬・資材の飛散リスクを事前に下げることです。
+
+xarvio/WAGRIは、公開仕様で確認できる圃場境界だけをプロバイダー別アダプターで正規化します。API認証情報はフロントエンドへ保存せず、本接続時はバックエンドまたはBFFで扱います。詳細は `INTEGRATIONS.md` を参照してください。
 
 ## V1で未実装のもの
 

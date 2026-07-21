@@ -138,6 +138,13 @@ export function bearingBetweenLngLat([lng1, lat1], [lng2, lat2]) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
+const BEARING_DIRECTIONS = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+
+export function bearingToDirection(bearingDeg) {
+  const normalized = ((Number(bearingDeg) % 360) + 360) % 360;
+  return BEARING_DIRECTIONS[Math.round(normalized / 45) % 8];
+}
+
 // --- local metric projection ---------------------------------------------
 
 function referenceFor(geometries) {

@@ -25,7 +25,8 @@
 
 - `index.html`: SPAの全画面マークアップ
 - `css/styles.css`: 画面全体のスタイル
-- `js/main.js`: 全ロジック。状態管理、地図、気象、境界取込、VRA、CSV/PDFを含む
+- `js/main.js`: UI状態、地図、気象、境界取込のIO、VRA、CSV/PDFを含む
+- `js/domain/`: 保存・幾何・圃場取込の純粋なドメイン処理
 - `data/boundaries/index.json`: 市町村境界カタログ
 - `data/boundaries/*.geojson`: 軽量デモ境界
 - `data/boundaries/*-fude.zip`: 筆ポリゴンShapefile zip
@@ -43,8 +44,8 @@
   domain migration the value is a versioned envelope
   `{ schemaVersion: 4, revision, savedAt, data }`; bare pre-envelope blobs are
   migrated in place on load (`js/domain/state.mjs`).
-- `js/main.js` is a classic script that dynamically imports
-  `js/domain/state.mjs` and `js/domain/geometry.mjs` inside `init()`. Module
+- `js/main.js` is a classic script that dynamically imports the modules under
+  `js/domain/` inside `init()`. Module
   scripts require a JavaScript MIME type, so the app must be served over HTTP
   (`python -m http.server` serves `.mjs` as `text/javascript`; do not rename
   the modules to `.js` — on this Windows machine the registry maps `.js` to
@@ -86,10 +87,39 @@
   `node tools/verify-app-state.mjs http://127.0.0.1:4177 9238` (the latter
   covers envelope migration, plan resolution, the unresolved-plan UI, and a
   per-role view sweep).
-- Suggested next step (Phase 2): move import/parcel handling
-  (`buildFieldsFromFeatures`, stable keys, provenance) into a
-  `js/domain/import.mjs` module, then introduce provider adapters (xarvio,
-  WAGRI) that map external payloads onto `externalRefs` + canonical geometry.
+
+## Phase 2 Import Boundary (2026-07-21)
+
+- `js/domain/import.mjs` owns pure GeoJSON parsing, polygon filtering, field
+  record construction, stable keys, provenance, external references,
+  duplicate removal, and spray-relative distance/direction assignment.
+- `main.js` keeps browser IO and orchestration: FileReader/fetch/shpjs, map
+  layers, local state mutation, parcel selection, and user-facing toasts.
+- The adapter contract accepts provider payloads only after they are converted
+  to GeoJSON Polygon/MultiPolygon features with explicit source context.
+  Generic file and municipality-parcel adapters are implemented.
+- Provider IDs `xarvio` and `wagri` remain stable across provider adapters.
+- Existing `imported-*`, curated demo, and `parcel-*` ID formats remain stable.
+  Duplicate stable keys in one import batch keep the first record and emit a
+  typed warning.
+- Tests are dependency-free `node:test` suites under `tools/*.test.mjs`.
+
+## Phase 3 Provider Contracts (2026-07-21)
+
+- `adaptWagriFieldPolygonPayload` supports the officially documented
+  FieldPolygonID v2/v3 record form, GeoJSON FeatureCollection form, and
+  AgriculturalMap3 `targetFeatures` / `LinearPolygon` form.
+- WAGRI `land_type` / `FieldType` is retained as source metadata and always
+  enters the app as a neutral `public` field. It must never be inferred as a
+  spray, organic, or no-chemical safety status.
+- `adaptXarvioBoundaryPayload` binds one parsed KML/SHP-derived GeoJSON
+  boundary to the field UUID supplied with the API request. It rejects a
+  missing UUID or multiple polygons because public docs do not guarantee a
+  feature-to-UUID attribute mapping in multi-field exports.
+- Live API OAuth/token handling is deliberately outside the static frontend.
+  Add a backend/BFF before connecting production xarvio or WAGRI accounts.
+- Mapping, security boundary, and next integration steps are documented in
+  `INTEGRATIONS.md`.
 
 Recommended local launch:
 

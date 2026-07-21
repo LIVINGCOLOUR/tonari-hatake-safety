@@ -72,6 +72,11 @@ const fresh = await evaluate(`(() => {
   const plan2 = state.plans.find((p) => p.id === "plan-drone-2");
   const g2 = sprayGoNoGo(plan2);
   const reasons2 = adminAttentionReasons(plan2);
+  const importSmoke = domainImport.buildFieldsFromFeatures([{
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [[[140, 36], [140.001, 36], [140.001, 36.001], [140, 36.001], [140, 36]]] },
+    properties: { name: "Browser import", type: "spray", id: "browser-import-1" },
+  }], { sourceCode: "file:browser-smoke", provider: domainImport.PROVIDER_IDS.FILE }, { now: () => "2026-07-21T00:00:00.000Z" });
   return {
     fieldIds: state.fields.map((f) => f.id),
     plans,
@@ -85,6 +90,9 @@ const fresh = await evaluate(`(() => {
     plan2Verdict: g2.verdict,
     plan2Factor: g2.factors.find((f) => f.label === "風下の要確認圃場")?.detail,
     plan2Reason: reasons2[0]?.title,
+    importOk: importSmoke.ok,
+    importProvider: importSmoke.fields?.[0]?.externalRefs?.[0]?.provider,
+    reservedProviders: [domainImport.PROVIDER_IDS.XARVIO, domainImport.PROVIDER_IDS.WAGRI],
   };
 })()`);
 
@@ -103,6 +111,8 @@ assert(!fresh.noticeHasUndefined, "notice text contains 'undefined'");
 assert(fresh.plan2Verdict === "stop", `unresolved plan verdict should be stop, got ${fresh.plan2Verdict}`);
 assert(String(fresh.plan2Factor).includes("参照切れ"), `unresolved plan factor: ${fresh.plan2Factor}`);
 assert(fresh.plan2Reason === "散布ほ場参照切れ", `unresolved plan admin reason: ${fresh.plan2Reason}`);
+assert(fresh.importOk && fresh.importProvider === "file", `browser import module failed: ${JSON.stringify(fresh)}`);
+assert(fresh.reservedProviders.join(",") === "xarvio,wagri", `provider ids: ${fresh.reservedProviders.join(",")}`);
 
 // --- scenario 2: legacy bare v3 blob migrates in place -------------------
 await evaluate(`(() => {

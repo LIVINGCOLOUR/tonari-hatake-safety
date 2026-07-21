@@ -368,13 +368,6 @@ function currentMapBounds() {
   return { west: west - padLng, east: east + padLng, north: north + padLat, south: south - padLat };
 }
 
-const BEARING_DIRECTIONS = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
-
-function bearingToDirection(bearingDeg) {
-  const normalized = ((bearingDeg % 360) + 360) % 360;
-  return BEARING_DIRECTIONS[Math.round(normalized / 45) % 8];
-}
-
 const FIELD_LAYER_COLORS = {
   spray: "#c94b44",
   organic: "#2d8c49",
@@ -434,6 +427,7 @@ const SAMPLE_FIELD_GEOMETRY = {
 
 let domainState;
 let domainGeometry;
+let domainImport;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -485,9 +479,10 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry] = await Promise.all([
-    import("./domain/state.mjs?v=20260721"),
-    import("./domain/geometry.mjs?v=20260721"),
+  [domainState, domainGeometry, domainImport] = await Promise.all([
+    import("./domain/state.mjs?v=20260721-phase3"),
+    import("./domain/geometry.mjs?v=20260721-phase3"),
+    import("./domain/import.mjs?v=20260721-phase3"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -5353,7 +5348,7 @@ function riskItemsForPlan(plan) {
       const distance = measuredDistance === null ? null : Math.round(measuredDistance);
       const targetCenter = domainGeometry.geometryCentroid(targetGeometry);
       const direction = sprayCenter && targetCenter
-        ? bearingToDirection(domainGeometry.bearingBetweenLngLat(sprayCenter, targetCenter))
+        ? domainGeometry.bearingToDirection(domainGeometry.bearingBetweenLngLat(sprayCenter, targetCenter))
         : "-";
       let level = "low";
       let message = "周辺情報として確認。";
@@ -5771,158 +5766,13 @@ function activeField() {
 }
 
 // --- 実際のほ場境界（GeoJSON）の取込・表示 ---
-function bearingBetween([lng1, lat1], [lng2, lat2]) {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const toDeg = (r) => (r * 180) / Math.PI;
-  const phi1 = toRad(lat1);
-  const phi2 = toRad(lat2);
-  const dLambda = toRad(lng2 - lng1);
-  const y = Math.sin(dLambda) * Math.cos(phi2);
-  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
-function outerRingLngLat(geometry) {
-  const ring = geometry.type === "MultiPolygon" ? geometry.coordinates[0]?.[0] : geometry.coordinates[0];
-  const coords = (ring || []).map((c) => [Number(c[0]), Number(c[1])]).filter((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
-  if (coords.length > 2) {
-    const first = coords[0];
-    const last = coords[coords.length - 1];
-    if (first[0] === last[0] && first[1] === last[1]) coords.pop();
-  }
-  return coords;
-}
-
-function buildFieldsFromGeoJson(text, context = {}) {
-  const data = JSON.parse(text);
-  let features = [];
-  if (data.type === "FeatureCollection") features = data.features || [];
-  else if (data.type === "Feature") features = [data];
-  else if (data.type && data.coordinates) features = [{ type: "Feature", geometry: data, properties: {} }];
-  return buildFieldsFromFeatures(features, context);
-}
-
 function buildFieldsFromFeatures(rawFeatures, context = {}) {
-  const features = Array.isArray(rawFeatures) ? rawFeatures : [];
-  const polys = features.filter((f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"));
-  if (!polys.length) throw new Error("ポリゴン境界が見つかりません。");
-  const fields = polys.map((f, i) => {
-    const geometry = domainGeometry.normalizeGeometry(f.geometry);
-    if (!geometry) throw new Error(`区画${i + 1}のポリゴン形状を読み取れません。`);
-    const violation = domainGeometry.wgs84RangeViolation(geometry);
-    if (violation) throw new Error(`区画${i + 1}の座標がWGS84の範囲外です（${violation.join(", ")}）。`);
-    const geo = outerRingLngLat(geometry);
-    const props = f.properties || {};
-    const name = props.name || props["圃場名"] || props.field || props.NAME || props.label || `取込ほ場${i + 1}`;
-    const featureType = importedFieldType(props.type || props["種別"], i);
-    const isSpray = featureType === "spray";
-    const defaults = importedFieldDefaults(featureType);
-    return {
-      id: importedFieldId(name, featureType, i, geometry, props, context),
-      type: featureType,
-      name: String(name),
-      short: defaults.short,
-      crop: String(props.crop || props["作物"] || "未登録"),
-      cultivation: defaults.cultivation,
-      chemicalUse: defaults.chemicalUse,
-      organicJas: defaults.organicJas,
-      notifyPreference: defaults.notifyPreference,
-      contactMethod: defaults.contactMethod,
-      publicScope: "概略のみ共有",
-      harvestWindow: defaults.harvestWindow,
-      avoidReason: defaults.avoidReason,
-      seedling: featureType === "house",
-      house: featureType === "house",
-      waterNear: featureType === "water",
-      unregistered: featureType === "public",
-      geo,
-      geometry,
-      geometryRevision: domainGeometry.hashGeometry(geometry),
-      externalRefs: importedExternalRefs(props, context),
-      provenance: {
-        source: context.source || context.name || "file-import",
-        importedAt: new Date().toISOString(),
-        originalCrs: context.originalCrs || "EPSG:4326",
-        stableKey: importedStableKey(props, geometry, context),
-        datasetVersion: context.datasetVersion || "",
-        license: context.license || "",
-      },
-      distance: 0,
-      direction: isSpray ? "中心" : "-",
-      notifyTarget: !isSpray && featureType !== "public",
-      owner: isSpray ? "自分" : "周辺農家",
-    };
+  const result = domainImport.buildFieldsFromFeatures(rawFeatures, context, {
+    resolveKnownField: knownDemoFieldMeta,
   });
-  const sprayField = fields.find((field) => field.type === "spray") || fields[0];
-  const sprayGeometry = normalizedFieldGeometry(sprayField);
-  const sprayCenter = domainGeometry.geometryCentroid(sprayGeometry);
-  fields.forEach((field, i) => {
-    if (field.id === sprayField.id) return;
-    const fieldGeometry = normalizedFieldGeometry(field, i);
-    const c = domainGeometry.geometryCentroid(fieldGeometry);
-    const distance = domainGeometry.geometryDistanceMeters(sprayGeometry, fieldGeometry);
-    field.distance = distance === null ? null : Math.round(distance);
-    field.direction = sprayCenter && c
-      ? bearingToDirection(domainGeometry.bearingBetweenLngLat(sprayCenter, c))
-      : "-";
-  });
-  return fields;
-}
-
-function importedFieldType(rawType, index) {
-  const value = String(rawType || "").trim();
-  const aliases = {
-    spray: "spray",
-    organic: "organic",
-    noChemical: "noChemical",
-    house: "house",
-    preharvest: "preharvest",
-    water: "water",
-    bee: "bee",
-    public: "public",
-    散布: "spray",
-    有機: "organic",
-    農薬不使用: "noChemical",
-    ハウス: "house",
-    収穫前: "preharvest",
-    水路: "water",
-    公共: "public",
-  };
-  return aliases[value] || (index === 0 ? "spray" : "noChemical");
-}
-
-function importedPropertyId(props) {
-  const keys = ["uuid", "UUID", "fieldId", "field_id", "FIELD_ID", "id", "ID", "筆ID", "筆ポリゴンID", "地番"];
-  for (const key of keys) {
-    const value = props?.[key];
-    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
-  }
-  return "";
-}
-
-function importedStableKey(props, geometry, context = {}) {
-  const externalId = importedPropertyId(props);
-  const source = context.sourceCode || context.source || context.name || "file";
-  return externalId
-    ? `${source}:${externalId}`
-    : `${source}:geometry:${domainGeometry.hashGeometry(geometry) || "unknown"}`;
-}
-
-function importedExternalRefs(props, context = {}) {
-  const externalId = importedPropertyId(props);
-  if (!externalId) return [];
-  return [{
-    provider: context.provider || context.sourceCode || "file",
-    providerAccount: context.providerAccount || "",
-    resourceType: "field",
-    externalId,
-    revision: context.datasetVersion || "",
-  }];
-}
-
-function importedFieldId(name, type, index, geometry, props = {}, context = {}) {
-  return knownDemoFieldMeta(name)?.id
-    || domainGeometry.stableImportedId(type, importedStableKey(props, geometry, context) || `${name}:${index}`);
+  if (!result.ok) throw new Error(result.error.message);
+  if (result.warnings.length) console.warn("Field import warnings", result.warnings);
+  return result.fields;
 }
 
 function knownDemoFieldMeta(name) {
@@ -5935,82 +5785,6 @@ function knownDemoFieldMeta(name) {
     共有水路F: { id: "water-channel-d", type: "water" },
     地域施設G: { id: "facility-e", type: "public" },
   }[String(name)];
-}
-
-function importedFieldDefaults(type) {
-  const defaults = {
-    spray: {
-      short: "散布",
-      cultivation: "農薬使用あり",
-      chemicalUse: "あり",
-      organicJas: "なし",
-      notifyPreference: "必要時のみ",
-      contactMethod: "アプリ内通知",
-      harvestWindow: "9月中旬",
-      avoidReason: "散布計画の対象ほ場",
-    },
-    organic: {
-      short: "不使",
-      cultivation: "有機JAS",
-      chemicalUse: "なし",
-      organicJas: "あり",
-      notifyPreference: "希望する",
-      contactMethod: "LINE",
-      harvestWindow: "収穫前",
-      avoidReason: "出荷前の農薬影響回避を希望",
-    },
-    noChemical: {
-      short: "不使",
-      cultivation: "有機JASではないが農薬不使用",
-      chemicalUse: "なし",
-      organicJas: "なし",
-      notifyPreference: "希望する",
-      contactMethod: "メール",
-      harvestWindow: "7月上旬",
-      avoidReason: "直売向けの農薬不使用表示を守りたい",
-    },
-    house: {
-      short: "育苗",
-      cultivation: "農薬使用あり",
-      chemicalUse: "あり",
-      organicJas: "なし",
-      notifyPreference: "必要時のみ",
-      contactMethod: "アプリ内通知",
-      harvestWindow: "育苗中",
-      avoidReason: "換気時間帯の調整が必要",
-    },
-    preharvest: {
-      short: "収穫",
-      cultivation: "農薬使用あり",
-      chemicalUse: "あり",
-      organicJas: "なし",
-      notifyPreference: "希望する",
-      contactMethod: "紙",
-      harvestWindow: "3日以内",
-      avoidReason: "収穫直前のため事前連絡を希望",
-    },
-    water: {
-      short: "水路",
-      cultivation: "未登録・未回答",
-      chemicalUse: "未回答",
-      organicJas: "未回答",
-      notifyPreference: "必要時のみ",
-      contactMethod: "アプリ内通知",
-      harvestWindow: "なし",
-      avoidReason: "水路近接のため飛散・流入を避けたい",
-    },
-    public: {
-      short: "施設",
-      cultivation: "未登録・未回答",
-      chemicalUse: "未回答",
-      organicJas: "未回答",
-      notifyPreference: "未確認",
-      contactMethod: "未確認",
-      harvestWindow: "なし",
-      avoidReason: "人の出入りがある時間帯を確認したい",
-    },
-  };
-  return defaults[type] || defaults.noChemical;
 }
 
 function applyImportedFields(fields, message, options = {}) {
@@ -6171,11 +5945,9 @@ async function loadMunicipalityBoundary(code, options = {}) {
 }
 
 function featuresFromGeoJsonText(text) {
-  const data = JSON.parse(text);
-  if (data.type === "FeatureCollection") return data.features || [];
-  if (data.type === "Feature") return [data];
-  if (data.type && data.coordinates) return [{ type: "Feature", geometry: data, properties: {} }];
-  return [];
+  const result = domainImport.adaptGeoJsonPayload(text);
+  if (!result.ok) throw new Error(result.error.message);
+  return result.features;
 }
 
 async function featuresFromZip(buffer) {
@@ -6188,18 +5960,23 @@ async function featuresFromZip(buffer) {
 
 // 少数なら管理ほ場、多数（市全域の筆ポリゴン等）なら背景の筆レイヤーに振り分け。
 function applyBoundaryFeatures(features, opts = {}) {
-  const polys = features.filter((f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"));
+  const adapted = opts.code !== undefined
+    ? domainImport.adaptMunicipalityParcelPayload(features, opts)
+    : { ok: true, features: domainImport.polygonFeatures(features), context: opts, warnings: [] };
+  if (!adapted.ok) throw new Error(adapted.error.message);
+  const polys = adapted.features;
+  const importContext = { ...opts, ...(adapted.context || {}) };
   if (!polys.length) throw new Error("ポリゴン境界が見つかりません。");
   if (opts.code !== undefined) {
     state.boundaryMunicipality = opts.code;
     state.boundaryPinned = false;
   }
   if (polys.length > PARCEL_DISPLAY_LIMIT) {
-    applyParcelBackdrop(polys, opts);
+    applyParcelBackdrop(polys, importContext);
     return;
   }
   parcelData = null;
-  const fields = buildFieldsFromFeatures(polys, opts);
+  const fields = buildFieldsFromFeatures(polys, importContext);
   applyImportedFields(fields, opts.silent ? "" : opts.message || `${opts.name || "境界"}を読み込みました（${fields.length}区画）。`, { pin: opts.pin });
   setParcelSource();
 }
@@ -6289,27 +6066,38 @@ function adoptParcel(kind) {
     showToast("この筆の座標を確認できません。");
     return;
   }
-  const geo = outerRingLngLat(geometry);
-  if (!geo || geo.length < 3) return;
-  const stableKey = importedStableKey(lastClickedParcel.properties, geometry, { sourceCode: "parcel-backdrop" });
-  const id = `parcel-${domainGeometry.hashString(stableKey)}`;
-  const provenance = {
+  const parcelContext = {
+    provider: domainImport.PROVIDER_IDS.PARCEL_BACKDROP,
     source: "parcel-backdrop",
-    importedAt: new Date().toISOString(),
+    sourceCode: "parcel-backdrop",
     originalCrs: "EPSG:4326",
-    stableKey,
   };
+  const imported = domainImport.buildFieldRecord(
+    { type: "Feature", geometry, properties: lastClickedParcel.properties },
+    0,
+    parcelContext,
+    {
+      forceType: kind === "spray" ? "spray" : "organic",
+      name: kind === "spray" ? "散布ほ場" : `隣接ほ場${state.fields.length}`,
+      idFactory: ({ stableKey }) => domainImport.parcelCompatibleId(stableKey),
+    },
+  );
+  if (!imported.ok) {
+    showToast(imported.error.message);
+    return;
+  }
+  const importedField = imported.field;
   if (kind === "spray") {
     let spray = state.fields.find((f) => f.type === "spray");
     if (!spray) {
       spray = { ...createBlankField(), id: "parcel-spray", type: "spray", short: "散布", name: "散布ほ場", notifyTarget: false, owner: "自分" };
       state.fields.unshift(spray);
     }
-    spray.geo = geo;
-    spray.geometry = geometry;
-    spray.geometryRevision = domainGeometry.hashGeometry(geometry);
-    spray.externalRefs = importedExternalRefs(lastClickedParcel.properties, { sourceCode: "parcel-backdrop" });
-    spray.provenance = provenance;
+    spray.geo = importedField.geo;
+    spray.geometry = importedField.geometry;
+    spray.geometryRevision = importedField.geometryRevision;
+    spray.externalRefs = importedField.externalRefs;
+    spray.provenance = importedField.provenance;
     const plan = activePlan();
     if (plan) {
       plan.fieldId = spray.id;
@@ -6318,7 +6106,7 @@ function adoptParcel(kind) {
     }
   } else {
     // 同じ筆はIDが安定して同一になるため、二重登録せず既存の周辺ほ場を選択する。
-    const existing = state.fields.find((field) => field.id === id);
+    const existing = state.fields.find((field) => field.id === importedField.id);
     if (existing) {
       state.activeFieldId = existing.id;
       saveState();
@@ -6328,15 +6116,9 @@ function adoptParcel(kind) {
     }
     const neighbor = {
       ...createBlankField(),
-      id,
-      type: "organic",
+      ...importedField,
       short: "隣接",
       name: `隣接ほ場${state.fields.length}`,
-      geo,
-      geometry,
-      geometryRevision: domainGeometry.hashGeometry(geometry),
-      externalRefs: importedExternalRefs(lastClickedParcel.properties, { sourceCode: "parcel-backdrop" }),
-      provenance,
       notifyTarget: true,
       owner: "周辺農家",
     };
@@ -6365,7 +6147,7 @@ function recomputeFieldDistances() {
     const distance = domainGeometry.geometryDistanceMeters(sprayGeometry, targetGeometry);
     f.distance = distance === null ? null : Math.round(distance);
     f.direction = center && c
-      ? bearingToDirection(domainGeometry.bearingBetweenLngLat(center, c))
+      ? domainGeometry.bearingToDirection(domainGeometry.bearingBetweenLngLat(center, c))
       : "-";
   });
 }

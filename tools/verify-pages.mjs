@@ -66,6 +66,21 @@ assert(landingDesktop.value.featureLinks.length === 4, "Landing page must expose
 assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?role=sprayer#")), "Capability links must open an available sprayer demo view");
 assert(landingDesktop.errors.length === 0, `Landing runtime errors: ${landingDesktop.errors.join(", ")}`);
 
+// Browser zoom-out increases the CSS viewport. Keep the hero copy from being
+// squeezed by viewport-relative spacing at those effective widths.
+const landingZoomedOut = await inspectPage("/", `() => {
+  const title = document.querySelector('.hero h1');
+  const lineHeight = parseFloat(getComputedStyle(title).lineHeight);
+  return {
+    contentWidth: title.getBoundingClientRect().width,
+    titleLines: Math.round(title.getBoundingClientRect().height / lineHeight),
+    overflow: document.documentElement.scrollWidth - innerWidth,
+  };
+}`, { width: 2268, height: 1125 });
+assert(landingZoomedOut.value.contentWidth >= 600, `Zoomed-out hero width collapsed to ${landingZoomedOut.value.contentWidth}px`);
+assert(landingZoomedOut.value.titleLines <= 2, `Zoomed-out hero title wrapped to ${landingZoomedOut.value.titleLines} lines`);
+assert(landingZoomedOut.value.overflow <= 0, `Zoomed-out landing page overflows by ${landingZoomedOut.value.overflow}px`);
+
 const landingTablet = await inspectPage("/", `() => ({
   overflow: document.documentElement.scrollWidth - innerWidth,
   navButtonVisible: getComputedStyle(document.querySelector('#navToggle')).display !== 'none',

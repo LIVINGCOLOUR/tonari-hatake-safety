@@ -73,12 +73,12 @@ h1, h2, h3 { text-wrap: balance; }
 .hero-media, .closing-media { position: absolute; inset: 0; background: url("../assets/field-safety.webp") center / cover no-repeat; }
 .hero-media { transform: scale(1.01); }
 .hero-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,29,22,.92) 0%, rgba(8,29,22,.72) 44%, rgba(8,29,22,.2) 72%, rgba(8,29,22,.06) 100%); }
-.hero-inner { position: relative; z-index: 1; width: min(var(--content), calc(100% - 48px)); margin: 50px auto 0; padding-right: 45%; }
+.hero-inner { position: relative; z-index: 1; width: min(var(--content), calc(100% - 48px)); margin: 50px auto 0; }
 .hero-kicker, .section-label { margin: 0 0 16px; color: var(--leaf-bright); font-size: 12px; font-weight: 900; letter-spacing: .14em; }
-.hero h1 { margin: 0; font-size: clamp(52px, 7.2vw, 96px); line-height: 1.05; letter-spacing: 0; }
-.hero-lead { margin: 28px 0 12px; font-size: clamp(22px, 2.6vw, 35px); font-weight: 800; line-height: 1.45; }
+.hero h1 { max-width: 650px; margin: 0; font-size: clamp(52px, 7.2vw, 96px); line-height: 1.05; letter-spacing: 0; }
+.hero-lead { max-width: 650px; margin: 28px 0 12px; font-size: clamp(22px, 2.6vw, 35px); font-weight: 800; line-height: 1.45; }
 .hero-body { max-width: 650px; margin: 0; color: #dce8e2; font-size: 17px; }
-.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.hero-actions { display: flex; max-width: 650px; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 .button { display: inline-flex; min-height: 52px; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 5px; padding: 12px 23px; font-weight: 900; }
 .button-primary { color: #fff; background: var(--leaf); box-shadow: 0 10px 24px rgba(10,32,24,.2); }
 .button-primary:hover { background: #23793e; }
@@ -203,7 +203,6 @@ h1, h2, h3 { text-wrap: balance; }
   .site-nav.open { display: grid; }
   .site-nav a { border-bottom: 1px solid var(--line); padding: 13px 0; }
   .header-cta { margin-top: 12px; color: #fff; border-color: var(--leaf); background: var(--leaf); }
-  .hero-inner { padding-right: 35%; }
   .problem-section { gap: 60px; }
   .product-section { grid-template-columns: 1fr; }
   .product-copy { max-width: 680px; }
