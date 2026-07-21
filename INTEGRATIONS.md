@@ -116,6 +116,9 @@ Rate-limited provider traffic is moving from Pages Functions to the standalone
 native Cloudflare Rate Limiting binding with a provider-route limit of 30
 requests per 60 seconds.
 
+Disabled-by-default deployment:
+`https://tonari-hatake-integrations.makoto-monda.workers.dev`
+
 The gateway authorizes the operator before counting a request. It fails closed
 with `503 rate-limit-unavailable` when the binding is missing or fails, and
 returns `429 rate-limit-exceeded` with `Retry-After: 60` before calling a
