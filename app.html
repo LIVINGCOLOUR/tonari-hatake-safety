@@ -375,12 +375,12 @@
                 </label>
                 <div class="field-import-actions">
                   <label class="rx-import-button">
-                    個別に取込（GeoJSON / Shapefile）
-                    <input type="file" id="fieldBoundaryInput" accept=".geojson,.json,.zip,.shp,application/geo+json,application/json,application/zip" hidden>
+                    個別に取込（GeoJSON / Shapefile ZIP）
+                    <input type="file" id="fieldBoundaryInput" accept=".geojson,.json,.zip,application/geo+json,application/json,application/zip" hidden>
                   </label>
                   <button class="ghost-button" id="resetBoundaryButton" type="button">市町村データに戻す</button>
                 </div>
-                <p class="small-note"><code>data/boundaries/</code> に市町村ごとの境界（GeoJSON / Shapefileのzip）を置き <code>index.json</code> に登録すると、上の一覧から選べます。選ぶと起動時にもその市町村の実ほ場を表示します（座標系.prjは自動でWGS84変換）。</p>
+                <p class="small-note"><code>data/boundaries/</code> に市町村ごとの境界（GeoJSON / .prjを含むShapefile ZIP）を置き <code>index.json</code> に登録すると、上の一覧から選べます。座標はWGS84へ変換し、範囲を確認してから使用します。</p>
               </article>
               <article class="panel">
                 <div class="panel-head">

@@ -39,8 +39,57 @@
 - No backend.
 - No package manager dependency is required for the app itself.
 - Browser state is stored in `localStorage`.
-- Current storage key: `tonariHatakeSafetyMvp.v3.coverage`.
-- The app should be opened over HTTP. Do not rely on direct `file://` open because boundary catalog fetches fail in that mode.
+- Current storage key: `tonariHatakeSafetyMvp.v3.coverage`. Since the Phase 1
+  domain migration the value is a versioned envelope
+  `{ schemaVersion: 4, revision, savedAt, data }`; bare pre-envelope blobs are
+  migrated in place on load (`js/domain/state.mjs`).
+- `js/main.js` is a classic script that dynamically imports
+  `js/domain/state.mjs` and `js/domain/geometry.mjs` inside `init()`. Module
+  scripts require a JavaScript MIME type, so the app must be served over HTTP
+  (`python -m http.server` serves `.mjs` as `text/javascript`; do not rename
+  the modules to `.js` — on this Windows machine the registry maps `.js` to
+  `text/plain`, which browsers reject for modules).
+- The app should be opened over HTTP. Direct `file://` open now fails fully
+  (dynamic module import is blocked in that mode) and shows a fatal-error
+  screen pointing at the HTTP requirement.
+
+## Phase 1 Domain Migration (2026-07-21)
+
+- `js/domain/state.mjs`: storage envelope (schema v4) + strict plan→field
+  resolution. Plans reference fields by stable `fieldId`; `fieldName` stays as
+  a display snapshot. Unresolved or ambiguous references stay `fieldId: null`
+  and surface as 「散布ほ場参照切れ」 (go/no-go verdict `stop`, red admin
+  reason, risk item placeholder) instead of silently falling back to another
+  field. Sample plan `plan-drone-2` (`笠間デモほ場F`) is intentionally
+  unresolved — the field does not exist in the demo field set.
+- `js/domain/geometry.mjs`: canonical WGS84 Polygon/MultiPolygon
+  normalization (holes preserved), boundary-to-boundary distance in metres,
+  WGS84 range validation for imports, and content-hash based stable IDs
+  (`imported-<type>-<hash>`); re-importing the same parcel yields the same ID.
+- Fields carry `geometry` (canonical GeoJSON), `geometryRevision`
+  (content hash), `externalRefs` (provider/externalId, filled from parcel
+  properties like `筆ID`), and `provenance` (source, importedAt, originalCrs,
+  stableKey). The legacy `geo` outer ring is still written for
+  backward-compatible readers.
+- Surrounding-field distances are now measured boundary distances, so the
+  dashboard/notification numbers changed from the old hand-entered values
+  (e.g. ほ場B is 2m, not 60m). This is intended.
+- Known demo fields (ids in `SAMPLE_FIELD_GEOMETRY`) keep being refreshed from
+  the curated sample coordinates on load; imported fields keep their own
+  geometry.
+- Shapefile import now requires a ZIP containing `.prj` (single `.shp` is
+  rejected because its CRS cannot be verified).
+- Tests: `node --test tools/domain.test.mjs` (14 tests, node:test, no deps).
+- Browser smoke: serve the repo, start Chrome with
+  `--headless=new --remote-debugging-port=9238`, then run
+  `node tools/verify-pages.mjs http://127.0.0.1:4177 9238` and
+  `node tools/verify-app-state.mjs http://127.0.0.1:4177 9238` (the latter
+  covers envelope migration, plan resolution, the unresolved-plan UI, and a
+  per-role view sweep).
+- Suggested next step (Phase 2): move import/parcel handling
+  (`buildFieldsFromFeatures`, stable keys, provenance) into a
+  `js/domain/import.mjs` module, then introduce provider adapters (xarvio,
+  WAGRI) that map external payloads onto `externalRefs` + canonical geometry.
 
 Recommended local launch:
 

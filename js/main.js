@@ -347,14 +347,16 @@ const DEFAULT_MAP_VIEW = {
 
 // 実際のほ場境界（geo付きフィールド）があればその外接範囲、無ければデモ既定範囲。
 function currentMapBounds() {
-  const geoFields = (state?.fields || []).filter((f) => Array.isArray(f.geo) && f.geo.length >= 3);
-  if (!geoFields.length) return DEMO_MAP_BOUNDS;
+  const geometries = (state?.fields || [])
+    .map((field) => normalizedFieldGeometry(field))
+    .filter(Boolean);
+  if (!geometries.length) return DEMO_MAP_BOUNDS;
   let west = Infinity;
   let east = -Infinity;
   let south = Infinity;
   let north = -Infinity;
-  geoFields.forEach((f) =>
-    f.geo.forEach(([lng, lat]) => {
+  geometries.forEach((geometry) =>
+    domainGeometry.eachCoord(geometry, ([lng, lat]) => {
       west = Math.min(west, lng);
       east = Math.max(east, lng);
       south = Math.min(south, lat);
@@ -430,8 +432,11 @@ const SAMPLE_FIELD_GEOMETRY = {
   },
 };
 
-let state = loadState();
-let activeRole = profileRole(state) || state?.role || "sprayer";
+let domainState;
+let domainGeometry;
+let storageRevision = 0;
+let state = null;
+let activeRole = "sprayer";
 let activeView = "dashboard";
 let noticeChannel = "line";
 let mapLayer = "risk";
@@ -449,7 +454,12 @@ let dashboardMapLibreReady = false;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", () => {
+  init().catch((error) => {
+    console.error(error);
+    document.body.innerHTML = `<main class="fatal-error"><h1>画面を読み込めませんでした</h1><p>再読み込みしてください。改善しない場合は、file:// 直開きではなくHTTPサーバー経由（例：python -m http.server）で開いているかを確認してください。</p></main>`;
+  });
+});
 
 function activeProfile() {
   state.profile = normalizeProfile(state.profile);
@@ -473,7 +483,13 @@ function allowedViewsForCurrentMode() {
   return ROLE_ALLOWED_VIEWS[currentNavigationRole()] || ROLE_ALLOWED_VIEWS.sprayer;
 }
 
-function init() {
+async function init() {
+  // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
+  [domainState, domainGeometry] = await Promise.all([
+    import("./domain/state.mjs?v=20260721"),
+    import("./domain/geometry.mjs?v=20260721"),
+  ]);
+  state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
     state = createSampleState();
   }
@@ -1462,6 +1478,13 @@ function adminQueueItems(summary) {
 
 function adminAttentionReasons(plan) {
   const reasons = [];
+  if (!planFieldResolution(plan).resolved) {
+    reasons.push({
+      level: "red",
+      title: "散布ほ場参照切れ",
+      detail: "散布計画と圃場境界の対応を確認してください。距離・風下の自動判定は保留中です。",
+    });
+  }
   const risks = riskItemsForPlan(plan);
   const unnotified = risks.filter((risk) => risk.notifyTarget && !plan.notificationTargets[risk.id]);
   const organicNear = risks.filter((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high");
@@ -1546,6 +1569,7 @@ function sprayGoNoGo(plan) {
   const w = plan.weather || {};
   const rain = rainNeedsAttention(w);
   const notifyComplete = notificationIsComplete(plan);
+  const unresolvedRef = !planFieldResolution(plan).resolved;
   const unnotifiedHigh = riskItemsForPlan(plan).filter((r) => r.notifyTarget && r.level === "high" && !r.notified);
   const factors = [
     { label: "気象条件", status: weather.level, detail: `${weather.label}（${weatherLabel(plan)}）` },
@@ -1553,12 +1577,16 @@ function sprayGoNoGo(plan) {
     { label: "近隣通知", status: notifyComplete ? "good" : "warn", detail: notificationLabel(plan) },
     {
       label: "風下の要確認圃場",
-      status: unnotifiedHigh.length ? "bad" : "good",
-      detail: unnotifiedHigh.length ? `${unnotifiedHigh.length}件が未通知` : "対応済み／該当なし",
+      status: unresolvedRef || unnotifiedHigh.length ? "bad" : "good",
+      detail: unresolvedRef
+        ? "散布ほ場の参照切れ（距離判定不可）"
+        : unnotifiedHigh.length
+          ? `${unnotifiedHigh.length}件が未通知`
+          : "対応済み／該当なし",
     },
   ];
   let verdict;
-  if (weather.level === "bad" || rain || unnotifiedHigh.length) verdict = "stop";
+  if (weather.level === "bad" || rain || unnotifiedHigh.length || unresolvedRef) verdict = "stop";
   else if (weather.level === "warn" || !notifyComplete) verdict = "caution";
   else verdict = "go";
   const meta = {
@@ -1567,6 +1595,7 @@ function sprayGoNoGo(plan) {
     stop: { label: "散布前に追加確認が必要です", icon: "確" },
   }[verdict];
   const actions = [];
+  if (unresolvedRef) actions.push({ view: "plans", label: "計画のほ場を確認" });
   if (weather.level !== "good") actions.push({ view: "weather", label: "気象を確認" });
   if (!notifyComplete) actions.push({ view: "notify", label: "近隣通知へ" });
   if (unnotifiedHigh.length) actions.push({ view: "map", label: "風下を確認" });
@@ -2552,10 +2581,7 @@ function fieldFeatureCollection() {
       return {
         type: "Feature",
         id: field.id,
-        geometry: {
-          type: "Polygon",
-          coordinates: [fieldPolygonCoordinates(field, index)],
-        },
+        geometry: normalizedFieldGeometry(field, index),
         properties: {
           id: field.id,
           type: field.type,
@@ -2563,8 +2589,8 @@ function fieldFeatureCollection() {
           short: field.short,
           crop: field.crop || "",
           cultivation: field.cultivation || "",
-          distance: field.distance || "",
-          direction: field.direction || "",
+          distance: risk?.distance ?? field.distance ?? "",
+          direction: risk?.direction || field.direction || "",
           notify: risk?.notifyTarget ? 1 : 0,
           level: risk?.level || (field.type === "spray" ? "spray" : "low"),
           color: FIELD_LAYER_COLORS[field.type] || FIELD_LAYER_COLORS.public,
@@ -2578,24 +2604,19 @@ function adminDashboardFieldFeatureCollection() {
   const plans = adminDashboardPlans();
   const byField = new Map();
   plans.forEach((plan) => {
-    const keys = [plan.fieldName, activeSprayField()?.name].filter(Boolean);
-    keys.forEach((key) => {
-      if (!byField.has(key)) byField.set(key, []);
-      byField.get(key).push(plan);
-    });
+    if (!plan.fieldId) return;
+    if (!byField.has(plan.fieldId)) byField.set(plan.fieldId, []);
+    byField.get(plan.fieldId).push(plan);
   });
   return {
     type: "FeatureCollection",
     features: state.fields.map((field, index) => {
-      const matches = byField.get(field.name) || (field.type === "spray" ? plans : []);
+      const matches = byField.get(field.id) || [];
       const status = adminDashboardFieldStatus(matches);
       return {
         type: "Feature",
         id: field.id,
-        geometry: {
-          type: "Polygon",
-          coordinates: [fieldPolygonCoordinates(field, index)],
-        },
+        geometry: normalizedFieldGeometry(field, index),
         properties: {
           id: field.id,
           type: field.type,
@@ -2628,7 +2649,7 @@ function adminDashboardFieldStatus(plans) {
   return { label: "散布予定", color: ADMIN_DASHBOARD_COLORS.planned, level: "high", notify: 1 };
 }
 
-function fieldPolygonCoordinates(field, index = 0) {
+function legacyFieldPolygonCoordinates(field, index = 0) {
   if (Array.isArray(field.geo) && field.geo.length >= 3) {
     const ring = field.geo.map(([lng, lat]) => [Number(lng), Number(lat)]);
     ring.push([...ring[0]]);
@@ -2659,12 +2680,34 @@ function fieldPolygonCoordinates(field, index = 0) {
   return ring;
 }
 
+function normalizedFieldGeometry(field, index = 0) {
+  if (!field) return null;
+  const stored = domainGeometry?.normalizeGeometry(field.geometry);
+  if (stored) return stored;
+  const legacy = legacyFieldPolygonCoordinates(field, index);
+  return domainGeometry?.polygonFromRing(legacy) || null;
+}
+
+function fieldPolygonCoordinates(field, index = 0) {
+  const geometry = normalizedFieldGeometry(field, index);
+  return domainGeometry?.polygonsFromGeometry(geometry)?.[0]?.[0] || [];
+}
+
+function planFieldResolution(plan) {
+  return domainState.planSprayField(plan, state.fields);
+}
+
+function fieldForPlan(plan) {
+  return planFieldResolution(plan).field;
+}
+
 function activeSprayField() {
-  const plan = activePlan();
-  return state.fields.find((field) => field.name === plan.fieldName) || state.fields.find((field) => field.type === "spray") || state.fields[0];
+  return fieldForPlan(activePlan());
 }
 
 function fieldCenterLngLat(field = activeSprayField()) {
+  const centroid = domainGeometry?.geometryCentroid(normalizedFieldGeometry(field));
+  if (centroid) return centroid;
   if (Array.isArray(field?.geo) && field.geo.length) {
     const sum = field.geo.reduce((acc, [lng, lat]) => ({ x: acc.x + Number(lng), y: acc.y + Number(lat) }), { x: 0, y: 0 });
     return [sum.x / field.geo.length, sum.y / field.geo.length];
@@ -2680,7 +2723,10 @@ function fieldCenterLngLat(field = activeSprayField()) {
     );
     return lngLatFromPercent(sum.x / field.geoShape.length, sum.y / field.geoShape.length);
   }
-  return lngLatFromPercent(Number(field?.x || 50) + Number(field?.w || 8) / 2, Number(field?.y || 50) + Number(field?.h || 8) / 2);
+  if (field) {
+    return lngLatFromPercent(Number(field.x || 50) + Number(field.w || 8) / 2, Number(field.y || 50) + Number(field.h || 8) / 2);
+  }
+  return [...DEFAULT_MAP_VIEW.center];
 }
 
 function lngLatFromPercent(x, y) {
@@ -2692,6 +2738,7 @@ function lngLatFromPercent(x, y) {
 
 function riskBufferFeatureCollection() {
   const rules = activeSettings();
+  if (!activeSprayField()) return emptyFeatureCollection();
   const center = fieldCenterLngLat();
   return {
     type: "FeatureCollection",
@@ -2704,6 +2751,7 @@ function riskBufferFeatureCollection() {
 
 function windZoneFeatureCollection(plan) {
   const weather = plan.weather || {};
+  if (!fieldForPlan(plan)) return emptyFeatureCollection();
   const center = fieldCenterLngLat();
   const downwind = downwindDirection(weather.actualDirection || weather.forecastDirection);
   const bearing = directionToBearing(downwind);
@@ -3396,11 +3444,7 @@ function pointSegmentDistM([px, py], [ax, ay], [bx, by]) {
 }
 
 function coverageField(plan) {
-  return (
-    state.fields.find((field) => field.name === plan.fieldName) ||
-    state.fields.find((field) => field.type === "spray") ||
-    state.fields[0]
-  );
+  return fieldForPlan(plan);
 }
 
 // Rasterise the spray field into a metre grid; cache per field geometry.
@@ -3737,6 +3781,7 @@ function parsePrescriptionText(text, name) {
 function samplePrescription(plan) {
   const field = coverageField(plan);
   const ring = fieldPolygonCoordinates(field);
+  if (ring.length < 3) return null;
   const lngs = ring.map((c) => c[0]);
   const lats = ring.map((c) => c[1]);
   const w = Math.min(...lngs);
@@ -3856,7 +3901,12 @@ function importPrescriptionFile(file) {
 
 function loadSamplePrescription() {
   const plan = activePlan();
-  plan.prescription = samplePrescription(plan);
+  const rx = samplePrescription(plan);
+  if (!rx) {
+    showToast("散布ほ場の圃場境界を確認できないため、サンプル処方を作成できません。");
+    return;
+  }
+  plan.prescription = rx;
   saveState();
   updatePrescriptionDisplay();
   showToast("サンプル処方（可変施肥）を読み込みました。");
@@ -3876,6 +3926,7 @@ const RATE_UNITS = ["kg/ha", "L/ha", "g/10a", "mL/10a"];
 function generatePrescriptionZones(plan, zones, baseRate, unit, material) {
   const field = coverageField(plan);
   const ring = fieldPolygonCoordinates(field);
+  if (ring.length < 3) return null;
   const lngs = ring.map((c) => c[0]);
   const lats = ring.map((c) => c[1]);
   const w = Math.min(...lngs);
@@ -3902,7 +3953,12 @@ function generatePrescriptionZones(plan, zones, baseRate, unit, material) {
 
 function createPrescription() {
   const plan = activePlan();
-  plan.prescription = generatePrescriptionZones(plan, 4, 100, "kg/ha", "化学肥料");
+  const rx = generatePrescriptionZones(plan, 4, 100, "kg/ha", "化学肥料");
+  if (!rx) {
+    showToast("散布ほ場の圃場境界を確認できないため、処方マップを作成できません。");
+    return;
+  }
+  plan.prescription = rx;
   saveState();
   updatePrescriptionDisplay();
   showToast("処方マップを作成しました。ゾーンごとに施用量を編集できます。");
@@ -3914,7 +3970,12 @@ function regeneratePrescription() {
   const baseRate = $("#rxBaseRateInput")?.value;
   const unit = $("#rxUnitInput")?.value || "kg/ha";
   const material = plan.prescription?.material || "化学肥料";
-  plan.prescription = generatePrescriptionZones(plan, zones, baseRate, unit, material);
+  const rx = generatePrescriptionZones(plan, zones, baseRate, unit, material);
+  if (!rx) {
+    showToast("散布ほ場の圃場境界を確認できないため、処方マップを再生成できません。");
+    return;
+  }
+  plan.prescription = rx;
   saveState();
   updatePrescriptionDisplay();
   showToast("処方マップを再生成しました。");
@@ -4206,7 +4267,7 @@ function renderAdminDetail() {
   if (adminMapLibreMap) {
     adminMapLibreMap.resize();
     updateGisMap(adminMapLibreMap, { dashboard: true });
-    const field = state.fields.find((f) => f.name === plan.fieldName) || activeSprayField();
+    const field = fieldForPlan(plan);
     if (field) adminMapLibreMap.flyTo({ center: fieldCenterLngLat(field), zoom: 16.2, duration: 500 });
   }
 }
@@ -4713,6 +4774,14 @@ function updatePlanFromForm() {
   plan.ratePer10a = toNumber(form.elements.ratePer10a.value);
   plan.areaHa = toNumber(form.elements.areaHa.value);
   plan.sprayWidthM = toNumber(form.elements.sprayWidthM.value);
+  // 参照中のほ場と同名のままなら既存のfieldIdを維持する（同名圃場があっても参照を失わない）。
+  const currentField = fieldForPlan(plan);
+  const typedName = String(plan.fieldName ?? "").trim();
+  if (!currentField || String(currentField.name ?? "").trim() !== typedName) {
+    const resolvedField = domainState.resolveFieldByName(plan.fieldName, state.fields);
+    plan.fieldId = resolvedField?.id || null;
+    plan.fieldIdSource = resolvedField ? "form-name" : "unresolved";
+  }
 }
 
 function updateWeatherFromForm() {
@@ -5257,19 +5326,50 @@ function getAdminDashboardMetrics() {
 
 function riskItemsForPlan(plan) {
   const rules = activeSettings();
+  const resolution = planFieldResolution(plan);
+  if (!resolution.resolved) {
+    return [{
+      id: `unresolved-${plan?.id || "plan"}`,
+      type: "referenceError",
+      name: "散布ほ場の参照切れ",
+      owner: "要確認",
+      distance: null,
+      direction: "-",
+      notifyTarget: false,
+      level: "high",
+      notified: false,
+      distanceLabel: "距離未判定",
+      message: "散布計画と圃場境界の対応を確認してください。別の圃場を使った自動判定は行っていません。",
+    }];
+  }
+  const sprayField = resolution.field;
+  const sprayGeometry = normalizedFieldGeometry(sprayField);
+  const sprayCenter = domainGeometry.geometryCentroid(sprayGeometry);
   return state.fields
-    .filter((field) => field.type !== "spray")
+    .filter((field) => field.id !== sprayField.id && field.type !== "spray")
     .map((field) => {
+      const targetGeometry = normalizedFieldGeometry(field);
+      const measuredDistance = domainGeometry.geometryDistanceMeters(sprayGeometry, targetGeometry);
+      const distance = measuredDistance === null ? null : Math.round(measuredDistance);
+      const targetCenter = domainGeometry.geometryCentroid(targetGeometry);
+      const direction = sprayCenter && targetCenter
+        ? bearingToDirection(domainGeometry.bearingBetweenLngLat(sprayCenter, targetCenter))
+        : "-";
       let level = "low";
       let message = "周辺情報として確認。";
       const isOrganicLike = field.type === "organic" || field.type === "noChemical";
       const isSensitive = ["house", "preharvest", "water", "bee"].includes(field.type);
-      let requiresNotice = Boolean(field.notifyTarget && field.distance <= rules.notifyRadius);
-      if (isOrganicLike && field.distance <= rules.organicRadius) {
+      let requiresNotice = distance === null
+        ? Boolean(field.notifyTarget)
+        : Boolean(field.notifyTarget && distance <= rules.notifyRadius);
+      if (distance === null) {
+        level = "high";
+        message = "圃場境界の座標を確認できないため、距離判定を保留しています。";
+      } else if (isOrganicLike && distance <= rules.organicRadius) {
         level = "high";
         requiresNotice = true;
-        message = `周辺確認が必要です。${field.direction}方向 ${field.distance}m に${field.name}があります。実証ルール案の重点確認距離 ${rules.organicRadius}m 以内です。`;
-      } else if (isSensitive && field.distance <= rules.sensitiveRadius) {
+        message = `周辺確認が必要です。${direction}方向 ${distance}m に${field.name}があります。実証ルール案の重点確認距離 ${rules.organicRadius}m 以内です。`;
+      } else if (isSensitive && distance <= rules.sensitiveRadius) {
         level = "medium";
         requiresNotice = true;
         message = `通知・作業調整の確認対象です。${rules.sensitiveRadius}m 圏内にあります。`;
@@ -5280,10 +5380,12 @@ function riskItemsForPlan(plan) {
       const notified = Boolean(plan.notificationTargets[field.id]);
       return {
         ...field,
+        distance,
+        direction,
         notifyTarget: requiresNotice,
         level,
         notified,
-        distanceLabel: `${field.distance}m`,
+        distanceLabel: distance === null ? "距離未判定" : `${distance}m`,
         message,
       };
     })
@@ -5691,28 +5793,32 @@ function outerRingLngLat(geometry) {
   return coords;
 }
 
-function buildFieldsFromGeoJson(text) {
+function buildFieldsFromGeoJson(text, context = {}) {
   const data = JSON.parse(text);
   let features = [];
   if (data.type === "FeatureCollection") features = data.features || [];
   else if (data.type === "Feature") features = [data];
   else if (data.type && data.coordinates) features = [{ type: "Feature", geometry: data, properties: {} }];
-  return buildFieldsFromFeatures(features);
+  return buildFieldsFromFeatures(features, context);
 }
 
-function buildFieldsFromFeatures(rawFeatures) {
+function buildFieldsFromFeatures(rawFeatures, context = {}) {
   const features = Array.isArray(rawFeatures) ? rawFeatures : [];
   const polys = features.filter((f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"));
   if (!polys.length) throw new Error("ポリゴン境界が見つかりません。");
   const fields = polys.map((f, i) => {
-    const geo = outerRingLngLat(f.geometry);
+    const geometry = domainGeometry.normalizeGeometry(f.geometry);
+    if (!geometry) throw new Error(`区画${i + 1}のポリゴン形状を読み取れません。`);
+    const violation = domainGeometry.wgs84RangeViolation(geometry);
+    if (violation) throw new Error(`区画${i + 1}の座標がWGS84の範囲外です（${violation.join(", ")}）。`);
+    const geo = outerRingLngLat(geometry);
     const props = f.properties || {};
     const name = props.name || props["圃場名"] || props.field || props.NAME || props.label || `取込ほ場${i + 1}`;
     const featureType = importedFieldType(props.type || props["種別"], i);
     const isSpray = featureType === "spray";
     const defaults = importedFieldDefaults(featureType);
     return {
-      id: importedFieldId(name, featureType, i),
+      id: importedFieldId(name, featureType, i, geometry, props, context),
       type: featureType,
       name: String(name),
       short: defaults.short,
@@ -5730,18 +5836,35 @@ function buildFieldsFromFeatures(rawFeatures) {
       waterNear: featureType === "water",
       unregistered: featureType === "public",
       geo,
+      geometry,
+      geometryRevision: domainGeometry.hashGeometry(geometry),
+      externalRefs: importedExternalRefs(props, context),
+      provenance: {
+        source: context.source || context.name || "file-import",
+        importedAt: new Date().toISOString(),
+        originalCrs: context.originalCrs || "EPSG:4326",
+        stableKey: importedStableKey(props, geometry, context),
+        datasetVersion: context.datasetVersion || "",
+        license: context.license || "",
+      },
       distance: 0,
       direction: isSpray ? "中心" : "-",
       notifyTarget: !isSpray && featureType !== "public",
       owner: isSpray ? "自分" : "周辺農家",
     };
   });
-  const sprayCenter = fieldCenterLngLat(fields[0]);
+  const sprayField = fields.find((field) => field.type === "spray") || fields[0];
+  const sprayGeometry = normalizedFieldGeometry(sprayField);
+  const sprayCenter = domainGeometry.geometryCentroid(sprayGeometry);
   fields.forEach((field, i) => {
-    if (i === 0) return;
-    const c = fieldCenterLngLat(field);
-    field.distance = Math.round(haversineMeters(sprayCenter, c));
-    field.direction = bearingToDirection(bearingBetween(sprayCenter, c));
+    if (field.id === sprayField.id) return;
+    const fieldGeometry = normalizedFieldGeometry(field, i);
+    const c = domainGeometry.geometryCentroid(fieldGeometry);
+    const distance = domainGeometry.geometryDistanceMeters(sprayGeometry, fieldGeometry);
+    field.distance = distance === null ? null : Math.round(distance);
+    field.direction = sprayCenter && c
+      ? bearingToDirection(domainGeometry.bearingBetweenLngLat(sprayCenter, c))
+      : "-";
   });
   return fields;
 }
@@ -5768,8 +5891,38 @@ function importedFieldType(rawType, index) {
   return aliases[value] || (index === 0 ? "spray" : "noChemical");
 }
 
-function importedFieldId(name, type, index) {
-  return knownDemoFieldMeta(name)?.id || `imported-${type}-${index}-${Date.now().toString(36)}`;
+function importedPropertyId(props) {
+  const keys = ["uuid", "UUID", "fieldId", "field_id", "FIELD_ID", "id", "ID", "筆ID", "筆ポリゴンID", "地番"];
+  for (const key of keys) {
+    const value = props?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function importedStableKey(props, geometry, context = {}) {
+  const externalId = importedPropertyId(props);
+  const source = context.sourceCode || context.source || context.name || "file";
+  return externalId
+    ? `${source}:${externalId}`
+    : `${source}:geometry:${domainGeometry.hashGeometry(geometry) || "unknown"}`;
+}
+
+function importedExternalRefs(props, context = {}) {
+  const externalId = importedPropertyId(props);
+  if (!externalId) return [];
+  return [{
+    provider: context.provider || context.sourceCode || "file",
+    providerAccount: context.providerAccount || "",
+    resourceType: "field",
+    externalId,
+    revision: context.datasetVersion || "",
+  }];
+}
+
+function importedFieldId(name, type, index, geometry, props = {}, context = {}) {
+  return knownDemoFieldMeta(name)?.id
+    || domainGeometry.stableImportedId(type, importedStableKey(props, geometry, context) || `${name}:${index}`);
 }
 
 function knownDemoFieldMeta(name) {
@@ -5863,7 +6016,12 @@ function importedFieldDefaults(type) {
 function applyImportedFields(fields, message, options = {}) {
   state.fields = fields;
   const plan = activePlan();
-  if (plan && fields[0]) plan.fieldName = fields[0].name;
+  const sprayField = fields.find((field) => field.type === "spray") || null;
+  if (plan && sprayField) {
+    plan.fieldId = sprayField.id;
+    plan.fieldName = sprayField.name;
+    plan.fieldIdSource = "boundary-import";
+  }
   state.activeFieldId = fields.find((f) => f.type !== "spray")?.id;
   if (options.pin) {
     state.boundaryPinned = true;
@@ -5879,7 +6037,11 @@ function applyImportedFields(fields, message, options = {}) {
 function importFieldBoundaries(file) {
   if (!file) return;
   const lower = file.name.toLowerCase();
-  if (lower.endsWith(".zip") || lower.endsWith(".shp")) {
+  if (lower.endsWith(".shp")) {
+    showToast("単独の.shpは座標系を確認できません。.prjを含むZIPで取り込んでください。");
+    return;
+  }
+  if (lower.endsWith(".zip")) {
     importShapefileBoundaries(file);
     return;
   }
@@ -5887,7 +6049,13 @@ function importFieldBoundaries(file) {
   reader.onload = () => {
     try {
       const features = featuresFromGeoJsonText(String(reader.result));
-      applyBoundaryFeatures(features, { pin: true, message: "実際のほ場境界を取り込みました。" });
+      applyBoundaryFeatures(features, {
+        pin: true,
+        message: "実際のほ場境界を取り込みました。",
+        source: file.name,
+        sourceCode: `file:${file.name}`,
+        originalCrs: "EPSG:4326",
+      });
     } catch (error) {
       showToast(`取り込めませんでした：${error.message}`);
     }
@@ -5895,7 +6063,7 @@ function importFieldBoundaries(file) {
   reader.readAsText(file);
 }
 
-// Shapefile (.zip: shp/dbf/prj, or a single .shp) via shpjs; reprojects to WGS84.
+// Shapefile ZIP (shp/dbf/prj) via shpjs; the .prj is required for safe reprojection.
 async function importShapefileBoundaries(file) {
   if (typeof shp === "undefined") {
     showToast("Shapefile読み込みライブラリが未ロードです。少し待って再試行してください。");
@@ -5904,18 +6072,19 @@ async function importShapefileBoundaries(file) {
   showToast("Shapefileを解析中…");
   try {
     const buffer = await file.arrayBuffer();
-    let features = [];
-    if (file.name.toLowerCase().endsWith(".shp")) {
-      const geometries = await shp.parseShp(buffer);
-      features = (geometries || []).map((geometry) => ({ type: "Feature", geometry, properties: {} }));
-    } else {
-      const parsed = await shp.parseZip(buffer);
-      const collections = Array.isArray(parsed) ? parsed : [parsed];
-      collections.forEach((fc) => {
-        (fc?.features || []).forEach((feature) => features.push(feature));
-      });
-    }
-    applyBoundaryFeatures(features, { pin: true, message: "Shapefileから実境界を取り込みました。" });
+    const parsed = await shp.parseZip(buffer);
+    const collections = Array.isArray(parsed) ? parsed : [parsed];
+    const features = [];
+    collections.forEach((fc) => {
+      (fc?.features || []).forEach((feature) => features.push(feature));
+    });
+    applyBoundaryFeatures(features, {
+      pin: true,
+      message: "Shapefileから実境界を取り込みました。",
+      source: file.name,
+      sourceCode: `file:${file.name}`,
+      originalCrs: "PRJからEPSG:4326へ変換",
+    });
   } catch (error) {
     showToast(`Shapefileを取り込めませんでした：${error.message || "形式を確認してください"}`);
   }
@@ -5984,7 +6153,16 @@ async function loadMunicipalityBoundary(code, options = {}) {
     } else {
       features = featuresFromGeoJsonText(await res.text());
     }
-    applyBoundaryFeatures(features, { code, name: entry.name, silent: options.silent });
+    applyBoundaryFeatures(features, {
+      code,
+      name: entry.name,
+      silent: options.silent,
+      source: entry.file,
+      sourceCode: `municipality:${entry.code}`,
+      originalCrs: entry.file.toLowerCase().endsWith(".zip") ? "PRJからEPSG:4326へ変換" : "EPSG:4326",
+      datasetVersion: entry.version || "",
+      license: entry.license || "",
+    });
     return true;
   } catch (error) {
     if (!options.silent) showToast(`境界を読み込めませんでした：${error.message}`);
@@ -6021,18 +6199,25 @@ function applyBoundaryFeatures(features, opts = {}) {
     return;
   }
   parcelData = null;
-  const fields = buildFieldsFromFeatures(polys);
+  const fields = buildFieldsFromFeatures(polys, opts);
   applyImportedFields(fields, opts.silent ? "" : opts.message || `${opts.name || "境界"}を読み込みました（${fields.length}区画）。`, { pin: opts.pin });
   setParcelSource();
 }
 
 function applyParcelBackdrop(polys, opts = {}) {
-  parcelData = { type: "FeatureCollection", features: polys.map((f) => ({ type: "Feature", geometry: f.geometry, properties: {} })) };
-  const first = buildFieldsFromFeatures([polys[0]]);
+  parcelData = {
+    type: "FeatureCollection",
+    features: polys.map((f) => ({ type: "Feature", geometry: f.geometry, properties: { ...(f.properties || {}) } })),
+  };
+  const first = buildFieldsFromFeatures([polys[0]], opts);
   state.fields = first;
   state.activeFieldId = undefined;
   const plan = activePlan();
-  if (plan && first[0]) plan.fieldName = first[0].name;
+  if (plan && first[0]) {
+    plan.fieldId = first[0].id;
+    plan.fieldName = first[0].name;
+    plan.fieldIdSource = "parcel-backdrop";
+  }
   if (opts.pin) {
     state.boundaryPinned = true;
     state.boundaryMunicipality = "__custom__";
@@ -6085,7 +6270,7 @@ function fitToParcels() {
 function showParcelPopup(map, event) {
   const feature = event.features?.[0];
   if (!feature || !window.maplibregl) return;
-  lastClickedParcel = feature.geometry;
+  lastClickedParcel = { geometry: feature.geometry, properties: { ...(feature.properties || {}) } };
   new maplibregl.Popup({ closeButton: true, offset: 12, className: "gis-popup" })
     .setLngLat(event.lngLat)
     .setHTML(
@@ -6099,8 +6284,21 @@ function showParcelPopup(map, event) {
 
 function adoptParcel(kind) {
   if (!lastClickedParcel) return;
-  const geo = outerRingLngLat(lastClickedParcel);
+  const geometry = domainGeometry.normalizeGeometry(lastClickedParcel.geometry);
+  if (!geometry || !domainGeometry.isWithinWgs84(geometry)) {
+    showToast("この筆の座標を確認できません。");
+    return;
+  }
+  const geo = outerRingLngLat(geometry);
   if (!geo || geo.length < 3) return;
+  const stableKey = importedStableKey(lastClickedParcel.properties, geometry, { sourceCode: "parcel-backdrop" });
+  const id = `parcel-${domainGeometry.hashString(stableKey)}`;
+  const provenance = {
+    source: "parcel-backdrop",
+    importedAt: new Date().toISOString(),
+    originalCrs: "EPSG:4326",
+    stableKey,
+  };
   if (kind === "spray") {
     let spray = state.fields.find((f) => f.type === "spray");
     if (!spray) {
@@ -6108,14 +6306,37 @@ function adoptParcel(kind) {
       state.fields.unshift(spray);
     }
     spray.geo = geo;
+    spray.geometry = geometry;
+    spray.geometryRevision = domainGeometry.hashGeometry(geometry);
+    spray.externalRefs = importedExternalRefs(lastClickedParcel.properties, { sourceCode: "parcel-backdrop" });
+    spray.provenance = provenance;
+    const plan = activePlan();
+    if (plan) {
+      plan.fieldId = spray.id;
+      plan.fieldName = spray.name;
+      plan.fieldIdSource = "parcel-adopt";
+    }
   } else {
+    // 同じ筆はIDが安定して同一になるため、二重登録せず既存の周辺ほ場を選択する。
+    const existing = state.fields.find((field) => field.id === id);
+    if (existing) {
+      state.activeFieldId = existing.id;
+      saveState();
+      renderAll();
+      showToast("この筆は周辺ほ場として登録済みです。");
+      return;
+    }
     const neighbor = {
       ...createBlankField(),
-      id: `parcel-${Date.now().toString(36)}`,
+      id,
       type: "organic",
       short: "隣接",
       name: `隣接ほ場${state.fields.length}`,
       geo,
+      geometry,
+      geometryRevision: domainGeometry.hashGeometry(geometry),
+      externalRefs: importedExternalRefs(lastClickedParcel.properties, { sourceCode: "parcel-backdrop" }),
+      provenance,
       notifyTarget: true,
       owner: "周辺農家",
     };
@@ -6131,16 +6352,21 @@ function adoptParcel(kind) {
 function recomputeFieldDistances() {
   const spray = state.fields.find((f) => f.type === "spray") || state.fields[0];
   if (!spray) return;
-  const center = fieldCenterLngLat(spray);
+  const sprayGeometry = normalizedFieldGeometry(spray);
+  const center = domainGeometry.geometryCentroid(sprayGeometry);
   state.fields.forEach((f) => {
     if (f === spray) {
       f.distance = 0;
       f.direction = "中心";
       return;
     }
-    const c = fieldCenterLngLat(f);
-    f.distance = Math.round(haversineMeters(center, c));
-    f.direction = bearingToDirection(bearingBetween(center, c));
+    const targetGeometry = normalizedFieldGeometry(f);
+    const c = domainGeometry.geometryCentroid(targetGeometry);
+    const distance = domainGeometry.geometryDistanceMeters(sprayGeometry, targetGeometry);
+    f.distance = distance === null ? null : Math.round(distance);
+    f.direction = center && c
+      ? bearingToDirection(domainGeometry.bearingBetweenLngLat(center, c))
+      : "-";
   });
 }
 
@@ -6195,11 +6421,14 @@ function createBlankField() {
 }
 
 function createBlankPlan() {
+  const sprayField = state?.fields?.find((field) => field.type === "spray") || null;
   return {
     id: uniqueId("plan"),
     date: dateOffset(0),
     timeWindow: "06:00-07:30",
-    fieldName: "笠間市 デモほ場A",
+    fieldId: sprayField?.id || null,
+    fieldIdSource: sprayField ? "new-plan" : "unresolved",
+    fieldName: sprayField?.name || "笠間市 デモほ場A",
     district: "笠間市周辺デモ",
     crop: "水稲",
     materialType: "農薬",
@@ -6826,7 +7055,9 @@ function defaultReport() {
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const stored = domainState.parseStoredState(raw);
+    storageRevision = stored?.revision || 0;
+    return stored?.data || null;
   } catch (error) {
     return null;
   }
@@ -6857,11 +7088,11 @@ function normalizeState(input) {
     next.settings.sensitiveRadius = DEFAULT_SETTINGS.sensitiveRadius;
   }
   next.fields = Array.isArray(next.fields) && next.fields.length ? next.fields : createSampleState().fields;
-  next.fields = next.fields.map((field) => {
+  next.fields = next.fields.map((field, index) => {
     const known = knownDemoFieldMeta(field.name);
     const migratedField = known && String(field.id || "").startsWith("imported-") ? { ...field, id: known.id, type: known.type } : field;
     const sampleGeometry = SAMPLE_FIELD_GEOMETRY[migratedField.id] || {};
-    return {
+    const merged = {
       crop: "未登録",
       cultivation: "未登録・未回答",
       chemicalUse: "未回答",
@@ -6877,6 +7108,28 @@ function normalizeState(input) {
       ...migratedField,
       ...sampleGeometry,
     };
+    // 既知デモ圃場は整備済みサンプル座標が正。保存済みの旧geometryを残すと航空写真との整合修正が反映されない。
+    if (sampleGeometry.geo) merged.geometry = null;
+    const geometry = normalizedFieldGeometry(merged, index);
+    const geometryHash = domainGeometry.hashGeometry(geometry);
+    const outerRing = domainGeometry.polygonsFromGeometry(geometry)?.[0]?.[0] || merged.geo || [];
+    return {
+      ...merged,
+      geo: outerRing.length > 1 && outerRing[0][0] === outerRing[outerRing.length - 1][0]
+        && outerRing[0][1] === outerRing[outerRing.length - 1][1]
+        ? outerRing.slice(0, -1)
+        : outerRing,
+      geometry,
+      geometryRevision: geometryHash || merged.geometryRevision || "missing",
+      externalRefs: Array.isArray(merged.externalRefs) ? merged.externalRefs : [],
+      provenance: {
+        source: "legacy-local",
+        importedAt: "",
+        originalCrs: "EPSG:4326",
+        stableKey: geometryHash || merged.id,
+        ...(merged.provenance || {}),
+      },
+    };
   });
   const editableFields = next.fields.filter((field) => field.type !== "spray");
   next.activeFieldId = editableFields.some((field) => field.id === next.activeFieldId)
@@ -6886,12 +7139,16 @@ function normalizeState(input) {
   next.plans = next.plans.map((plan) => ({
     ...createBlankPlan(),
     ...plan,
+    // 雛形のfieldIdを引き継ぐと未指定の旧計画が別ほ場へ暗黙リンクされるため、必ず保存値だけを使う。
+    fieldId: plan.fieldId ?? null,
+    fieldIdSource: plan.fieldIdSource ?? null,
     weather: { ...defaultWeather(), ...(plan.weather || {}) },
     checks: { ...defaultChecks(false), ...(plan.checks || {}) },
     notificationTargets: plan.notificationTargets || {},
     notificationResponses: plan.notificationResponses || {},
     report: { ...defaultReport(), ...(plan.report || {}) },
   }));
+  next.plans = domainState.migratePlanFieldRefs(next.plans, next.fields);
   next.activePlanId = next.plans.some((plan) => plan.id === next.activePlanId)
     ? next.activePlanId
     : next.plans[0]?.id;
@@ -6925,7 +7182,9 @@ function activeSettings() {
 
 function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const envelope = domainState.nextEnvelope(state, storageRevision);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+    storageRevision = envelope.revision;
   } catch (error) {
     showToast("保存容量の上限に達しました。取り込んだ処方マップはこの表示中のみ保持されます。");
   }

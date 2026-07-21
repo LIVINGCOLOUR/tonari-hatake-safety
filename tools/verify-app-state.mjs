@@ -1,0 +1,214 @@
+// Phase 1 migration smoke test: drives the real app over CDP and checks the
+// versioned storage envelope, plan->field resolution, and geometry-based
+// distances against a live browser.
+//
+// Usage: start a local server and a Chrome with --remote-debugging-port, then
+//   node tools/verify-app-state.mjs [baseUrl] [debugPort]
+// Defaults match tools/verify-pages.mjs (http://127.0.0.1:4177, port 9238).
+
+const baseUrl = process.argv[2] || "http://127.0.0.1:4177";
+const port = process.argv[3] || "9238";
+
+const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`${baseUrl}/app.html`)}`, { method: "PUT" });
+if (!targetResponse.ok) throw new Error("Could not create browser target");
+const target = await targetResponse.json();
+const socket = new WebSocket(target.webSocketDebuggerUrl);
+const pending = new Map();
+const runtimeErrors = [];
+let messageId = 0;
+
+socket.addEventListener("message", (event) => {
+  const message = JSON.parse(event.data);
+  if (message.method === "Runtime.exceptionThrown") runtimeErrors.push(message.params.exceptionDetails.text);
+  if (!message.id || !pending.has(message.id)) return;
+  const { resolve, reject } = pending.get(message.id);
+  pending.delete(message.id);
+  if (message.error) reject(new Error(message.error.message));
+  else resolve(message.result);
+});
+
+await new Promise((resolve, reject) => {
+  socket.addEventListener("open", resolve, { once: true });
+  socket.addEventListener("error", reject, { once: true });
+});
+
+function command(method, params = {}) {
+  const id = ++messageId;
+  socket.send(JSON.stringify({ id, method, params }));
+  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+
+async function evaluate(expression) {
+  const result = await command("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+  return result.result.value;
+}
+
+async function open(path, waitMs = 4200) {
+  await command("Page.navigate", { url: `${baseUrl}${path}` });
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+await command("Runtime.enable");
+await command("Page.enable");
+
+// --- scenario 1: fresh sample boot (includes startup municipality load) ---
+await open("/app.html");
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer#dashboard");
+const fresh = await evaluate(`(() => {
+  const plans = Object.fromEntries(state.plans.map((p) => [p.id, { fieldId: p.fieldId, source: p.fieldIdSource }]));
+  const envelope = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  const fieldsOk = state.fields.every((f) =>
+    f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon")
+    && f.geometryRevision && f.provenance?.stableKey && Array.isArray(f.externalRefs));
+  const risks = riskItemsForPlan(activePlan());
+  const organic = risks.find((r) => r.id === "organic-field-a");
+  const badLabel = risks.find((r) => /null|undefined|NaN/.test(String(r.distanceLabel)));
+  const plan2 = state.plans.find((p) => p.id === "plan-drone-2");
+  const g2 = sprayGoNoGo(plan2);
+  const reasons2 = adminAttentionReasons(plan2);
+  return {
+    fieldIds: state.fields.map((f) => f.id),
+    plans,
+    schemaVersion: envelope?.schemaVersion,
+    revision: envelope?.revision,
+    fieldsOk,
+    riskCount: risks.length,
+    organicDistance: organic ? organic.distance : "absent",
+    badLabel: badLabel ? badLabel.distanceLabel : null,
+    noticeHasUndefined: buildNoticeText(activePlan(), "line").includes("undefined"),
+    plan2Verdict: g2.verdict,
+    plan2Factor: g2.factors.find((f) => f.label === "風下の要確認圃場")?.detail,
+    plan2Reason: reasons2[0]?.title,
+  };
+})()`);
+
+assert(fresh.fieldIds.includes("spray-field-a") && fresh.fieldIds.includes("organic-field-a"),
+  `demo field ids not preserved through startup boundary load: ${fresh.fieldIds.join(", ")}`);
+assert(fresh.plans["plan-drone-1"]?.fieldId === "spray-field-a", `plan1 fieldId: ${JSON.stringify(fresh.plans["plan-drone-1"])}`);
+assert(fresh.plans["plan-drone-2"]?.fieldId === null, `plan2 must stay unresolved: ${JSON.stringify(fresh.plans["plan-drone-2"])}`);
+assert(fresh.plans["plan-drone-3"]?.fieldId === "spray-field-a", `plan3 fieldId: ${JSON.stringify(fresh.plans["plan-drone-3"])}`);
+assert(fresh.schemaVersion === 4 && fresh.revision >= 1, `envelope not saved: v${fresh.schemaVersion} r${fresh.revision}`);
+assert(fresh.fieldsOk, "some field is missing canonical geometry / provenance / externalRefs");
+assert(fresh.riskCount >= 3, `expected surrounding risk items, got ${fresh.riskCount}`);
+assert(Number.isFinite(fresh.organicDistance) && fresh.organicDistance > 0 && fresh.organicDistance < 1000,
+  `organic field distance not geometry-based: ${fresh.organicDistance}`);
+assert(fresh.badLabel === null, `broken distance label: ${fresh.badLabel}`);
+assert(!fresh.noticeHasUndefined, "notice text contains 'undefined'");
+assert(fresh.plan2Verdict === "stop", `unresolved plan verdict should be stop, got ${fresh.plan2Verdict}`);
+assert(String(fresh.plan2Factor).includes("参照切れ"), `unresolved plan factor: ${fresh.plan2Factor}`);
+assert(fresh.plan2Reason === "散布ほ場参照切れ", `unresolved plan admin reason: ${fresh.plan2Reason}`);
+
+// --- scenario 2: legacy bare v3 blob migrates in place -------------------
+await evaluate(`(() => {
+  const legacy = {
+    role: "sprayer",
+    legacyMarker: { keep: true },
+    activePlanId: "plan-legacy-1",
+    fields: [
+      { id: "spray-field-a", type: "spray", name: "笠間デモほ場A", short: "散布",
+        geo: [[140.312185, 36.387676], [140.313201, 36.387447], [140.313059, 36.386499], [140.312043, 36.386695]],
+        distance: 0, direction: "中心", notifyTarget: false, owner: "自分" },
+      { id: "organic-field-a", type: "organic", name: "農薬不使用ほ場B", short: "農薬不使用",
+        geo: [[140.311434, 36.388755], [140.312591, 36.388526], [140.312449, 36.387644], [140.311312, 36.387856]],
+        distance: 120, direction: "北", notifyTarget: true, owner: "周辺農家" },
+    ],
+    plans: [
+      { id: "plan-legacy-1", date: "2026-07-20", timeWindow: "06:00-07:30", fieldName: "笠間デモほ場A",
+        district: "笠間市周辺デモ", crop: "水稲", pesticide: "サンプル", report: {} },
+      { id: "plan-legacy-2", date: "2026-07-21", timeWindow: "08:00-09:00", fieldName: "存在しないほ場",
+        district: "笠間市周辺デモ", crop: "大豆", pesticide: "サンプル", report: {} },
+    ],
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+})()`);
+await open("/app.html#dashboard");
+const legacy = await evaluate(`(() => {
+  const envelope = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  const p1 = state.plans.find((p) => p.id === "plan-legacy-1");
+  const p2 = state.plans.find((p) => p.id === "plan-legacy-2");
+  return {
+    migratedFrom: state.migratedFrom,
+    markerKept: state.legacyMarker?.keep === true,
+    schemaVersion: envelope?.schemaVersion,
+    revision: envelope?.revision,
+    p1FieldId: p1?.fieldId,
+    p1Source: p1?.fieldIdSource,
+    p2FieldId: p2 ? p2.fieldId : "missing-plan",
+    p2Resolved: p2 ? planFieldResolution(p2).resolved : "missing-plan",
+  };
+})()`);
+
+assert(legacy.migratedFrom === "v3", `migratedFrom: ${legacy.migratedFrom}`);
+assert(legacy.markerKept, "legacy custom key was dropped by migration");
+assert(legacy.schemaVersion === 4 && legacy.revision >= 1, `legacy envelope: v${legacy.schemaVersion} r${legacy.revision}`);
+// The name migration links plan1 first; the startup boundary load may then
+// re-point the active plan to the same demo field with source boundary-import.
+assert(legacy.p1FieldId === "spray-field-a" && ["name", "boundary-import"].includes(legacy.p1Source),
+  `legacy plan1: ${legacy.p1FieldId} / ${legacy.p1Source}`);
+assert(legacy.p2FieldId === null && legacy.p2Resolved === false, `legacy plan2 must stay unresolved: ${legacy.p2FieldId}`);
+
+// --- scenario 3: admin sees the unresolved plan flagged ------------------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=admin#admin");
+const admin = await evaluate(`(() => ({
+  rows: document.querySelectorAll("#adminTableBody tr.admin-row").length,
+  flagged: document.querySelector("#adminDetailInfo")?.textContent.includes("散布ほ場参照切れ") || false,
+  view: document.querySelector(".view.active")?.id || location.hash,
+}))()`);
+assert(admin.rows === 4, `admin table rows: ${admin.rows}`);
+assert(admin.flagged, "admin detail does not flag the unresolved sample plan");
+
+// --- scenario 4: every sprayer view renders, including with the unresolved
+// plan active (reference-error path must not crash any renderer) ------------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer#dashboard");
+const sweep = await evaluate(`(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const visited = [];
+  for (const view of allowedViewsForCurrentMode()) {
+    switchView(view);
+    await wait(350);
+    visited.push(document.querySelector(".view.active")?.dataset.view === view ? view : view + "!MISSING");
+  }
+  state.activePlanId = "plan-drone-2";
+  saveState();
+  renderAll();
+  const unresolvedVisited = [];
+  for (const view of ["dashboard", "plans", "map", "notify", "drone", "report"]) {
+    switchView(view);
+    await wait(350);
+    unresolvedVisited.push(view);
+  }
+  const coverage = estimateCoverage(activePlan());
+  return { visited, unresolvedVisited, coverageHasLog: coverage.hasLog };
+})()`);
+assert(!sweep.visited.some((v) => v.endsWith("!MISSING")), `view sweep failed: ${sweep.visited.join(", ")}`);
+assert(sweep.coverageHasLog === false, "unresolved plan should report no coverage instead of a broken grid");
+
+// --- scenario 5: neighbor views render -----------------------------------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=neighbor#dashboard");
+const neighborSweep = await evaluate(`(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const visited = [];
+  for (const view of allowedViewsForCurrentMode()) {
+    switchView(view);
+    await wait(350);
+    visited.push(document.querySelector(".view.active")?.dataset.view === view ? view : view + "!MISSING");
+  }
+  return { visited };
+})()`);
+assert(!neighborSweep.visited.some((v) => v.endsWith("!MISSING")), `neighbor sweep failed: ${neighborSweep.visited.join(", ")}`);
+
+await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
+socket.close();
+
+const fatal = runtimeErrors.filter((text) => text && !text.includes("favicon"));
+if (fatal.length) throw new Error(`Runtime errors: ${fatal.join(" | ")}`);
+console.log("App state migration checks passed.");
