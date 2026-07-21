@@ -2,6 +2,7 @@ node_modules/
 .wrangler/
 .env
 .env.*
+.dev.vars*
 *.log
 verify_*.png
 .deploy-site/

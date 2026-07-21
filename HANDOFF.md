@@ -121,6 +121,25 @@
 - Mapping, security boundary, and next integration steps are documented in
   `INTEGRATIONS.md`.
 
+## Phase 4 Read-only BFF PoC (2026-07-21)
+
+- Cloudflare Pages Functions under `functions/api/integrations/` proxy only
+  read operations for WAGRI field polygons and one xarvio field boundary.
+- All routes fail closed unless `INTEGRATIONS_ENABLED=true`, an encrypted
+  `BFF_ACCESS_TOKEN` exists, and the request supplies the matching
+  `X-Tonari-BFF-Token` header. The static frontend does not contain this token.
+- WAGRI client credentials are exchanged server-side using the official token
+  API and the short-lived access token is cached in the Worker isolate.
+- xarvio currently accepts a pre-issued OAuth2 access token and returns the
+  official single-field SHP export as a ZIP. Token lifecycle automation is a
+  later backend task after partner onboarding confirms the authorization flow.
+- Provider response bodies are not reflected on upstream errors. All BFF
+  responses use `no-store`; UUID and coordinate inputs are validated before a
+  provider call.
+- `wrangler.toml` fixes the Pages output directory and Workers compatibility
+  date without containing secrets.
+- Tests: `node --test tools/bff.test.mjs tools/domain.test.mjs tools/import.test.mjs`.
+
 Recommended local launch:
 
 ```powershell
