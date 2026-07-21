@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find js functions tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+
+      - name: Run domain and integration tests
+        run: node --test tools/bff.test.mjs tools/domain.test.mjs tools/import.test.mjs
+
+      - name: Run desktop and mobile browser smoke tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          SERVER_LOG="${RUNNER_TEMP}/tonari-server.log"
+          CHROME_LOG="${RUNNER_TEMP}/tonari-chrome.log"
+          CHROME_PROFILE="$(mktemp -d)"
+
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ]; then
+              echo "--- static server log ---"
+              tail -n 100 "$SERVER_LOG" || true
+              echo "--- Chrome log ---"
+              tail -n 100 "$CHROME_LOG" || true
+            fi
+            kill "${CHROME_PID:-}" "${SERVER_PID:-}" 2>/dev/null || true
+            rm -rf "$CHROME_PROFILE"
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          python3 -m http.server 4177 --bind 127.0.0.1 >"$SERVER_LOG" 2>&1 &
+          SERVER_PID=$!
+
+          google-chrome --headless=new --no-sandbox --disable-gpu \
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=9238 \
+            --user-data-dir="$CHROME_PROFILE" \
+            about:blank >"$CHROME_LOG" 2>&1 &
+          CHROME_PID=$!
+
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4177/ >/dev/null \
+              && curl --fail --silent http://127.0.0.1:9238/json/version >/dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+
+          curl --fail --silent http://127.0.0.1:4177/ >/dev/null
+          curl --fail --silent http://127.0.0.1:9238/json/version >/dev/null
+          timeout 180s node tools/verify-pages.mjs http://127.0.0.1:4177 9238
+          timeout 180s node tools/verify-app-state.mjs http://127.0.0.1:4177 9238
