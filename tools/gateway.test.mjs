@@ -168,6 +168,26 @@ test("gateway allows an in-limit WAGRI request and uses a provider-specific key"
   assert.equal(providerCalls, 2);
 });
 
+test("gateway releases the WAGRI slot after malformed field JSON", async () => {
+  resetWagriTokenCacheForTest();
+  let calls = 0;
+  const response = await handleGatewayRequest(
+    request("/api/integrations/wagri/field-polygons?lat=36&lng=140"),
+    baseEnv({
+      WAGRI_CLIENT_ID: "client-id",
+      WAGRI_CLIENT_SECRET: "client-secret",
+      WAGRI_MAX_CONCURRENCY: "1",
+      __FETCH__: async () => {
+        calls += 1;
+        if (calls === 1) return Response.json({ access_token: "wagri-token", expires_in: 3600 });
+        return new Response("{broken-field-json", { status: 200 });
+      },
+    }),
+  );
+  assert.equal(response.status, 502);
+  assert.equal(activeProviderConcurrencyForTest("wagri"), 0);
+});
+
 test("gateway returns 429 without calling a provider after the limit", async () => {
   let providerCalls = 0;
   const response = await handleGatewayRequest(
@@ -210,6 +230,40 @@ test("gateway keeps a xarvio slot until the ZIP stream finishes", async () => {
   upstreamController.enqueue(new Uint8Array([80, 75, 3, 4]));
   upstreamController.close();
   assert.deepEqual([...new Uint8Array(await first.arrayBuffer())], [80, 75, 3, 4]);
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
+});
+
+test("gateway releases the xarvio slot on upstream stream failure", async () => {
+  let upstreamController;
+  const env = baseEnv({
+    XARVIO_ACCESS_TOKEN: "xarvio-token",
+    XARVIO_MAX_CONCURRENCY: "1",
+    __FETCH__: async () => new Response(new ReadableStream({
+      start(controller) { upstreamController = controller; },
+    }), { headers: { "Content-Type": "application/zip" } }),
+  });
+  const path = "/api/integrations/xarvio/boundary?fieldUuid=8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const response = await handleGatewayRequest(request(path), env);
+  upstreamController.enqueue(new Uint8Array([80, 75]));
+  upstreamController.error(new Error("upstream-disconnected"));
+  await assert.rejects(response.arrayBuffer(), /upstream-disconnected/);
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
+});
+
+test("gateway propagates client cancellation and releases the xarvio slot", async () => {
+  let upstreamCancelled = false;
+  const env = baseEnv({
+    XARVIO_ACCESS_TOKEN: "xarvio-token",
+    XARVIO_MAX_CONCURRENCY: "1",
+    __FETCH__: async () => new Response(new ReadableStream({
+      cancel() { upstreamCancelled = true; },
+    }), { headers: { "Content-Type": "application/zip" } }),
+  });
+  const path = "/api/integrations/xarvio/boundary?fieldUuid=8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const response = await handleGatewayRequest(request(path), env);
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 1);
+  await response.body.cancel("client-disconnected");
+  assert.equal(upstreamCancelled, true);
   assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
 });
 

@@ -82,6 +82,8 @@ Optional safety settings:
 - `XARVIO_MAX_BOUNDARY_BYTES`: maximum proxied ZIP size; defaults to 10 MiB
   and is hard-capped at 25 MiB. Declared oversized responses are rejected
   before streaming; chunked responses are terminated if they cross the cap.
+  When `Content-Length` is present, a stream that ends before the declared
+  length is treated as truncated instead of a successful ZIP download.
 - `WAGRI_TIMEOUT_MS`: absolute deadline for each WAGRI authentication or JSON
   request; defaults to 12 seconds and is clamped to 1-30 seconds.
 - `XARVIO_TIMEOUT_MS`: deadline for xarvio response headers; defaults to 12
@@ -95,6 +97,10 @@ Provider timeouts return a sanitized `504 provider-timeout` response before a
 response body starts and include `Retry-After: 5`. Client cancellation remains
 distinct from an upstream timeout. Invalid timeout settings use the documented
 defaults rather than disabling the limit.
+
+Provider error bodies and diagnostic headers are never forwarded. WAGRI
+authentication and field responses must contain valid JSON, and malformed or
+empty successful responses are converted to a sanitized gateway failure.
 
 Store all four values as encrypted Cloudflare secrets. For local development,
 put them in an untracked `.dev.vars` file. Never put them in `wrangler.toml`.

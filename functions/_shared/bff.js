@@ -150,15 +150,20 @@ export function responseByteLimit(env, name, fallbackBytes) {
 }
 
 export function contentLengthExceeds(response, maxBytes) {
+  const length = responseContentLength(response);
+  return length !== null && length > maxBytes;
+}
+
+export function responseContentLength(response) {
   const value = response.headers.get("Content-Length");
-  if (!value) return false;
+  if (!value) return null;
   const length = Number(value);
-  return Number.isFinite(length) && length > maxBytes;
+  return Number.isSafeInteger(length) && length >= 0 ? length : null;
 }
 
 // Keeps the upstream body streaming while terminating a missing/misreported
 // Content-Length response if it crosses the configured safety cap.
-export function byteLimitedStream(body, maxBytes, timeoutMs = 30000) {
+export function byteLimitedStream(body, maxBytes, timeoutMs = 30000, expectedBytes = null) {
   if (!body) return null;
   const reader = body.getReader();
   let received = 0;
@@ -183,6 +188,10 @@ export function byteLimitedStream(body, maxBytes, timeoutMs = 30000) {
         const { done, value } = await reader.read();
         if (finished) return;
         if (done) {
+          if (expectedBytes !== null && received !== expectedBytes) {
+            fail(controller, new Error("provider-response-truncated"));
+            return;
+          }
           finished = true;
           clearDeadline();
           controller.close();

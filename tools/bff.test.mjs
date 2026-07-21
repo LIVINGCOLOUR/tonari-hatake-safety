@@ -198,19 +198,63 @@ test("WAGRI route exchanges client credentials and forwards only the access toke
   assert.equal(payload.data[0].polygon_uuid, "parcel-1");
 });
 
-test("WAGRI upstream failures are sanitized", async () => {
+test("WAGRI upstream statuses and diagnostics are sanitized", async () => {
+  for (const status of [401, 403, 429, 500]) {
+    resetWagriTokenCacheForTest();
+    const response = await wagriGet({
+      request: request("/api/integrations/wagri/field-polygons?lat=36&lng=140"),
+      env: baseEnv({
+        WAGRI_CLIENT_ID: "client-id",
+        WAGRI_CLIENT_SECRET: "client-secret",
+        __FETCH__: async () => new Response("upstream secret diagnostic", {
+          status,
+          headers: { "X-Provider-Diagnostic": "secret-header" },
+        }),
+      }),
+    });
+    const text = await response.text();
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get("X-Upstream-Status"), String(status));
+    assert.equal(response.headers.has("X-Provider-Diagnostic"), false);
+    assert.equal(text.includes("upstream secret diagnostic"), false);
+  }
+});
+
+test("WAGRI rejects malformed token and field JSON without leaking details", async () => {
+  for (const tokenResponse of [
+    () => new Response("{broken-token-json", { status: 200 }),
+    () => Response.json({ expires_in: 3600 }),
+  ]) {
+    resetWagriTokenCacheForTest();
+    const response = await wagriGet({
+      request: request("/api/integrations/wagri/field-polygons?lat=36&lng=140"),
+      env: baseEnv({
+        WAGRI_CLIENT_ID: "client-id",
+        WAGRI_CLIENT_SECRET: "client-secret",
+        __FETCH__: async () => tokenResponse(),
+      }),
+    });
+    assert.equal(response.status, 502);
+    assert.equal((await response.json()).error.code, "provider-request-failed");
+  }
+
   resetWagriTokenCacheForTest();
+  let calls = 0;
   const response = await wagriGet({
     request: request("/api/integrations/wagri/field-polygons?lat=36&lng=140"),
     env: baseEnv({
       WAGRI_CLIENT_ID: "client-id",
       WAGRI_CLIENT_SECRET: "client-secret",
-      __FETCH__: async () => new Response("upstream secret diagnostic", { status: 401 }),
+      __FETCH__: async () => {
+        calls += 1;
+        if (calls === 1) return Response.json({ access_token: "valid-token", expires_in: 3600 });
+        return new Response("{broken-field-json", { status: 200 });
+      },
     }),
   });
   const text = await response.text();
   assert.equal(response.status, 502);
-  assert.equal(text.includes("upstream secret diagnostic"), false);
+  assert.equal(text.includes("broken-field-json"), false);
 });
 
 test("xarvio route validates UUID before calling upstream", async () => {
@@ -283,6 +327,21 @@ test("xarvio route terminates a chunked response that crosses the byte cap", asy
   });
   assert.equal(response.status, 200);
   await assert.rejects(response.arrayBuffer(), /provider-response-too-large/);
+});
+
+test("xarvio route errors a response truncated below its declared length", async () => {
+  const fieldUuid = "8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const response = await xarvioGet({
+    request: request(`/api/integrations/xarvio/boundary?fieldUuid=${fieldUuid}`),
+    env: baseEnv({
+      XARVIO_ACCESS_TOKEN: "xarvio-token",
+      __FETCH__: async () => new Response(new Uint8Array([80, 75, 3, 4]), {
+        headers: { "Content-Length": "5", "Content-Type": "application/zip" },
+      }),
+    }),
+  });
+  assert.equal(response.status, 200);
+  await assert.rejects(response.arrayBuffer(), /provider-response-truncated/);
 });
 
 test("xarvio route rejects empty and non-archive success responses", async () => {

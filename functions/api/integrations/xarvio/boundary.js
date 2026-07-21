@@ -9,6 +9,7 @@ import {
   providerTimeoutMs,
   providerResponseTooLarge,
   requiredSecret,
+  responseContentLength,
   responseByteLimit,
   upstreamFailure,
   uuidIsValid,
@@ -59,6 +60,7 @@ export async function onRequestGet({ request, env }) {
   if (!response.ok) return upstreamFailure("xarvio境界API", response.status);
   if (!archiveResponseIsUsable(response)) return upstreamFailure("xarvio境界API", response.status);
   const maxBytes = responseByteLimit(env, "XARVIO_MAX_BOUNDARY_BYTES", DEFAULT_MAX_BOUNDARY_BYTES);
+  const expectedBytes = responseContentLength(response);
   if (contentLengthExceeds(response, maxBytes)) {
     response.body?.cancel("provider-response-too-large").catch(() => {});
     return providerResponseTooLarge("xarvio境界API", maxBytes);
@@ -70,7 +72,7 @@ export async function onRequestGet({ request, env }) {
     1000,
     120000,
   );
-  return new Response(byteLimitedStream(response.body, maxBytes, streamTimeoutMs), {
+  return new Response(byteLimitedStream(response.body, maxBytes, streamTimeoutMs, expectedBytes), {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
