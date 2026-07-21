@@ -1,14 +1,18 @@
 import {
   authorizeBff,
   errorResponse,
-  fetchWithTimeout,
+  fetchJsonWithTimeout,
+  isProviderTimeoutError,
   jsonResponse,
+  providerTimeout,
+  providerTimeoutMs,
   requiredSecret,
   upstreamFailure,
 } from "../../../_shared/bff.js";
 
 let cachedToken = null;
 let tokenRequest = null;
+const DEFAULT_TIMEOUT_MS = 12000;
 
 function validCoordinate(value, min, max) {
   const number = Number(value);
@@ -31,19 +35,21 @@ async function requestWagriAccessToken(env, fetcher) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  let response;
+  let result;
   try {
-    response = await fetchWithTimeout(fetcher, request);
-  } catch {
+    result = await fetchJsonWithTimeout(
+      fetcher,
+      request,
+      providerTimeoutMs(env, "WAGRI_TIMEOUT_MS", DEFAULT_TIMEOUT_MS),
+    );
+  } catch (error) {
+    if (isProviderTimeoutError(error)) {
+      return { ok: false, response: providerTimeout("WAGRI認証API") };
+    }
     return { ok: false, response: upstreamFailure("WAGRI認証API") };
   }
+  const { response, data: payload } = result;
   if (!response.ok) return { ok: false, response: upstreamFailure("WAGRI認証API", response.status) };
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    return { ok: false, response: upstreamFailure("WAGRI認証API", response.status) };
-  }
   const value = String(payload?.access_token || "").trim();
   if (!value) return { ok: false, response: upstreamFailure("WAGRI認証API", response.status) };
   const expiresIn = Math.max(60, Math.min(Number(payload.expires_in) || 3600, 43_200));
@@ -79,21 +85,22 @@ export async function onRequestGet({ request, env }) {
   upstream.searchParams.set("lat", String(lat));
   upstream.searchParams.set("lng", String(lng));
   upstream.searchParams.set("cmp", cmp);
-  let response;
+  let result;
   try {
-    response = await fetchWithTimeout(fetcher, new Request(upstream, {
-      headers: { "X-Authorization": token, Accept: "application/json" },
-    }));
-  } catch {
+    result = await fetchJsonWithTimeout(
+      fetcher,
+      new Request(upstream, {
+        headers: { "X-Authorization": token, Accept: "application/json" },
+      }),
+      providerTimeoutMs(env, "WAGRI_TIMEOUT_MS", DEFAULT_TIMEOUT_MS),
+      request.signal,
+    );
+  } catch (error) {
+    if (isProviderTimeoutError(error)) return providerTimeout("WAGRI筆ポリゴンAPI");
     return upstreamFailure("WAGRI筆ポリゴンAPI");
   }
+  const { response, data } = result;
   if (!response.ok) return upstreamFailure("WAGRI筆ポリゴンAPI", response.status);
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    return upstreamFailure("WAGRI筆ポリゴンAPI", response.status);
-  }
   return jsonResponse({ ok: true, provider: "wagri", fetchedAt: new Date().toISOString(), data });
 }
 

@@ -11,8 +11,8 @@ export function jsonResponse(body, status = 200, extraHeaders = {}) {
   });
 }
 
-export function errorResponse(status, code, message) {
-  return jsonResponse({ ok: false, error: { code, message } }, status);
+export function errorResponse(status, code, message, extraHeaders = {}) {
+  return jsonResponse({ ok: false, error: { code, message } }, status, extraHeaders);
 }
 
 function fixedTimeEqual(left, right) {
@@ -51,20 +51,87 @@ export function requiredSecret(env, name, providerLabel) {
   return { ok: true, value };
 }
 
-export async function fetchWithTimeout(fetcher, request, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetcher(request, { signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
+export class ProviderTimeoutError extends Error {
+  constructor(phase, timeoutMs) {
+    super("provider-request-timeout");
+    this.name = "ProviderTimeoutError";
+    this.phase = phase;
+    this.timeoutMs = timeoutMs;
   }
+}
+
+export function isProviderTimeoutError(error) {
+  return error instanceof ProviderTimeoutError || error?.name === "ProviderTimeoutError";
+}
+
+export function providerTimeoutMs(env, name, fallbackMs, minMs = 1000, maxMs = 30000) {
+  const configured = Number(env?.[name]);
+  if (!Number.isSafeInteger(configured) || configured <= 0) return fallbackMs;
+  return Math.max(minMs, Math.min(configured, maxMs));
+}
+
+async function runWithTimeout(operation, timeoutMs, parentSignal) {
+  const controller = new AbortController();
+  let settled = false;
+  let phase = "headers";
+  let timeoutError = null;
+  let rejectTimeout;
+  const timeoutPromise = new Promise((resolve, reject) => {
+    rejectTimeout = reject;
+  });
+  const timeout = setTimeout(() => {
+    if (settled) return;
+    timeoutError = new ProviderTimeoutError(phase, timeoutMs);
+    controller.abort(timeoutError);
+    rejectTimeout(timeoutError);
+  }, timeoutMs);
+  const abortFromParent = () => controller.abort(parentSignal.reason);
+  if (parentSignal) {
+    if (parentSignal.aborted) abortFromParent();
+    else parentSignal.addEventListener("abort", abortFromParent, { once: true });
+  }
+  try {
+    return await Promise.race([
+      operation(controller.signal, (nextPhase) => { phase = nextPhase; }),
+      timeoutPromise,
+    ]);
+  } catch (error) {
+    if (timeoutError) throw timeoutError;
+    throw error;
+  } finally {
+    settled = true;
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
+export function fetchWithTimeout(fetcher, request, timeoutMs = 12000, parentSignal) {
+  return runWithTimeout(
+    (signal) => fetcher(request, { signal }),
+    timeoutMs,
+    parentSignal,
+  );
+}
+
+export function fetchJsonWithTimeout(fetcher, request, timeoutMs = 12000, parentSignal) {
+  return runWithTimeout(async (signal, setPhase) => {
+    const response = await fetcher(request, { signal });
+    if (!response.ok) return { response, data: null };
+    setPhase("json");
+    return { response, data: await response.json() };
+  }, timeoutMs, parentSignal);
 }
 
 export function upstreamFailure(provider, status) {
   const safeStatus = Number.isInteger(status) ? status : 502;
   return errorResponse(502, "provider-request-failed", `${provider}からデータを取得できませんでした。`, {
     "X-Upstream-Status": String(safeStatus),
+  });
+}
+
+export function providerTimeout(provider) {
+  return errorResponse(504, "provider-timeout", `${provider}の応答が制限時間を超えました。`, {
+    "Retry-After": "5",
   });
 }
 
@@ -91,30 +158,53 @@ export function contentLengthExceeds(response, maxBytes) {
 
 // Keeps the upstream body streaming while terminating a missing/misreported
 // Content-Length response if it crosses the configured safety cap.
-export function byteLimitedStream(body, maxBytes) {
+export function byteLimitedStream(body, maxBytes, timeoutMs = 30000) {
   if (!body) return null;
   const reader = body.getReader();
   let received = 0;
+  let finished = false;
+  let timeout;
+  const clearDeadline = () => clearTimeout(timeout);
+  const fail = (controller, error) => {
+    if (finished) return;
+    finished = true;
+    clearDeadline();
+    Promise.resolve(reader.cancel(error)).catch(() => {});
+    controller.error(error);
+  };
   return new ReadableStream({
+    start(controller) {
+      timeout = setTimeout(() => {
+        fail(controller, new ProviderTimeoutError("body", timeoutMs));
+      }, timeoutMs);
+    },
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
+        if (finished) return;
         if (done) {
+          finished = true;
+          clearDeadline();
           controller.close();
           return;
         }
         received += value.byteLength;
         if (received > maxBytes) {
-          await reader.cancel("provider-response-too-large");
-          controller.error(new Error("provider-response-too-large"));
+          fail(controller, new Error("provider-response-too-large"));
           return;
         }
         controller.enqueue(value);
       } catch (error) {
+        if (finished) return;
+        finished = true;
+        clearDeadline();
         controller.error(error);
       }
     },
     cancel(reason) {
+      if (finished) return undefined;
+      finished = true;
+      clearDeadline();
       return reader.cancel(reason);
     },
   });

@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { authorizeBff } from "../functions/_shared/bff.js";
+import {
+  authorizeBff,
+  byteLimitedStream,
+  fetchJsonWithTimeout,
+  fetchWithTimeout,
+  providerTimeoutMs,
+  ProviderTimeoutError,
+} from "../functions/_shared/bff.js";
 import { onRequestGet as statusGet } from "../functions/api/integrations/status.js";
 import {
   onRequestGet as wagriGet,
@@ -35,6 +42,73 @@ test("BFF guard fails closed when disabled, misconfigured, or unauthorized", asy
   const response = authorizeBff(request("/", "wrong"), baseEnv());
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, "bff-unauthorized");
+});
+
+test("provider timeout settings are bounded and invalid values use the fallback", () => {
+  assert.equal(providerTimeoutMs({}, "TIMEOUT", 12000), 12000);
+  assert.equal(providerTimeoutMs({ TIMEOUT: "invalid" }, "TIMEOUT", 12000), 12000);
+  assert.equal(providerTimeoutMs({ TIMEOUT: "10" }, "TIMEOUT", 12000), 1000);
+  assert.equal(providerTimeoutMs({ TIMEOUT: "999999" }, "TIMEOUT", 12000), 30000);
+  assert.equal(providerTimeoutMs({ TIMEOUT: "45000" }, "TIMEOUT", 30000, 1000, 120000), 45000);
+});
+
+test("provider timeout covers response headers and JSON body parsing", async () => {
+  const neverResponds = (upstream, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+  await assert.rejects(
+    fetchWithTimeout(neverResponds, request("/upstream"), 20),
+    (error) => error instanceof ProviderTimeoutError && error.phase === "headers",
+  );
+
+  const response = Response.json({ ok: true });
+  response.json = () => new Promise(() => {});
+  await assert.rejects(
+    fetchJsonWithTimeout(async () => response, request("/upstream"), 20),
+    (error) => error instanceof ProviderTimeoutError && error.phase === "json",
+  );
+});
+
+test("caller cancellation is not classified as a provider timeout", async () => {
+  const controller = new AbortController();
+  const callerError = new Error("caller-aborted");
+  controller.abort(callerError);
+  await assert.rejects(
+    fetchWithTimeout(async (upstream, { signal }) => { throw signal.reason; }, request("/upstream"), 1000, controller.signal),
+    (error) => error === callerError && !(error instanceof ProviderTimeoutError),
+  );
+});
+
+test("stream timeout errors the response and cancels the upstream reader", async () => {
+  let cancelled = false;
+  const upstream = new ReadableStream({
+    cancel(reason) {
+      cancelled = reason instanceof ProviderTimeoutError && reason.phase === "body";
+    },
+  });
+  const response = new Response(byteLimitedStream(upstream, 1024, 20));
+  await assert.rejects(
+    response.arrayBuffer(),
+    (error) => error instanceof ProviderTimeoutError && error.phase === "body",
+  );
+  assert.equal(cancelled, true);
+});
+
+test("WAGRI timeout responses are sanitized and retryable", async () => {
+  resetWagriTokenCacheForTest();
+  const response = await wagriGet({
+    request: request("/api/integrations/wagri/field-polygons?lat=36&lng=140"),
+    env: baseEnv({
+      WAGRI_CLIENT_ID: "client-id",
+      WAGRI_CLIENT_SECRET: "client-secret",
+      __FETCH__: async () => { throw new ProviderTimeoutError("headers", 12000); },
+    }),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 504);
+  assert.equal(response.headers.get("Retry-After"), "5");
+  assert.equal(payload.error.code, "provider-timeout");
+  assert.equal(JSON.stringify(payload).includes("api.wagri2.net"), false);
 });
 
 test("concurrent WAGRI calls share one token exchange", async () => {

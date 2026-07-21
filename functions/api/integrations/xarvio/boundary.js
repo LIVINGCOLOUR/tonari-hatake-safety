@@ -4,6 +4,9 @@ import {
   contentLengthExceeds,
   errorResponse,
   fetchWithTimeout,
+  isProviderTimeoutError,
+  providerTimeout,
+  providerTimeoutMs,
   providerResponseTooLarge,
   requiredSecret,
   responseByteLimit,
@@ -12,6 +15,8 @@ import {
 } from "../../../_shared/bff.js";
 
 const DEFAULT_MAX_BOUNDARY_BYTES = 10 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 12000;
+const DEFAULT_STREAM_TIMEOUT_MS = 30000;
 const ARCHIVE_CONTENT_TYPES = [
   "application/zip",
   "application/octet-stream",
@@ -41,12 +46,14 @@ export async function onRequestGet({ request, env }) {
   upstream.searchParams.set("format", "shp");
   upstream.searchParams.append("fieldUuid", fieldUuid);
   const fetcher = env.__FETCH__ || fetch;
+  const timeoutMs = providerTimeoutMs(env, "XARVIO_TIMEOUT_MS", DEFAULT_TIMEOUT_MS);
   let response;
   try {
     response = await fetchWithTimeout(fetcher, new Request(upstream, {
       headers: { Authorization: `Bearer ${accessToken.value}`, Accept: "application/zip, application/octet-stream" },
-    }));
-  } catch {
+    }), timeoutMs, request.signal);
+  } catch (error) {
+    if (isProviderTimeoutError(error)) return providerTimeout("xarvio境界API");
     return upstreamFailure("xarvio境界API");
   }
   if (!response.ok) return upstreamFailure("xarvio境界API", response.status);
@@ -56,7 +63,14 @@ export async function onRequestGet({ request, env }) {
     response.body?.cancel("provider-response-too-large").catch(() => {});
     return providerResponseTooLarge("xarvio境界API", maxBytes);
   }
-  return new Response(byteLimitedStream(response.body, maxBytes), {
+  const streamTimeoutMs = providerTimeoutMs(
+    env,
+    "XARVIO_STREAM_TIMEOUT_MS",
+    DEFAULT_STREAM_TIMEOUT_MS,
+    1000,
+    120000,
+  );
+  return new Response(byteLimitedStream(response.body, maxBytes, streamTimeoutMs), {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
