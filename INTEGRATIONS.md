@@ -126,6 +126,18 @@ provider when the limit is reached. The binding is a protection mechanism, not
 an accounting system; Cloudflare documents it as permissive and eventually
 consistent within each location.
 
+Each Worker isolate also applies a fail-fast provider concurrency guard:
+
+- `WAGRI_MAX_CONCURRENCY`: defaults to 4 active JSON operations.
+- `XARVIO_MAX_CONCURRENCY`: defaults to 2 active ZIP streams.
+
+Both values are clamped to 1-10. Saturated providers return
+`503 provider-busy` with `Retry-After: 2` before another provider request is
+started. A xarvio slot remains active until the ZIP body closes, errors, is
+cancelled by the client, or reaches its safety deadline. This per-isolate guard
+limits local bursts but is not a global concurrency guarantee; use a Durable
+Object-backed implementation if strict tenant-wide limits become necessary.
+
 The existing Pages Functions remain disabled during the staged cutover. After
 the standalone Worker is deployed and verified, move its secrets to the Worker,
 route the intended API hostname/path to it, and remove the duplicate Pages

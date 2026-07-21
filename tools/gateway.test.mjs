@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { resetWagriTokenCacheForTest } from "../functions/api/integrations/wagri/field-polygons.js";
+import {
+  activeProviderConcurrencyForTest,
+  providerConcurrencyLimit,
+  resetProviderConcurrencyForTest,
+  runWithProviderConcurrency,
+} from "../worker/concurrency.js";
 import { handleGatewayRequest } from "../worker/integrations-gateway.js";
 
 const BFF_TOKEN = "test-bff-token-with-enough-entropy";
@@ -21,6 +27,102 @@ function baseEnv(overrides = {}) {
     ...overrides,
   };
 }
+
+test.beforeEach(() => {
+  resetProviderConcurrencyForTest();
+});
+
+test("provider concurrency settings use safe defaults and bounds", () => {
+  assert.equal(providerConcurrencyLimit({}, "LIMIT", 4), 4);
+  assert.equal(providerConcurrencyLimit({ LIMIT: "invalid" }, "LIMIT", 4), 4);
+  assert.equal(providerConcurrencyLimit({ LIMIT: "0" }, "LIMIT", 4), 1);
+  assert.equal(providerConcurrencyLimit({ LIMIT: "99" }, "LIMIT", 4), 10);
+});
+
+test("provider concurrency admits up to the limit and releases after completion", async () => {
+  let markStarted;
+  let finishFirst;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const firstBarrier = new Promise((resolve) => { finishFirst = resolve; });
+  const options = {
+    key: "wagri",
+    envName: "WAGRI_MAX_CONCURRENCY",
+    defaultLimit: 1,
+    holdResponseBody: false,
+    safetyMs: 1000,
+  };
+  const first = runWithProviderConcurrency({}, options, async () => {
+    markStarted();
+    await firstBarrier;
+    return Response.json({ ok: true });
+  });
+  await started;
+  assert.equal(activeProviderConcurrencyForTest("wagri"), 1);
+
+  const busy = await runWithProviderConcurrency({}, options, async () => Response.json({ ok: true }));
+  assert.equal(busy.status, 503);
+  assert.equal(busy.headers.get("Retry-After"), "2");
+  assert.equal((await busy.json()).error.code, "provider-busy");
+
+  finishFirst();
+  assert.equal((await first).status, 200);
+  assert.equal(activeProviderConcurrencyForTest("wagri"), 0);
+  const next = await runWithProviderConcurrency({}, options, async () => Response.json({ ok: true }));
+  assert.equal(next.status, 200);
+});
+
+test("provider concurrency releases after an operation throws", async () => {
+  const options = {
+    key: "wagri",
+    envName: "WAGRI_MAX_CONCURRENCY",
+    defaultLimit: 1,
+    holdResponseBody: false,
+    safetyMs: 1000,
+  };
+  await assert.rejects(
+    runWithProviderConcurrency({}, options, async () => { throw new Error("provider failed"); }),
+    /provider failed/,
+  );
+  assert.equal(activeProviderConcurrencyForTest("wagri"), 0);
+});
+
+test("streaming concurrency holds a slot until close and releases on cancel", async () => {
+  let closeFirst;
+  const firstBody = new ReadableStream({
+    start(controller) { closeFirst = () => controller.close(); },
+  });
+  const options = {
+    key: "xarvio",
+    envName: "XARVIO_MAX_CONCURRENCY",
+    defaultLimit: 1,
+    holdResponseBody: true,
+    safetyMs: 1000,
+  };
+  const first = await runWithProviderConcurrency({}, options, async () => new Response(firstBody));
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 1);
+  closeFirst();
+  await first.arrayBuffer();
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
+
+  const cancelBody = new ReadableStream({});
+  const cancelled = await runWithProviderConcurrency({}, options, async () => new Response(cancelBody));
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 1);
+  await cancelled.body.cancel("client-disconnected");
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
+});
+
+test("streaming concurrency safety deadline releases a stalled body", async () => {
+  const stalled = new ReadableStream({});
+  const response = await runWithProviderConcurrency({}, {
+    key: "xarvio",
+    envName: "XARVIO_MAX_CONCURRENCY",
+    defaultLimit: 1,
+    holdResponseBody: true,
+    safetyMs: 20,
+  }, async () => new Response(stalled));
+  await assert.rejects(response.arrayBuffer(), /provider-concurrency-hold-timeout/);
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
+});
 
 test("gateway rejects unknown routes and unsupported methods", async () => {
   const missing = await handleGatewayRequest(request("/api/integrations/missing"), baseEnv());
@@ -80,6 +182,35 @@ test("gateway returns 429 without calling a provider after the limit", async () 
   assert.equal(response.headers.get("Retry-After"), "60");
   assert.equal((await response.json()).error.code, "rate-limit-exceeded");
   assert.equal(providerCalls, 0);
+});
+
+test("gateway keeps a xarvio slot until the ZIP stream finishes", async () => {
+  let upstreamController;
+  let providerCalls = 0;
+  const env = baseEnv({
+    XARVIO_ACCESS_TOKEN: "xarvio-token",
+    XARVIO_MAX_CONCURRENCY: "1",
+    __FETCH__: async () => {
+      providerCalls += 1;
+      return new Response(new ReadableStream({
+        start(controller) { upstreamController = controller; },
+      }), { headers: { "Content-Type": "application/zip" } });
+    },
+  });
+  const path = "/api/integrations/xarvio/boundary?fieldUuid=8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const first = await handleGatewayRequest(request(path), env);
+  assert.equal(first.status, 200);
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 1);
+
+  const busy = await handleGatewayRequest(request(path), env);
+  assert.equal(busy.status, 503);
+  assert.equal((await busy.json()).error.code, "provider-busy");
+  assert.equal(providerCalls, 1);
+
+  upstreamController.enqueue(new Uint8Array([80, 75, 3, 4]));
+  upstreamController.close();
+  assert.deepEqual([...new Uint8Array(await first.arrayBuffer())], [80, 75, 3, 4]);
+  assert.equal(activeProviderConcurrencyForTest("xarvio"), 0);
 });
 
 test("gateway fails closed when the rate-limit binding is missing or throws", async () => {
