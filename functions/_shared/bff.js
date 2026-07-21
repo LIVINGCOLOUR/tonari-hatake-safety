@@ -68,6 +68,58 @@ export function upstreamFailure(provider, status) {
   });
 }
 
+export function providerResponseTooLarge(provider, maxBytes) {
+  return errorResponse(
+    502,
+    "provider-response-too-large",
+    `${provider}の応答が上限（${maxBytes} bytes）を超えました。`,
+  );
+}
+
+export function responseByteLimit(env, name, fallbackBytes) {
+  const configured = Number(env?.[name]);
+  if (!Number.isSafeInteger(configured) || configured <= 0) return fallbackBytes;
+  return Math.min(configured, 25 * 1024 * 1024);
+}
+
+export function contentLengthExceeds(response, maxBytes) {
+  const value = response.headers.get("Content-Length");
+  if (!value) return false;
+  const length = Number(value);
+  return Number.isFinite(length) && length > maxBytes;
+}
+
+// Keeps the upstream body streaming while terminating a missing/misreported
+// Content-Length response if it crosses the configured safety cap.
+export function byteLimitedStream(body, maxBytes) {
+  if (!body) return null;
+  const reader = body.getReader();
+  let received = 0;
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          return;
+        }
+        received += value.byteLength;
+        if (received > maxBytes) {
+          await reader.cancel("provider-response-too-large");
+          controller.error(new Error("provider-response-too-large"));
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+}
+
 export function uuidIsValid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }

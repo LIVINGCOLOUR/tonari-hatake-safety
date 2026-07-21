@@ -170,6 +170,64 @@ test("xarvio route proxies one SHP boundary without exposing the token", async (
   assert.equal(upstreamRequest.url.includes(fieldUuid), true);
   assert.equal(upstreamRequest.url.includes("format=shp"), true);
   assert.equal(response.headers.get("Content-Type"), "application/zip");
+  assert.equal(response.headers.get("X-Tonari-Max-Bytes"), String(10 * 1024 * 1024));
   assert.equal(response.headers.has("Authorization"), false);
   assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [80, 75, 3, 4]);
+});
+
+test("xarvio route rejects a declared response larger than the configured cap", async () => {
+  const fieldUuid = "8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const response = await xarvioGet({
+    request: request(`/api/integrations/xarvio/boundary?fieldUuid=${fieldUuid}`),
+    env: baseEnv({
+      XARVIO_ACCESS_TOKEN: "xarvio-token",
+      XARVIO_MAX_BOUNDARY_BYTES: "3",
+      __FETCH__: async () => new Response(new Uint8Array([80, 75, 3, 4]), {
+        headers: { "Content-Length": "4" },
+      }),
+    }),
+  });
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error.code, "provider-response-too-large");
+});
+
+test("xarvio route terminates a chunked response that crosses the byte cap", async () => {
+  const fieldUuid = "8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const response = await xarvioGet({
+    request: request(`/api/integrations/xarvio/boundary?fieldUuid=${fieldUuid}`),
+    env: baseEnv({
+      XARVIO_ACCESS_TOKEN: "xarvio-token",
+      XARVIO_MAX_BOUNDARY_BYTES: "3",
+      __FETCH__: async () => new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([80, 75]));
+          controller.enqueue(new Uint8Array([3, 4]));
+          controller.close();
+        },
+      })),
+    }),
+  });
+  assert.equal(response.status, 200);
+  await assert.rejects(response.arrayBuffer(), /provider-response-too-large/);
+});
+
+test("xarvio route rejects empty and non-archive success responses", async () => {
+  const fieldUuid = "8c154be2-6a01-4ed0-84c4-07b8399886cb";
+  const contexts = [
+    new Response(null, { status: 200 }),
+    new Response("login page", { status: 200, headers: { "Content-Type": "text/html" } }),
+  ].map((upstream) => ({
+    request: request(`/api/integrations/xarvio/boundary?fieldUuid=${fieldUuid}`),
+    env: baseEnv({
+      XARVIO_ACCESS_TOKEN: "xarvio-token",
+      __FETCH__: async () => upstream,
+    }),
+  }));
+  const responses = await Promise.all(contexts.map(xarvioGet));
+  assert.deepEqual(responses.map((response) => response.status), [502, 502]);
+  const errors = await Promise.all(responses.map((response) => response.json()));
+  assert.deepEqual(errors.map((payload) => payload.error.code), [
+    "provider-request-failed",
+    "provider-request-failed",
+  ]);
 });

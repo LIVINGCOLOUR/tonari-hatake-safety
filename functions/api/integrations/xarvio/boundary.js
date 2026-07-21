@@ -1,11 +1,31 @@
 import {
   authorizeBff,
+  byteLimitedStream,
+  contentLengthExceeds,
   errorResponse,
   fetchWithTimeout,
+  providerResponseTooLarge,
   requiredSecret,
+  responseByteLimit,
   upstreamFailure,
   uuidIsValid,
 } from "../../../_shared/bff.js";
+
+const DEFAULT_MAX_BOUNDARY_BYTES = 10 * 1024 * 1024;
+const ARCHIVE_CONTENT_TYPES = [
+  "application/zip",
+  "application/octet-stream",
+  "application/x-zip-compressed",
+];
+
+function archiveResponseIsUsable(response) {
+  if (!response.body) return false;
+  const contentType = String(response.headers.get("Content-Type") || "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  return !contentType || ARCHIVE_CONTENT_TYPES.includes(contentType);
+}
 
 export async function onRequestGet({ request, env }) {
   const denied = authorizeBff(request, env);
@@ -30,8 +50,13 @@ export async function onRequestGet({ request, env }) {
     return upstreamFailure("xarvio境界API");
   }
   if (!response.ok) return upstreamFailure("xarvio境界API", response.status);
-  const body = await response.arrayBuffer();
-  return new Response(body, {
+  if (!archiveResponseIsUsable(response)) return upstreamFailure("xarvio境界API", response.status);
+  const maxBytes = responseByteLimit(env, "XARVIO_MAX_BOUNDARY_BYTES", DEFAULT_MAX_BOUNDARY_BYTES);
+  if (contentLengthExceeds(response, maxBytes)) {
+    response.body?.cancel("provider-response-too-large").catch(() => {});
+    return providerResponseTooLarge("xarvio境界API", maxBytes);
+  }
+  return new Response(byteLimitedStream(response.body, maxBytes), {
     status: 200,
     headers: {
       "Content-Type": "application/zip",
@@ -40,6 +65,7 @@ export async function onRequestGet({ request, env }) {
       "X-Content-Type-Options": "nosniff",
       "X-Tonari-Provider": "xarvio",
       "X-Tonari-Field-Uuid": fieldUuid,
+      "X-Tonari-Max-Bytes": String(maxBytes),
     },
   });
 }

@@ -136,6 +136,9 @@
 - Provider response bodies are not reflected on upstream errors. All BFF
   responses use `no-store`; UUID and coordinate inputs are validated before a
   provider call.
+- xarvio ZIP responses stream through the Worker instead of being buffered in
+  memory. `XARVIO_MAX_BOUNDARY_BYTES` defaults to 10 MiB; `Content-Length` is
+  checked before streaming and chunked bodies are terminated at the same cap.
 - `wrangler.toml` fixes the Pages output directory and Workers compatibility
   date without containing secrets.
 - Tests: `node --test tools/bff.test.mjs tools/domain.test.mjs tools/import.test.mjs`.

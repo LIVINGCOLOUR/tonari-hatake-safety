@@ -77,6 +77,12 @@ Provider secrets:
 - WAGRI: `WAGRI_CLIENT_ID`, `WAGRI_CLIENT_SECRET`
 - xarvio: `XARVIO_ACCESS_TOKEN` (a previously issued OAuth2 access token)
 
+Optional safety settings:
+
+- `XARVIO_MAX_BOUNDARY_BYTES`: maximum proxied ZIP size; defaults to 10 MiB
+  and is hard-capped at 25 MiB. Declared oversized responses are rejected
+  before streaming; chunked responses are terminated if they cross the cap.
+
 Store all four values as encrypted Cloudflare secrets. For local development,
 put them in an untracked `.dev.vars` file. Never put them in `wrangler.toml`.
 
@@ -88,6 +94,12 @@ npx.cmd --yes wrangler@latest pages dev .
 
 The ordinary `python -m http.server` launch still serves the frontend, but it
 does not execute the BFF routes.
+
+Before replacing the operator-only shared token with Cloudflare Access, add
+server-side verification of `Cf-Access-Jwt-Assertion`. The signature, issuer,
+and application audience must all be verified against the team JWKS; trusting
+the presence of the header alone is not authentication. Use Cloudflare's
+documented `jose` implementation rather than a custom JWT verifier.
 
 ## Next Step
 
@@ -105,3 +117,5 @@ before implementing bidirectional plan or operation exchange.
 - WAGRI access token API: https://wagri.naro.go.jp/wagri_api/token/
 - Cloudflare Pages Functions: https://developers.cloudflare.com/pages/functions/
 - Cloudflare Pages secrets: https://developers.cloudflare.com/pages/functions/bindings/
+- Cloudflare Workers Streams: https://developers.cloudflare.com/workers/runtime-apis/streams/
+- Cloudflare Access JWT validation: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
