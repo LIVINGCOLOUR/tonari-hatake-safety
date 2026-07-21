@@ -1,0 +1,12 @@
+name = "tonari-hatake-integrations"
+main = "worker/integrations-gateway.js"
+compatibility_date = "2026-07-21"
+workers_dev = true
+
+[[ratelimits]]
+name = "INTEGRATION_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60

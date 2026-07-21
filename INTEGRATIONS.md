@@ -108,6 +108,32 @@ npx.cmd --yes wrangler@latest pages dev .
 The ordinary `python -m http.server` launch still serves the frontend, but it
 does not execute the BFF routes.
 
+## Standalone integrations gateway
+
+Rate-limited provider traffic is moving from Pages Functions to the standalone
+`tonari-hatake-integrations` Worker. Its entry point is
+`worker/integrations-gateway.js`, and `wrangler.integrations.toml` defines a
+native Cloudflare Rate Limiting binding with a provider-route limit of 30
+requests per 60 seconds.
+
+The gateway authorizes the operator before counting a request. It fails closed
+with `503 rate-limit-unavailable` when the binding is missing or fails, and
+returns `429 rate-limit-exceeded` with `Retry-After: 60` before calling a
+provider when the limit is reached. The binding is a protection mechanism, not
+an accounting system; Cloudflare documents it as permissive and eventually
+consistent within each location.
+
+The existing Pages Functions remain disabled during the staged cutover. After
+the standalone Worker is deployed and verified, move its secrets to the Worker,
+route the intended API hostname/path to it, and remove the duplicate Pages
+Functions routes. Do not enable both provider paths at the same time.
+
+Validate the Worker configuration without deploying:
+
+```powershell
+npx.cmd --yes wrangler@latest deploy --config wrangler.integrations.toml --dry-run
+```
+
 Before replacing the operator-only shared token with Cloudflare Access, add
 server-side verification of `Cf-Access-Jwt-Assertion`. The signature, issuer,
 and application audience must all be verified against the team JWKS; trusting
