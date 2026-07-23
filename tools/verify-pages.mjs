@@ -41,6 +41,19 @@ async function inspectPage(path, expression, viewport = { width: 1440, height: 9
   });
   await command("Page.navigate", { url });
   await new Promise((resolve) => setTimeout(resolve, waitMs));
+  await command("Runtime.evaluate", {
+    expression: `new Promise((resolve) => {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        if ([...document.images].every((item) => item.complete) || Date.now() - startedAt >= 10000) {
+          clearInterval(timer);
+          resolve(true);
+        }
+      }, 100);
+    })`,
+    awaitPromise: true,
+    returnByValue: true,
+  });
   const evaluated = await command("Runtime.evaluate", { expression: `(${expression})()`, returnByValue: true });
   await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
   socket.close();
