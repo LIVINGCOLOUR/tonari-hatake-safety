@@ -1,5 +1,9 @@
 # HANDOFF
 
+Product scope, role workflows, implementation status, and future features are
+defined in `FEATURE_MAP.md`. Treat it as the product baseline before changing
+navigation, data visibility, safety wording, or workflow priorities.
+
 ## Current Status
 
 - Project: `となり畑セーフティ MVP`
