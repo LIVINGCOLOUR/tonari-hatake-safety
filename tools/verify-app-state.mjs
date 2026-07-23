@@ -114,6 +114,24 @@ assert(fresh.plan2Reason === "散布ほ場参照切れ", `unresolved plan admin 
 assert(fresh.importOk && fresh.importProvider === "file", `browser import module failed: ${JSON.stringify(fresh)}`);
 assert(fresh.reservedProviders.join(",") === "xarvio,wagri", `provider ids: ${fresh.reservedProviders.join(",")}`);
 
+// The real municipality Shapefile ZIP exercises shpjs, PRJ inspection, and
+// service-level parsing without mutating the active map state.
+const municipalityZip = await evaluate(`(async () => {
+  const entry = boundaryCatalog.find((item) => item.code === "08216");
+  if (!entry) return { missing: true };
+  const loaded = await boundaryIOService.fetchBoundaryEntry(entry, shapefileTools());
+  return {
+    count: loaded.features.length,
+    format: loaded.format,
+    originalCrs: loaded.originalCrs,
+  };
+})()`);
+assert(!municipalityZip.missing, "Kasama municipality ZIP is missing from the boundary catalog");
+assert(municipalityZip.format === "shapefile" && municipalityZip.count > 400,
+  `municipality ZIP was not parsed: ${JSON.stringify(municipalityZip)}`);
+assert(String(municipalityZip.originalCrs).includes("EPSG:4326"),
+  `municipality ZIP CRS was not confirmed: ${municipalityZip.originalCrs}`);
+
 // --- scenario 1b: forecast retrieval never completes human/onsite checks --
 const weather = await evaluate(`(async () => {
   const plan = activePlan();

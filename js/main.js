@@ -433,6 +433,7 @@ let domainPrescription;
 let domainCoverage;
 let domainDashboard;
 let weatherService;
+let boundaryIOService;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -484,7 +485,7 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -493,6 +494,7 @@ async function init() {
     import("./domain/coverage.mjs?v=20260723-phase6"),
     import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
     import("./services/weather.mjs?v=20260723-weather-service"),
+    import("./services/boundary-io.mjs?v=20260723-boundary-service"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -4342,9 +4344,8 @@ async function loadProfileLightBoundaries() {
   for (const entry of entries) {
     profile.boundaryLoadStatus[entry.code] = "loading";
     try {
-      const res = await fetch(`data/boundaries/${encodeURIComponent(entry.file)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      featuresFromGeoJsonText(await res.text()).forEach((feature) => features.push(feature));
+      const loaded = await boundaryIOService.fetchBoundaryEntry(entry);
+      loaded.features.forEach((feature) => features.push(feature));
       profile.boundaryLoadStatus[entry.code] = "loaded";
     } catch (error) {
       profile.boundaryLoadStatus[entry.code] = "failed";
@@ -5395,60 +5396,30 @@ function applyImportedFields(fields, message, options = {}) {
   if (message) showToast(message);
 }
 
-function importFieldBoundaries(file) {
+async function importFieldBoundaries(file) {
   if (!file) return;
-  const lower = file.name.toLowerCase();
-  if (lower.endsWith(".shp")) {
-    showToast("単独の.shpは座標系を確認できません。.prjを含むZIPで取り込んでください。");
-    return;
-  }
-  if (lower.endsWith(".zip")) {
-    importShapefileBoundaries(file);
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const features = featuresFromGeoJsonText(String(reader.result));
-      applyBoundaryFeatures(features, {
-        pin: true,
-        message: "実際のほ場境界を取り込みました。",
-        source: file.name,
-        sourceCode: `file:${file.name}`,
-        originalCrs: "EPSG:4326",
-      });
-    } catch (error) {
-      showToast(`取り込めませんでした：${error.message}`);
-    }
-  };
-  reader.readAsText(file);
-}
-
-// Shapefile ZIP (shp/dbf/prj) via shpjs; the .prj is required for safe reprojection.
-async function importShapefileBoundaries(file) {
-  if (typeof shp === "undefined") {
-    showToast("Shapefile読み込みライブラリが未ロードです。少し待って再試行してください。");
-    return;
-  }
-  showToast("Shapefileを解析中…");
+  if (file.name.toLowerCase().endsWith(".zip")) showToast("Shapefileを解析中…");
   try {
-    const buffer = await file.arrayBuffer();
-    const parsed = await shp.parseZip(buffer);
-    const collections = Array.isArray(parsed) ? parsed : [parsed];
-    const features = [];
-    collections.forEach((fc) => {
-      (fc?.features || []).forEach((feature) => features.push(feature));
-    });
-    applyBoundaryFeatures(features, {
+    const loaded = await boundaryIOService.readBoundaryFile(file, shapefileTools());
+    applyBoundaryFeatures(loaded.features, {
       pin: true,
-      message: "Shapefileから実境界を取り込みました。",
+      message: loaded.format === "shapefile"
+        ? "Shapefileから実境界を取り込みました。"
+        : "実際のほ場境界を取り込みました。",
       source: file.name,
       sourceCode: `file:${file.name}`,
-      originalCrs: "PRJからEPSG:4326へ変換",
+      originalCrs: loaded.originalCrs,
     });
   } catch (error) {
-    showToast(`Shapefileを取り込めませんでした：${error.message || "形式を確認してください"}`);
+    showToast(`取り込めませんでした：${boundaryIOService.boundaryErrorMessage(error)}`);
   }
+}
+
+function shapefileTools() {
+  const parser = typeof shp !== "undefined" ? shp : globalThis.shp;
+  return {
+    parseZip: typeof parser?.parseZip === "function" ? (buffer) => parser.parseZip(buffer) : undefined,
+  };
 }
 
 // --- 市町村カタログ（data/boundaries/index.json）からの自動読込 ---
@@ -5477,11 +5448,9 @@ async function initBoundaries() {
 
 async function loadBoundaryCatalog() {
   try {
-    const res = await fetch("data/boundaries/index.json", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      boundaryCatalog = Array.isArray(data.municipalities) ? data.municipalities : [];
-    }
+    const loaded = await boundaryIOService.fetchBoundaryCatalog();
+    boundaryCatalog = loaded.entries;
+    if (loaded.warnings.length) console.warn("Boundary catalog warnings", loaded.warnings);
   } catch (error) {
     boundaryCatalog = [];
   }
@@ -5505,44 +5474,22 @@ async function loadMunicipalityBoundary(code, options = {}) {
   if (!entry) return false;
   try {
     if (!options.silent) showToast(`${entry.name}を読み込み中…`);
-    const res = await fetch(`data/boundaries/${encodeURIComponent(entry.file)}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    let features;
-    if (entry.file.toLowerCase().endsWith(".zip")) {
-      if (typeof shp === "undefined") throw new Error("Shapefileライブラリ未ロード");
-      features = await featuresFromZip(await res.arrayBuffer());
-    } else {
-      features = featuresFromGeoJsonText(await res.text());
-    }
-    applyBoundaryFeatures(features, {
+    const loaded = await boundaryIOService.fetchBoundaryEntry(entry, shapefileTools());
+    applyBoundaryFeatures(loaded.features, {
       code,
       name: entry.name,
       silent: options.silent,
       source: entry.file,
       sourceCode: `municipality:${entry.code}`,
-      originalCrs: entry.file.toLowerCase().endsWith(".zip") ? "PRJからEPSG:4326へ変換" : "EPSG:4326",
+      originalCrs: loaded.originalCrs,
       datasetVersion: entry.version || "",
       license: entry.license || "",
     });
     return true;
   } catch (error) {
-    if (!options.silent) showToast(`境界を読み込めませんでした：${error.message}`);
+    if (!options.silent) showToast(`境界を読み込めませんでした：${boundaryIOService.boundaryErrorMessage(error)}`);
     return false;
   }
-}
-
-function featuresFromGeoJsonText(text) {
-  const result = domainImport.adaptGeoJsonPayload(text);
-  if (!result.ok) throw new Error(result.error.message);
-  return result.features;
-}
-
-async function featuresFromZip(buffer) {
-  const parsed = await shp.parseZip(buffer);
-  const collections = Array.isArray(parsed) ? parsed : [parsed];
-  const features = [];
-  collections.forEach((fc) => (fc?.features || []).forEach((f) => features.push(f)));
-  return features;
 }
 
 // 少数なら管理ほ場、多数（市全域の筆ポリゴン等）なら背景の筆レイヤーに振り分け。

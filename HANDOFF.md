@@ -175,21 +175,26 @@ navigation, data visibility, safety wording, or workflow priorities.
   validation, Japan-time forecast-hour selection, response normalization, and
   typed network/upstream/response errors. Forecast retrieval remains separate
   from the sprayer's confirmation and onsite wind measurement.
+- `js/services/boundary-io.mjs` owns the municipality catalog, local and remote
+  GeoJSON/Shapefile ZIP reads, ZIP central-directory inspection, required PRJ
+  checks, and typed file/network/parser errors. Domain field construction and
+  map/state mutation remain outside the service.
 - Admin altitude counts now inspect only each plan's own imported flight log.
   Missing logs stay in the separate `droneMissing` queue and cannot inherit
   altitude warnings from whichever plan happens to be active.
-- `js/main.js` was reduced from about 276 KB to about 255 KB without changing
+- `js/main.js` was reduced from about 276 KB to about 253 KB without changing
   the role UI, map rendering, localStorage schema, or user-facing workflows.
-- Domain/integration/service coverage is now 78 dependency-free `node:test`
+- Domain/integration/service coverage is now 84 dependency-free `node:test`
   tests.
 - Browser regression checks cover desktop/mobile layout, all three role
   navigation modes, the role-specific dashboard workflow meaning, work
-  history navigation, and stored-state migration.
+  history navigation, stored-state migration, and the real 5 MB Kasama
+  municipality Shapefile ZIP path through PRJ validation and shpjs.
 
 Next safe extraction order:
 
-1. Separate boundary-file and print/CSV browser IO from view orchestration
-   before replacing localStorage with authenticated APIs.
+1. Separate print/CSV browser IO from view orchestration before replacing
+   localStorage with authenticated APIs.
 2. Define repository interfaces for plans, fields, notifications, and work
    records before introducing authenticated backend persistence.
 3. Introduce authenticated persistence behind those interfaces, then connect
