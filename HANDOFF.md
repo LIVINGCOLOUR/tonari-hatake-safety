@@ -26,7 +26,7 @@
 - `index.html`: SPAの全画面マークアップ
 - `css/styles.css`: 画面全体のスタイル
 - `js/main.js`: UI状態、地図、気象、境界取込のIO、VRA、CSV/PDFを含む
-- `js/domain/`: 保存・幾何・圃場取込の純粋なドメイン処理
+- `js/domain/`: 保存・幾何・圃場取込・散布量・処方マップの純粋なドメイン処理
 - `data/boundaries/index.json`: 市町村境界カタログ
 - `data/boundaries/*.geojson`: 軽量デモ境界
 - `data/boundaries/*-fude.zip`: 筆ポリゴンShapefile zip
@@ -47,9 +47,8 @@
 - `js/main.js` is a classic script that dynamically imports the modules under
   `js/domain/` inside `init()`. Module
   scripts require a JavaScript MIME type, so the app must be served over HTTP
-  (`python -m http.server` serves `.mjs` as `text/javascript`; do not rename
-  the modules to `.js` — on this Windows machine the registry maps `.js` to
-  `text/plain`, which browsers reject for modules).
+  (`node tools/static-server.mjs . 4177` serves the repository with explicit
+  JavaScript MIME types; do not rename the modules to `.js`).
 - The app should be opened over HTTP. Direct `file://` open now fails fully
   (dynamic module import is blocked in that mode) and shows a fatal-error
   screen pointing at the HTTP requirement.
@@ -148,17 +147,51 @@
 - `wrangler.integrations.toml` contains only non-secret Worker configuration.
 - Tests: `node --test tools/bff.test.mjs tools/domain.test.mjs tools/gateway.test.mjs tools/import.test.mjs`.
 
+## Phase 6 UI Core Split (started 2026-07-23)
+
+- `js/domain/spray.mjs` owns rate/area to total-amount calculation and display
+  unit conversion. It has no DOM, storage, or provider dependency.
+- `js/domain/geometry.mjs` also owns the local metric projection, inverse
+  projection, point/ring helpers, and Polygon/MultiPolygon area calculation
+  used by coverage and prescription maps.
+- `js/domain/prescription.mjs` owns provider-neutral GeoJSON prescription
+  parsing, rate-field detection, area/rate statistics, map classes, and
+  editable zone generation. Browser file IO and MapLibre updates remain in
+  `js/main.js`.
+- `js/main.js` was reduced from about 276 KB to about 270 KB without changing
+  the role UI, map rendering, localStorage schema, or user-facing workflows.
+- Domain/integration coverage is now 67 dependency-free `node:test` tests.
+- Browser regression checks still cover desktop/mobile layout, all three role
+  navigation modes, and stored-state migration.
+
+Next safe extraction order:
+
+1. Move coverage-grid rasterization and track calculations into a pure
+   `js/domain/coverage.mjs` module, passing field geometry and track coordinates
+   as data instead of reading UI state.
+2. Separate role-specific dashboard view models from HTML rendering.
+3. Separate browser IO services (weather, boundary files, print/CSV) from view
+   orchestration before replacing localStorage with authenticated APIs.
+
+Claude Opus review was attempted with `--effort max`, but the current Claude
+organization rejects subscription access from Claude Code and requests an API
+key. No API fallback was used because automatic/additional billing is disabled.
+
 Recommended local launch:
 
 ```powershell
-python -m http.server 8080
+node tools/static-server.mjs . 4177
 ```
 
 Open:
 
 ```text
-http://localhost:8080/
+http://127.0.0.1:4177/
 ```
+
+Windows 11 note: after the OS upgrade, `python` resolves to the Microsoft Store
+execution alias and exits immediately on this machine. Edge remote debugging,
+GitHub, Cloudflare deployment, and the Node-based local server are working.
 
 ## Current Feature Map
 
