@@ -507,6 +507,7 @@ async function init() {
   renderAll();
   const initialView = location.hash.replace("#", "");
   switchView(VIEW_META[initialView] ? initialView : "dashboard");
+  document.documentElement.dataset.appReady = "true";
   initBoundaries();
 }
 

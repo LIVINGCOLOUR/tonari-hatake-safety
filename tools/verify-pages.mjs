@@ -41,6 +41,21 @@ async function inspectPage(path, expression, viewport = { width: 1440, height: 9
   });
   await command("Page.navigate", { url });
   await new Promise((resolve) => setTimeout(resolve, waitMs));
+  if (path.startsWith("/app.html") || path.startsWith("/app?")) {
+    await command("Runtime.evaluate", {
+      expression: `new Promise((resolve) => {
+        const startedAt = Date.now();
+        const timer = setInterval(() => {
+          if (document.documentElement.dataset.appReady === "true" || Date.now() - startedAt >= 15000) {
+            clearInterval(timer);
+            resolve(true);
+          }
+        }, 100);
+      })`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+  }
   await command("Runtime.evaluate", {
     expression: `new Promise((resolve) => {
       const startedAt = Date.now();
