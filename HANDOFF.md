@@ -198,12 +198,29 @@ navigation, data visibility, safety wording, or workflow priorities.
 
 Next safe extraction order:
 
-1. Define repository interfaces for plans, fields, notifications, and work
-   records before introducing authenticated backend persistence.
-2. Route the current versioned localStorage implementation through those
-   repositories without changing UI behavior or the stored schema.
+1. Add concrete plan and field repository implementations behind the declared
+   ports, keeping the current aggregate envelope as the compatibility format.
+2. Move notification responses and work records out of embedded plan updates
+   behind their declared ports.
 3. Introduce authenticated persistence behind the same interfaces, then connect
    real notification delivery and provider accounts.
+
+## Phase 7 Persistence Boundary (2026-07-23)
+
+- `js/repositories/app-state.mjs` declares the future repository ports for
+  plans, fields, notifications, and work records.
+- The current schema-v4 localStorage envelope is now read and written through
+  `createLocalStorageAppStateRepository`; `main.js` no longer owns browser
+  storage access or revision bookkeeping.
+- Existing bare-v3 and schema-v4 data remain byte-shape compatible. Loading a
+  legacy value does not rewrite it until the app performs its normal save.
+- Save revisions are checked optimistically. A stale second tab cannot silently
+  replace a newer tab's state and instead asks the user to reload.
+- Repository failures are typed and failed writes do not advance the in-memory
+  revision.
+- Domain/integration/service/repository coverage is now 99 dependency-free
+  `node:test` tests. Browser regression confirms that repository and stored
+  envelope revisions match after startup and migration.
 
 Claude Opus review was attempted with `--effort max`, but the current Claude
 organization rejects subscription access from Claude Code and requests an API
@@ -311,10 +328,11 @@ Browser smoke targets:
 
 ## Suggested Next Work
 
-- Define and test repository contracts for plans, fields, notifications, and
-  work records.
-- Put the current localStorage envelope behind repository implementations
-  before adding authentication or a shared database.
+- Implement plan and field repositories behind the declared ports.
+- Implement notification and work-record repositories without changing the
+  current role workflows.
+- Add an authenticated remote repository adapter only after those four local
+  ports are exercised by the UI.
 - Add a visible "clear demo data / reset localStorage" control.
 - Add import validation messages for unsupported Shapefile/GeoJSON geometries.
 - Decide whether large public parcel datasets should stay in Git or move to external object storage.

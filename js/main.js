@@ -435,7 +435,8 @@ let domainDashboard;
 let weatherService;
 let boundaryIOService;
 let exportIOService;
-let storageRevision = 0;
+let repositoryService;
+let stateRepository;
 let state = null;
 let activeRole = "sprayer";
 let activeView = "dashboard";
@@ -486,7 +487,7 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -497,7 +498,14 @@ async function init() {
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
+    import("./repositories/app-state.mjs?v=20260723-repository"),
   ]);
+  stateRepository = repositoryService.createLocalStorageAppStateRepository({
+    storage: localStorage,
+    key: STORAGE_KEY,
+    parseStoredState: domainState.parseStoredState,
+    nextEnvelope: domainState.nextEnvelope,
+  });
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
     state = createSampleState();
@@ -6368,9 +6376,7 @@ function defaultReport() {
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const stored = domainState.parseStoredState(raw);
-    storageRevision = stored?.revision || 0;
+    const stored = stateRepository.load();
     return stored?.data || null;
   } catch (error) {
     return null;
@@ -6496,11 +6502,12 @@ function activeSettings() {
 
 function saveState() {
   try {
-    const envelope = domainState.nextEnvelope(state, storageRevision);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
-    storageRevision = envelope.revision;
+    stateRepository.save(state);
   } catch (error) {
-    showToast("保存容量の上限に達しました。取り込んだ処方マップはこの表示中のみ保持されます。");
+    const message = error?.code === "conflict"
+      ? repositoryService.repositoryErrorMessage(error)
+      : "保存容量の上限に達しました。取り込んだ処方マップはこの表示中のみ保持されます。";
+    showToast(message);
   }
 }
 

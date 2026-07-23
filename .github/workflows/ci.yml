@@ -36,7 +36,7 @@ jobs:
           done < <(find js server worker tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
 
       - name: Run domain and integration tests
-        run: node --test tools/bff.test.mjs tools/boundary-service.test.mjs tools/domain.test.mjs tools/export-service.test.mjs tools/gateway.test.mjs tools/import.test.mjs tools/weather.test.mjs
+        run: node --test tools/bff.test.mjs tools/boundary-service.test.mjs tools/domain.test.mjs tools/export-service.test.mjs tools/gateway.test.mjs tools/import.test.mjs tools/repository.test.mjs tools/weather.test.mjs
 
       - name: Run desktop and mobile browser smoke tests
         shell: bash

@@ -82,6 +82,7 @@ const fresh = await evaluate(`(() => {
     plans,
     schemaVersion: envelope?.schemaVersion,
     revision: envelope?.revision,
+    repositoryRevision: stateRepository.currentRevision(),
     fieldsOk,
     riskCount: risks.length,
     organicDistance: organic ? organic.distance : "absent",
@@ -102,6 +103,8 @@ assert(fresh.plans["plan-drone-1"]?.fieldId === "spray-field-a", `plan1 fieldId:
 assert(fresh.plans["plan-drone-2"]?.fieldId === null, `plan2 must stay unresolved: ${JSON.stringify(fresh.plans["plan-drone-2"])}`);
 assert(fresh.plans["plan-drone-3"]?.fieldId === "spray-field-a", `plan3 fieldId: ${JSON.stringify(fresh.plans["plan-drone-3"])}`);
 assert(fresh.schemaVersion === 4 && fresh.revision >= 1, `envelope not saved: v${fresh.schemaVersion} r${fresh.revision}`);
+assert(fresh.repositoryRevision === fresh.revision,
+  `repository revision ${fresh.repositoryRevision} does not match envelope ${fresh.revision}`);
 assert(fresh.fieldsOk, "some field is missing canonical geometry / provenance / externalRefs");
 assert(fresh.riskCount >= 3, `expected surrounding risk items, got ${fresh.riskCount}`);
 assert(Number.isFinite(fresh.organicDistance) && fresh.organicDistance > 0 && fresh.organicDistance < 1000,
