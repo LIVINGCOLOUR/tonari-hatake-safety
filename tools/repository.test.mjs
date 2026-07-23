@@ -5,6 +5,7 @@ import {
   REPOSITORY_PORTS,
   RepositoryError,
   assertRepositoryPorts,
+  createAggregateEntityRepository,
   createLocalStorageAppStateRepository,
 } from "../js/repositories/app-state.mjs";
 import {
@@ -128,5 +129,53 @@ test("storage read failures are separated from an empty repository", () => {
   assert.throws(
     () => repo.load(),
     (error) => error instanceof RepositoryError && error.code === "read-failed",
+  );
+});
+
+test("aggregate entity repository lists, selects, inserts, and updates by stable id", () => {
+  const state = { plans: [{ id: "p1", name: "first" }] };
+  const plans = createAggregateEntityRepository({
+    getAggregate: () => state,
+    collectionName: "plans",
+  });
+  const listed = plans.list();
+  listed.push({ id: "outside" });
+  assert.deepEqual(state.plans.map((plan) => plan.id), ["p1"]);
+  assert.equal(plans.get("p1").name, "first");
+
+  plans.save({ id: "p2", name: "second" }, { position: "start" });
+  plans.save({ id: "p1", name: "updated" });
+  assert.deepEqual(state.plans.map((plan) => plan.id), ["p2", "p1"]);
+  assert.equal(plans.get("p1").name, "updated");
+});
+
+test("aggregate entity repository removes and atomically replaces collections", () => {
+  const state = { fields: [{ id: "f1" }, { id: "f2" }] };
+  const fields = createAggregateEntityRepository({
+    getAggregate: () => state,
+    collectionName: "fields",
+  });
+  assert.equal(fields.remove("missing"), null);
+  assert.equal(fields.remove("f1").id, "f1");
+  assert.deepEqual(fields.replaceAll([{ id: "f3" }, { id: "f4" }]).map((field) => field.id), ["f3", "f4"]);
+  assert.deepEqual(state.fields.map((field) => field.id), ["f3", "f4"]);
+  assert.throws(
+    () => fields.replaceAll([{ id: "same" }, { id: "same" }]),
+    (error) => error instanceof RepositoryError && error.code === "duplicate-entity",
+  );
+  assert.deepEqual(state.fields.map((field) => field.id), ["f3", "f4"]);
+});
+
+test("aggregate entity repository validates ids and initializes a missing collection", () => {
+  const state = {};
+  const plans = createAggregateEntityRepository({
+    getAggregate: () => state,
+    collectionName: "plans",
+  });
+  assert.deepEqual(plans.list(), []);
+  assert.deepEqual(state.plans, []);
+  assert.throws(
+    () => plans.save({ name: "missing id" }),
+    (error) => error instanceof RepositoryError && error.code === "invalid-entity",
   );
 });

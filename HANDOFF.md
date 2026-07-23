@@ -198,10 +198,10 @@ navigation, data visibility, safety wording, or workflow priorities.
 
 Next safe extraction order:
 
-1. Add concrete plan and field repository implementations behind the declared
-   ports, keeping the current aggregate envelope as the compatibility format.
-2. Move notification responses and work records out of embedded plan updates
+1. Move notification responses and work records out of embedded plan updates
    behind their declared ports.
+2. Route the notification inbox, admin queue, and history output through those
+   repositories.
 3. Introduce authenticated persistence behind the same interfaces, then connect
    real notification delivery and provider accounts.
 
@@ -221,6 +221,26 @@ Next safe extraction order:
 - Domain/integration/service/repository coverage is now 99 dependency-free
   `node:test` tests. Browser regression confirms that repository and stored
   envelope revisions match after startup and migration.
+
+## Phase 8 Plan And Field Repositories (2026-07-23)
+
+- Concrete aggregate-backed repositories now implement
+  `list/get/save/remove/replaceAll` for plans and fields while preserving the
+  schema-v4 envelope as the compatibility format.
+- Runtime plan/field list, selection, insertion, form update, parcel adoption,
+  municipality boundary replacement, maps, admin views, history, and exports
+  now read or write through the repositories. Only the pre-repository startup
+  check and pure legacy normalization inspect the raw arrays directly.
+- `replaceAll` rejects duplicate IDs before changing the aggregate. Collection
+  lists are shallow copies so callers cannot accidentally insert or remove
+  records without the repository.
+- Browser regression creates and edits a plan and a neighbor field through the
+  real forms, then verifies both repository and persisted-envelope values.
+- That regression exposed and fixed an older new-field map bug: percentage
+  geometry used to recursively ask for map bounds. Bounds now use only
+  canonical GeoJSON or legacy longitude/latitude geometry.
+- Coverage is now 102 dependency-free `node:test` tests plus desktop/mobile
+  browser checks.
 
 Claude Opus review was attempted with `--effort max`, but the current Claude
 organization rejects subscription access from Claude Code and requests an API
@@ -328,11 +348,11 @@ Browser smoke targets:
 
 ## Suggested Next Work
 
-- Implement plan and field repositories behind the declared ports.
 - Implement notification and work-record repositories without changing the
   current role workflows.
-- Add an authenticated remote repository adapter only after those four local
-  ports are exercised by the UI.
+- Route notification inbox/admin queues and history/export through those ports.
+- Add an authenticated remote repository adapter only after all four local
+  repositories are exercised by the UI.
 - Add a visible "clear demo data / reset localStorage" control.
 - Add import validation messages for unsupported Shapefile/GeoJSON geometries.
 - Decide whether large public parcel datasets should stay in Git or move to external object storage.

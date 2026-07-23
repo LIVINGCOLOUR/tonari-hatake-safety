@@ -348,7 +348,13 @@ const DEFAULT_MAP_VIEW = {
 // 実際のほ場境界（geo付きフィールド）があればその外接範囲、無ければデモ既定範囲。
 function currentMapBounds() {
   const geometries = (state?.fields || [])
-    .map((field) => normalizedFieldGeometry(field))
+    // x/yやgeoShapeはこの範囲を基準に座標化するため、ここでは確定済みの経緯度だけを見る。
+    .map((field) => {
+      const stored = domainGeometry?.normalizeGeometry(field?.geometry);
+      if (stored) return stored;
+      if (!Array.isArray(field?.geo) || field.geo.length < 3) return null;
+      return domainGeometry?.polygonFromRing(field.geo) || null;
+    })
     .filter(Boolean);
   if (!geometries.length) return DEMO_MAP_BOUNDS;
   let west = Infinity;
@@ -437,6 +443,8 @@ let boundaryIOService;
 let exportIOService;
 let repositoryService;
 let stateRepository;
+let planRepository;
+let fieldRepository;
 let state = null;
 let activeRole = "sprayer";
 let activeView = "dashboard";
@@ -498,7 +506,7 @@ async function init() {
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
-    import("./repositories/app-state.mjs?v=20260723-repository"),
+    import("./repositories/app-state.mjs?v=20260723-entity-repositories"),
   ]);
   stateRepository = repositoryService.createLocalStorageAppStateRepository({
     storage: localStorage,
@@ -511,6 +519,14 @@ async function init() {
     state = createSampleState();
   }
   state = normalizeState(state);
+  planRepository = repositoryService.createAggregateEntityRepository({
+    getAggregate: () => state,
+    collectionName: "plans",
+  });
+  fieldRepository = repositoryService.createAggregateEntityRepository({
+    getAggregate: () => state,
+    collectionName: "fields",
+  });
   const requestedRole = new URLSearchParams(location.search).get("role");
   if (!profileRole(state) && ROLE_META[requestedRole]) {
     state.role = requestedRole;
@@ -596,7 +612,7 @@ function bindEvents() {
 
     const planTrack = event.target.closest("[data-plan-track]");
     if (planTrack) {
-      const plan = state.plans.find((item) => item.id === planTrack.dataset.planTrack);
+      const plan = planRepository.get(planTrack.dataset.planTrack);
       if (plan && plan.droneLog) {
         state.activePlanId = plan.id;
         state.droneLog = plan.droneLog;
@@ -636,7 +652,7 @@ function bindEvents() {
 
   $("#newPlanButton").addEventListener("click", () => {
     const plan = createBlankPlan();
-    state.plans.unshift(plan);
+    planRepository.save(plan, { position: "start" });
     state.activePlanId = plan.id;
     saveState();
     renderAll();
@@ -654,7 +670,7 @@ function bindEvents() {
       notificationTargets: {},
       report: defaultReport(),
     };
-    state.plans.unshift(copy);
+    planRepository.save(copy, { position: "start" });
     state.activePlanId = copy.id;
     saveState();
     renderAll();
@@ -663,7 +679,8 @@ function bindEvents() {
 
   $("#planForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    updatePlanFromForm();
+    const plan = updatePlanFromForm();
+    planRepository.save(plan);
     saveState();
     renderAll();
     showToast("散布計画を保存しました。");
@@ -741,7 +758,7 @@ function bindEvents() {
   });
   $("#newFieldStatusButton").addEventListener("click", () => {
     const field = createBlankField();
-    state.fields.push(field);
+    fieldRepository.save(field);
     state.activeFieldId = field.id;
     state.role = "neighbor";
     activeRole = "neighbor";
@@ -751,7 +768,8 @@ function bindEvents() {
     showToast("自分の圃場を追加しました。");
   });
   $("#saveFieldStatusButton").addEventListener("click", () => {
-    updateFieldStatusFromForm();
+    const field = updateFieldStatusFromForm();
+    fieldRepository.save(field);
     saveState();
     renderAll();
     showToast("圃場ステータスを保存しました。");
@@ -987,7 +1005,7 @@ function renderProfileModeBanner() {
 
 function renderPlanSelect() {
   const select = $("#activePlanSelect");
-  select.innerHTML = state.plans
+  select.innerHTML = allPlans()
     .map((plan) => `<option value="${escapeAttr(plan.id)}">${escapeHtml(plan.date)} ${escapeHtml(plan.fieldName)}</option>`)
     .join("");
   select.value = state.activePlanId;
@@ -1251,7 +1269,7 @@ function weatherCheckSummary(plan) {
 function neighborRelevantNotices() {
   const since = dateOffset(-1);
   const fieldId = activeField().id;
-  const notices = state.plans
+  const notices = allPlans()
     .filter((plan) => plan.date >= since)
     .flatMap((plan) =>
       riskItemsForPlan(plan)
@@ -1349,7 +1367,7 @@ function planMatchesAdminRegion(plan) {
 }
 
 function adminRegionPlans() {
-  return state.plans.filter(planMatchesAdminRegion);
+  return allPlans().filter(planMatchesAdminRegion);
 }
 
 function adminDashboardPlans() {
@@ -1449,7 +1467,7 @@ function adminAttentionReasons(plan) {
   const consulting = Object.entries(plan.notificationResponses || {})
     .filter(([, response]) => response && response !== "未回答" && response !== "確認しました")
     .map(([fieldId, response]) => {
-      const field = state.fields.find((item) => item.id === fieldId);
+      const field = fieldRepository.get(fieldId);
       return `${field?.name || fieldId}：${response}`;
     });
   if (organicNear.length) {
@@ -1691,7 +1709,7 @@ function renderDashboard() {
   }
 
   const priorityPlans = domainDashboard.rankDashboardPlans(
-    state.plans.map((planItem) => ({
+    allPlans().map((planItem) => ({
       plan: planItem,
       score: priorityScore(planItem),
       level: riskLevel(planItem),
@@ -1727,7 +1745,7 @@ function renderDashboard() {
     .map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></li>`)
     .join("");
 
-  $("#planTableBody").innerHTML = state.plans
+  $("#planTableBody").innerHTML = allPlans()
     .slice()
     .sort((a, b) => `${a.date} ${a.timeWindow}`.localeCompare(`${b.date} ${b.timeWindow}`))
     .map(
@@ -2189,7 +2207,7 @@ function renderDashboardMapReadouts() {
   const trackTitle = $("#dashboardGisMap .track-card strong");
   if (trackTitle) trackTitle.textContent = "↗ 作業軌跡";
   $("#dashboardTrackSummary").textContent = droneLogLabel();
-  $("#dashboardFieldCount").textContent = `${state.fields.length}件`;
+  $("#dashboardFieldCount").textContent = `${allFields().length}件`;
   renderGisLegend($("#dashboardMapLegend"));
 }
 
@@ -2539,7 +2557,7 @@ function fieldFeatureCollection() {
   const risks = new Map(riskItemsForPlan(plan).map((item) => [item.id, item]));
   return {
     type: "FeatureCollection",
-    features: state.fields.map((field, index) => {
+    features: allFields().map((field, index) => {
       const risk = risks.get(field.id);
       return {
         type: "Feature",
@@ -2573,7 +2591,7 @@ function adminDashboardFieldFeatureCollection() {
   });
   return {
     type: "FeatureCollection",
-    features: state.fields.map((field, index) => {
+    features: allFields().map((field, index) => {
       const matches = byField.get(field.id) || [];
       const status = adminDashboardFieldStatus(matches);
       return {
@@ -2657,7 +2675,7 @@ function fieldPolygonCoordinates(field, index = 0) {
 }
 
 function planFieldResolution(plan) {
-  return domainState.planSprayField(plan, state.fields);
+  return domainState.planSprayField(plan, allFields());
 }
 
 function fieldForPlan(plan) {
@@ -2800,7 +2818,7 @@ function circlePolygon(center, radiusMeters, properties = {}) {
 function showGisFieldPopup(map, event) {
   const feature = event.features?.[0];
   if (!feature || !window.maplibregl) return;
-  const field = state.fields.find((item) => item.id === feature.properties.id);
+  const field = fieldRepository.get(feature.properties.id);
   if (!field) return;
   new maplibregl.Popup({ closeButton: false, offset: 14, className: "gis-popup" })
     .setLngLat(event.lngLat)
@@ -2884,7 +2902,7 @@ function renderMap(container, options = {}) {
   }
   container.appendChild(ring);
 
-  state.fields.forEach((field) => {
+  allFields().forEach((field) => {
     const meta = FIELD_TYPE_META[field.type] || FIELD_TYPE_META.public;
     const plot = document.createElement("div");
     plot.className = `plot ${meta[1]}`;
@@ -3043,7 +3061,7 @@ function renderFieldStatus() {
 
   const list = $("#fieldStatusList");
   if (!list) return;
-  list.innerHTML = state.fields
+  list.innerHTML = allFields()
     .filter((field) => field.type !== "spray")
     .map(
       (field) => `
@@ -3105,7 +3123,7 @@ function renderDroneView() {
 function updateFieldStatusFromForm() {
   const form = $("#fieldStatusForm");
   const target = activeField();
-  if (!target || !form) return;
+  if (!target || !form) return null;
   ["name", "municipality", "district", "crop", "cultivation", "chemicalUse", "organicJas", "notifyPreference", "publicScope", "contactMethod", "harvestWindow", "avoidReason"].forEach((name) => {
     target[name] = form.elements[name].value.trim();
   });
@@ -3127,6 +3145,7 @@ function updateFieldStatusFromForm() {
     target.short = "未確";
   }
   target.updatedAt = dateOffset(0);
+  return target;
 }
 
 function renderAltitudeChart(log) {
@@ -3737,7 +3756,7 @@ function exportPrescriptionGeoJSON() {
 }
 
 function historyRecords() {
-  return state.plans
+  return allPlans()
     .map((plan) => {
       const report = plan.report || {};
       const done = Boolean(report.doneDate);
@@ -3861,7 +3880,7 @@ let adminFilters = { status: "all", district: "all" };
 let adminMapLibreMap;
 
 function adminFilteredPlans() {
-  return state.plans
+  return allPlans()
     .slice()
     .filter((plan) => {
       const done = Boolean(plan.report.doneDate);
@@ -3876,7 +3895,7 @@ function adminFilteredPlans() {
 function renderAdmin() {
   const tbody = $("#adminTableBody");
   if (!tbody) return;
-  const districts = [...new Set(state.plans.map((p) => p.district).filter(Boolean))];
+  const districts = [...new Set(allPlans().map((p) => p.district).filter(Boolean))];
   const districtSelect = $("#adminDistrictFilter");
   if (districtSelect) {
     districtSelect.innerHTML = [`<option value="all">すべての地区</option>`, ...districts.map((d) => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`)].join("");
@@ -3911,7 +3930,7 @@ function renderAdmin() {
 function renderAdminDetail() {
   const info = $("#adminDetailInfo");
   if (!info) return;
-  const plan = state.plans.find((p) => p.id === adminSelectedId) || state.plans[0];
+  const plan = planRepository.get(adminSelectedId) || allPlans()[0];
   if (!plan) {
     info.innerHTML = `<div class="empty-state">散布を選択してください。</div>`;
     return;
@@ -4450,10 +4469,11 @@ function updatePlanFromForm() {
   const currentField = fieldForPlan(plan);
   const typedName = String(plan.fieldName ?? "").trim();
   if (!currentField || String(currentField.name ?? "").trim() !== typedName) {
-    const resolvedField = domainState.resolveFieldByName(plan.fieldName, state.fields);
+    const resolvedField = domainState.resolveFieldByName(plan.fieldName, allFields());
     plan.fieldId = resolvedField?.id || null;
     plan.fieldIdSource = resolvedField ? "form-name" : "unresolved";
   }
+  return plan;
 }
 
 function updateWeatherFromForm() {
@@ -4611,7 +4631,7 @@ function markSelectedTargetsNotified() {
 }
 
 function setNotificationResponse(fieldId, response, planId = "") {
-  const plan = state.plans.find((item) => item.id === planId) || activePlan();
+  const plan = planRepository.get(planId) || activePlan();
   plan.notificationResponses = plan.notificationResponses || {};
   plan.notificationResponses[fieldId] = response || "未回答";
   if (response && response !== "未回答") {
@@ -4629,7 +4649,7 @@ function notificationResponse(plan, fieldId) {
 }
 
 function countNotificationResponses(response) {
-  return state.plans.reduce((total, plan) => {
+  return allPlans().reduce((total, plan) => {
     const values = Object.values(plan.notificationResponses || {});
     return total + values.filter((value) => value === response).length;
   }, 0);
@@ -4732,7 +4752,7 @@ function buildAdminPrint() {
           <tr><th>日付</th><th>地区</th><th>ほ場</th><th>周辺確認</th><th>通知</th><th>チェック</th><th>確認進捗</th><th>報告</th></tr>
         </thead>
         <tbody>
-          ${state.plans
+          ${allPlans()
             .map((plan) => {
               const progress = checkProgress(plan);
               return `<tr>
@@ -4802,7 +4822,7 @@ function printTable(rows) {
 function exportCsv() {
   const rows = [
     ["日付", "時間", "地区", "ほ場", "作物", "農薬", "方法", "周辺確認", "通知", "チェック", "確認進捗", "報告"],
-    ...state.plans.map((plan) => {
+    ...allPlans().map((plan) => {
       const progress = checkProgress(plan);
       return [
         plan.date,
@@ -4870,7 +4890,7 @@ function getDashboardMetrics() {
   const tomorrow = dateOffset(1);
   const activeReadiness = readinessScore(activePlan()).value;
   return domainDashboard.buildSprayerDashboardMetrics({
-    plans: state.plans.map(dashboardPlanFact),
+    plans: allPlans().map(dashboardPlanFact),
     today,
     tomorrow,
     organicRadius: rules.organicRadius,
@@ -4935,7 +4955,7 @@ function riskItemsForPlan(plan) {
   const sprayField = resolution.field;
   const sprayGeometry = normalizedFieldGeometry(sprayField);
   const sprayCenter = domainGeometry.geometryCentroid(sprayGeometry);
-  return state.fields
+  return allFields()
     .filter((field) => field.id !== sprayField.id && field.type !== "spray")
     .map((field) => {
       const targetGeometry = normalizedFieldGeometry(field);
@@ -5339,7 +5359,15 @@ function notificationPill(plan) {
 }
 
 function activePlan() {
-  return state.plans.find((plan) => plan.id === state.activePlanId) || state.plans[0];
+  return planRepository.get(state.activePlanId) || planRepository.list()[0];
+}
+
+function allPlans() {
+  return planRepository.list();
+}
+
+function allFields() {
+  return fieldRepository.list();
 }
 
 // Flight log tied to the active plan; falls back to a not-imported placeholder.
@@ -5350,13 +5378,13 @@ function activeDroneLog() {
 }
 
 function activeField() {
-  const editableFields = state.fields.filter((field) => field.type !== "spray");
-  const selected = editableFields.find((field) => field.id === state.activeFieldId);
+  const editableFields = fieldRepository.list().filter((field) => field.type !== "spray");
+  const selected = fieldRepository.get(state.activeFieldId);
   const fallback = editableFields[0] || createBlankField();
   if (!state.activeFieldId && fallback.id) {
     state.activeFieldId = fallback.id;
   }
-  return selected || fallback;
+  return selected?.type !== "spray" ? selected : fallback;
 }
 
 // --- 実際のほ場境界（GeoJSON）の取込・表示 ---
@@ -5382,7 +5410,7 @@ function knownDemoFieldMeta(name) {
 }
 
 function applyImportedFields(fields, message, options = {}) {
-  state.fields = fields;
+  fieldRepository.replaceAll(fields);
   const plan = activePlan();
   const sprayField = fields.find((field) => field.type === "spray") || null;
   if (plan && sprayField) {
@@ -5527,7 +5555,7 @@ function applyParcelBackdrop(polys, opts = {}) {
     features: polys.map((f) => ({ type: "Feature", geometry: f.geometry, properties: { ...(f.properties || {}) } })),
   };
   const first = buildFieldsFromFeatures([polys[0]], opts);
-  state.fields = first;
+  fieldRepository.replaceAll(first);
   state.activeFieldId = undefined;
   const plan = activePlan();
   if (plan && first[0]) {
@@ -5618,7 +5646,7 @@ function adoptParcel(kind) {
     parcelContext,
     {
       forceType: kind === "spray" ? "spray" : "organic",
-      name: kind === "spray" ? "散布ほ場" : `隣接ほ場${state.fields.length}`,
+      name: kind === "spray" ? "散布ほ場" : `隣接ほ場${allFields().length}`,
       idFactory: ({ stableKey }) => domainImport.parcelCompatibleId(stableKey),
     },
   );
@@ -5628,10 +5656,10 @@ function adoptParcel(kind) {
   }
   const importedField = imported.field;
   if (kind === "spray") {
-    let spray = state.fields.find((f) => f.type === "spray");
+    let spray = allFields().find((f) => f.type === "spray");
     if (!spray) {
       spray = { ...createBlankField(), id: "parcel-spray", type: "spray", short: "散布", name: "散布ほ場", notifyTarget: false, owner: "自分" };
-      state.fields.unshift(spray);
+      fieldRepository.save(spray, { position: "start" });
     }
     spray.geo = importedField.geo;
     spray.geometry = importedField.geometry;
@@ -5646,7 +5674,7 @@ function adoptParcel(kind) {
     }
   } else {
     // 同じ筆はIDが安定して同一になるため、二重登録せず既存の周辺ほ場を選択する。
-    const existing = state.fields.find((field) => field.id === importedField.id);
+    const existing = fieldRepository.get(importedField.id);
     if (existing) {
       state.activeFieldId = existing.id;
       saveState();
@@ -5658,11 +5686,11 @@ function adoptParcel(kind) {
       ...createBlankField(),
       ...importedField,
       short: "隣接",
-      name: `隣接ほ場${state.fields.length}`,
+      name: `隣接ほ場${allFields().length}`,
       notifyTarget: true,
       owner: "周辺農家",
     };
-    state.fields.push(neighbor);
+    fieldRepository.save(neighbor);
     state.activeFieldId = neighbor.id;
   }
   recomputeFieldDistances();
@@ -5672,11 +5700,12 @@ function adoptParcel(kind) {
 }
 
 function recomputeFieldDistances() {
-  const spray = state.fields.find((f) => f.type === "spray") || state.fields[0];
+  const fields = allFields();
+  const spray = fields.find((f) => f.type === "spray") || fields[0];
   if (!spray) return;
   const sprayGeometry = normalizedFieldGeometry(spray);
   const center = domainGeometry.geometryCentroid(sprayGeometry);
-  state.fields.forEach((f) => {
+  fields.forEach((f) => {
     if (f === spray) {
       f.distance = 0;
       f.direction = "中心";
@@ -5700,8 +5729,8 @@ function resetToMunicipality() {
     loadMunicipalityBoundary(code);
     return;
   }
-  state.fields = createSampleState().fields;
-  state.activeFieldId = state.fields.find((f) => f.type !== "spray")?.id;
+  fieldRepository.replaceAll(createSampleState().fields);
+  state.activeFieldId = allFields().find((f) => f.type !== "spray")?.id;
   saveState();
   renderAll();
   requestAnimationFrame(() => focusVisibleMaps("all"));

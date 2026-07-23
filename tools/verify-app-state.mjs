@@ -19,7 +19,11 @@ let messageId = 0;
 
 socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
-  if (message.method === "Runtime.exceptionThrown") runtimeErrors.push(message.params.exceptionDetails.text);
+  if (message.method === "Runtime.exceptionThrown") {
+    const details = message.params.exceptionDetails;
+    const description = details.exception?.description || details.text;
+    runtimeErrors.push(`${description}${details.url ? ` (${details.url}:${details.lineNumber + 1})` : ""}`);
+  }
   if (!message.id || !pending.has(message.id)) return;
   const { resolve, reject } = pending.get(message.id);
   pending.delete(message.id);
@@ -262,6 +266,57 @@ assert(JSON.parse(prescriptionGeoJson.text).type === "FeatureCollection",
 assert(exports.printCalls === 1 && exports.printRestored && exports.printHidden === "true",
   `print lifecycle failed: ${JSON.stringify(exports)}`);
 assert(exports.printText.includes("農薬散布前 確認記録"), "precheck print content was not built");
+
+// --- scenario 1d: plan and field UI writes use the entity repositories ----
+const entityRepositories = await evaluate(`(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const initialPlans = planRepository.list().length;
+  const initialFields = fieldRepository.list().length;
+
+  document.querySelector("#newPlanButton").click();
+  await wait(100);
+  const createdPlanId = state.activePlanId;
+  const planForm = document.querySelector("#planForm");
+  planForm.elements.pesticide.value = "Repository確認用資材";
+  planForm.requestSubmit();
+  await wait(100);
+
+  document.querySelector("#newFieldStatusButton").click();
+  await wait(100);
+  const createdFieldId = state.activeFieldId;
+  const fieldForm = document.querySelector("#fieldStatusForm");
+  fieldForm.elements.name.value = "Repository確認用圃場";
+  document.querySelector("#saveFieldStatusButton").click();
+  await wait(100);
+
+  const envelope = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  return {
+    planCount: planRepository.list().length,
+    fieldCount: fieldRepository.list().length,
+    createdPlanId,
+    createdFieldId,
+    planMaterial: planRepository.get(createdPlanId)?.pesticide,
+    fieldName: fieldRepository.get(createdFieldId)?.name,
+    persistedPlan: envelope.data.plans.find((plan) => plan.id === createdPlanId)?.pesticide,
+    persistedField: envelope.data.fields.find((field) => field.id === createdFieldId)?.name,
+    repositoryRevision: stateRepository.currentRevision(),
+    envelopeRevision: envelope.revision,
+    initialPlans,
+    initialFields,
+  };
+})()`);
+assert(entityRepositories.planCount === entityRepositories.initialPlans + 1,
+  `plan repository did not insert from UI: ${JSON.stringify(entityRepositories)}`);
+assert(entityRepositories.fieldCount === entityRepositories.initialFields + 1,
+  `field repository did not insert from UI: ${JSON.stringify(entityRepositories)}`);
+assert(entityRepositories.planMaterial === "Repository確認用資材"
+  && entityRepositories.persistedPlan === entityRepositories.planMaterial,
+  `plan repository update was not persisted: ${JSON.stringify(entityRepositories)}`);
+assert(entityRepositories.fieldName === "Repository確認用圃場"
+  && entityRepositories.persistedField === entityRepositories.fieldName,
+  `field repository update was not persisted: ${JSON.stringify(entityRepositories)}`);
+assert(entityRepositories.repositoryRevision === entityRepositories.envelopeRevision,
+  `entity repository save revision mismatch: ${JSON.stringify(entityRepositories)}`);
 
 // --- scenario 2: legacy bare v3 blob migrates in place -------------------
 await evaluate(`(() => {
