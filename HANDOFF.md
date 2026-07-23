@@ -171,20 +171,25 @@ navigation, data visibility, safety wording, or workflow priorities.
   actions and workflow steps, neighbor notice ordering, and risk-based plan
   ordering. `main.js` converts plans into provider-neutral facts; HTML
   rendering and interactions remain in the browser layer.
+- `js/services/weather.mjs` owns Open-Meteo request construction, coordinate
+  validation, Japan-time forecast-hour selection, response normalization, and
+  typed network/upstream/response errors. Forecast retrieval remains separate
+  from the sprayer's confirmation and onsite wind measurement.
 - Admin altitude counts now inspect only each plan's own imported flight log.
   Missing logs stay in the separate `droneMissing` queue and cannot inherit
   altitude warnings from whichever plan happens to be active.
-- `js/main.js` was reduced from about 276 KB to about 258 KB without changing
+- `js/main.js` was reduced from about 276 KB to about 255 KB without changing
   the role UI, map rendering, localStorage schema, or user-facing workflows.
-- Domain/integration coverage is now 73 dependency-free `node:test` tests.
+- Domain/integration/service coverage is now 78 dependency-free `node:test`
+  tests.
 - Browser regression checks cover desktop/mobile layout, all three role
   navigation modes, the role-specific dashboard workflow meaning, work
   history navigation, and stored-state migration.
 
 Next safe extraction order:
 
-1. Separate browser IO services (weather, boundary files, print/CSV) from view
-   orchestration before replacing localStorage with authenticated APIs.
+1. Separate boundary-file and print/CSV browser IO from view orchestration
+   before replacing localStorage with authenticated APIs.
 2. Define repository interfaces for plans, fields, notifications, and work
    records before introducing authenticated backend persistence.
 3. Introduce authenticated persistence behind those interfaces, then connect

@@ -114,6 +114,65 @@ assert(fresh.plan2Reason === "散布ほ場参照切れ", `unresolved plan admin 
 assert(fresh.importOk && fresh.importProvider === "file", `browser import module failed: ${JSON.stringify(fresh)}`);
 assert(fresh.reservedProviders.join(",") === "xarvio,wagri", `provider ids: ${fresh.reservedProviders.join(",")}`);
 
+// --- scenario 1b: forecast retrieval never completes human/onsite checks --
+const weather = await evaluate(`(async () => {
+  const plan = activePlan();
+  plan.checks.weatherForecast = false;
+  plan.checks.weatherEnv = false;
+  plan.checks.wind = false;
+  plan.weather.actualSpeed = "";
+  plan.weather.measuredAt = "";
+  plan.weather.measuredPlace = "";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (!String(url).startsWith("https://api.open-meteo.com/")) return originalFetch(url);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        current: {
+          time: plan.date + "T05:45",
+          temperature_2m: 20,
+          relative_humidity_2m: 70,
+          precipitation: 0,
+          wind_speed_10m: 1,
+          wind_direction_10m: 0,
+          wind_gusts_10m: 2,
+        },
+        hourly: {
+          time: [plan.date + "T05:00", plan.date + "T06:00", plan.date + "T07:00"],
+          temperature_2m: [19, 21, 22],
+          relative_humidity_2m: [75, 68, 65],
+          precipitation_probability: [10, 55, 20],
+          precipitation: [0, 0.2, 0],
+          wind_speed_10m: [1, 2.3, 3],
+          wind_direction_10m: [0, 90, 180],
+          wind_gusts_10m: [2, 4.5, 5],
+        },
+      }),
+    };
+  };
+  try {
+    await fetchWeatherForecast();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return {
+    source: plan.weather.source,
+    target: plan.weather.forecastTargetTime,
+    speed: plan.weather.forecastSpeed,
+    forecastChecked: plan.checks.weatherForecast,
+    humanChecked: plan.checks.weatherEnv,
+    onsiteChecked: plan.checks.wind,
+    actualSpeed: plan.weather.actualSpeed,
+  };
+})()`);
+assert(weather.source === "Open-Meteo Forecast API", `weather source: ${weather.source}`);
+assert(String(weather.target).endsWith("T06:00"), `weather target: ${weather.target}`);
+assert(weather.speed === 2.3 && weather.forecastChecked, `weather forecast was not stored: ${JSON.stringify(weather)}`);
+assert(!weather.humanChecked && !weather.onsiteChecked && !weather.actualSpeed,
+  `forecast retrieval completed a human/onsite check: ${JSON.stringify(weather)}`);
+
 // --- scenario 2: legacy bare v3 blob migrates in place -------------------
 await evaluate(`(() => {
   const legacy = {

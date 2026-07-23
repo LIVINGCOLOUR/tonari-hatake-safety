@@ -432,6 +432,7 @@ let domainSpray;
 let domainPrescription;
 let domainCoverage;
 let domainDashboard;
+let weatherService;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -483,7 +484,7 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -491,6 +492,7 @@ async function init() {
     import("./domain/prescription.mjs?v=20260723-phase6"),
     import("./domain/coverage.mjs?v=20260723-phase6"),
     import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
+    import("./services/weather.mjs?v=20260723-weather-service"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -4476,47 +4478,19 @@ async function fetchWeatherForecast() {
   const weather = plan.weather || defaultWeather();
   const latitude = Number(weather.latitude || DEFAULT_WEATHER_LOCATION.latitude);
   const longitude = Number(weather.longitude || DEFAULT_WEATHER_LOCATION.longitude);
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    timezone: "Asia/Tokyo",
-    wind_speed_unit: "ms",
-    current: "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-    hourly: "temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
-    forecast_days: "7",
-  });
-  const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
   setWeatherStatus("取得中", "Open-Meteoから予報を取得しています。");
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
-    const forecast = pickForecastHour(data, plan);
-    const current = data.current || {};
-    const directionDegrees = forecast.wind_direction_10m ?? current.wind_direction_10m;
-    const speed = forecast.wind_speed_10m ?? current.wind_speed_10m;
-    const gust = forecast.wind_gusts_10m ?? current.wind_gusts_10m;
-    const temperature = forecast.temperature_2m ?? current.temperature_2m;
-    const humidity = forecast.relative_humidity_2m ?? current.relative_humidity_2m;
-    const precipitation = forecast.precipitation ?? current.precipitation;
-    const precipitationProbability = forecast.precipitation_probability;
-    plan.weather = {
-      ...plan.weather,
+    const forecast = await weatherService.fetchOpenMeteoForecast({
       latitude,
       longitude,
       locationLabel: weather.locationLabel || DEFAULT_WEATHER_LOCATION.label,
-      forecastDirection: degreesToDirection(directionDegrees),
-      forecastSpeed: roundOne(speed),
-      maxGust: roundOne(gust),
-      temperature: roundOne(temperature),
-      humidity: Number.isFinite(Number(humidity)) ? Math.round(Number(humidity)) : "",
-      rainForecast: buildRainForecast(precipitation, precipitationProbability),
-      source: "Open-Meteo Forecast API",
-      fetchedAt: formatDateTime(new Date()),
-      forecastTargetTime: forecast.time || current.time || "",
-      weatherNotes: plan.weather.weatherNotes || "Open-Meteoの予報値を自動取得。散布直前に現地実測を記録してください。",
+      date: plan.date,
+      timeWindow: plan.timeWindow,
+    });
+    plan.weather = {
+      ...plan.weather,
+      ...forecast,
+      weatherNotes: plan.weather.weatherNotes || forecast.weatherNotes,
     };
     plan.checks.weatherForecast = true;
     saveState();
@@ -4537,54 +4511,6 @@ function setWeatherStatus(label, message) {
       <strong>${escapeHtml(message)}</strong>
     </div>
   `;
-}
-
-function pickForecastHour(data, plan) {
-  const hourly = data.hourly || {};
-  const times = hourly.time || [];
-  if (!times.length) return {};
-  const target = forecastTargetDate(plan);
-  let bestIndex = 0;
-  let bestDiff = Infinity;
-  times.forEach((time, index) => {
-    const diff = Math.abs(new Date(time).getTime() - target.getTime());
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestIndex = index;
-    }
-  });
-  return Object.fromEntries(
-    Object.entries(hourly).map(([key, values]) => [key, Array.isArray(values) ? values[bestIndex] : values]),
-  );
-}
-
-function forecastTargetDate(plan) {
-  const startTime = String(plan.timeWindow || "06:00").split("-")[0] || "06:00";
-  const [hour = "6", minute = "0"] = startTime.split(":");
-  const date = new Date(`${plan.date}T00:00:00+09:00`);
-  date.setHours(Number(hour) || 6, Number(minute) || 0, 0, 0);
-  return date;
-}
-
-function degreesToDirection(degrees) {
-  const number = Number(degrees);
-  if (!Number.isFinite(number)) return "北西";
-  const labels = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
-  return labels[Math.round(number / 45) % 8];
-}
-
-function buildRainForecast(precipitation, probability) {
-  const rain = Number(precipitation || 0);
-  const chance = Number(probability);
-  if (Number.isFinite(chance) && chance >= 50) return `降水確率${Math.round(chance)}%`;
-  if (rain > 0) return `${roundOne(rain)}mmの降水見込み`;
-  if (Number.isFinite(chance)) return `降水確率${Math.round(chance)}%`;
-  return "なし";
-}
-
-function roundOne(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.round(number * 10) / 10 : "";
 }
 
 function updateReportFromForm() {
