@@ -434,6 +434,7 @@ let domainCoverage;
 let domainDashboard;
 let weatherService;
 let boundaryIOService;
+let exportIOService;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -485,7 +486,7 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -495,6 +496,7 @@ async function init() {
     import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
+    import("./services/export-io.mjs?v=20260723-export-service"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -3716,16 +3718,14 @@ function exportPrescriptionGeoJSON() {
       geometry: f.geometry,
     })),
   };
-  const blob = new Blob([JSON.stringify(fc, null, 2)], { type: "application/geo+json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `tonari-hatake-rx-${dateOffset(0)}.geojson`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  showToast("処方マップをGeoJSONで書き出しました。");
+  try {
+    exportIOService.downloadGeoJson(fc, {
+      filename: `tonari-hatake-rx-${dateOffset(0)}.geojson`,
+    });
+    showToast("処方マップをGeoJSONで書き出しました。");
+  } catch (error) {
+    showToast(`書き出せませんでした：${exportIOService.exportErrorMessage(error)}`);
+  }
 }
 
 function historyRecords() {
@@ -4636,10 +4636,14 @@ function printDocument(type) {
     admin: buildAdminPrint(),
     history: buildHistoryPrint(),
   };
-  $("#printSheet").innerHTML = htmlByType[type] || "";
-  document.body.classList.add("printing");
-  window.print();
-  setTimeout(() => document.body.classList.remove("printing"), 400);
+  try {
+    exportIOService.printHtml({
+      html: htmlByType[type] || "",
+      sheet: $("#printSheet"),
+    });
+  } catch (error) {
+    showToast(`印刷できませんでした：${exportIOService.exportErrorMessage(error)}`);
+  }
 }
 
 function buildNoticePrint(plan) {
@@ -4808,17 +4812,14 @@ function exportCsv() {
       ];
     }),
   ];
-  const csv = `\ufeff${rows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `tonari-hatake-safety-${dateOffset(0)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  showToast("CSVを出力しました。");
+  try {
+    exportIOService.downloadCsv(rows, {
+      filename: `tonari-hatake-safety-${dateOffset(0)}.csv`,
+    });
+    showToast("CSVを出力しました。");
+  } catch (error) {
+    showToast(`CSVを出力できませんでした：${exportIOService.exportErrorMessage(error)}`);
+  }
 }
 
 function exportHistoryCsv() {
@@ -4842,17 +4843,14 @@ function exportHistoryCsv() {
       record.done ? "提出済み" : "未提出",
     ]),
   ];
-  const csv = `﻿${rows.map((row) => row.map(csvCell).join(",")).join("\n")}`;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `tonari-hatake-history-${dateOffset(0)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  showToast("防除・作業履歴CSVを出力しました。");
+  try {
+    exportIOService.downloadCsv(rows, {
+      filename: `tonari-hatake-history-${dateOffset(0)}.csv`,
+    });
+    showToast("防除・作業履歴CSVを出力しました。");
+  } catch (error) {
+    showToast(`CSVを出力できませんでした：${exportIOService.exportErrorMessage(error)}`);
+  }
 }
 
 function getDashboardMetrics() {
@@ -6549,11 +6547,6 @@ function formatDateTime(date) {
 
 function uniqueId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function csvCell(value) {
-  const text = String(value ?? "");
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function escapeHtml(value) {

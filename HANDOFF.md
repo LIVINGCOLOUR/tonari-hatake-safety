@@ -179,25 +179,30 @@ navigation, data visibility, safety wording, or workflow priorities.
   GeoJSON/Shapefile ZIP reads, ZIP central-directory inspection, required PRJ
   checks, and typed file/network/parser errors. Domain field construction and
   map/state mutation remain outside the service.
+- `js/services/export-io.mjs` owns CSV escaping/BOM generation, GeoJSON
+  serialization, temporary browser download links, object-URL cleanup, and the
+  print-sheet lifecycle. Report/CSV row composition remains in `main.js`
+  because it is still view-specific.
 - Admin altitude counts now inspect only each plan's own imported flight log.
   Missing logs stay in the separate `droneMissing` queue and cannot inherit
   altitude warnings from whichever plan happens to be active.
 - `js/main.js` was reduced from about 276 KB to about 253 KB without changing
   the role UI, map rendering, localStorage schema, or user-facing workflows.
-- Domain/integration/service coverage is now 84 dependency-free `node:test`
+- Domain/integration/service coverage is now 91 dependency-free `node:test`
   tests.
 - Browser regression checks cover desktop/mobile layout, all three role
   navigation modes, the role-specific dashboard workflow meaning, work
   history navigation, stored-state migration, and the real 5 MB Kasama
-  municipality Shapefile ZIP path through PRJ validation and shpjs.
+  municipality Shapefile ZIP path through PRJ validation and shpjs. They also
+  exercise plan/history CSV, prescription GeoJSON, and print-sheet output.
 
 Next safe extraction order:
 
-1. Separate print/CSV browser IO from view orchestration before replacing
-   localStorage with authenticated APIs.
-2. Define repository interfaces for plans, fields, notifications, and work
+1. Define repository interfaces for plans, fields, notifications, and work
    records before introducing authenticated backend persistence.
-3. Introduce authenticated persistence behind those interfaces, then connect
+2. Route the current versioned localStorage implementation through those
+   repositories without changing UI behavior or the stored schema.
+3. Introduce authenticated persistence behind the same interfaces, then connect
    real notification delivery and provider accounts.
 
 Claude Opus review was attempted with `--effort max`, but the current Claude
@@ -306,9 +311,10 @@ Browser smoke targets:
 
 ## Suggested Next Work
 
-- Add a small local dev script or documented fallback for environments without Python.
-- Split `js/main.js` into modules if development continues for more than a few rounds.
+- Define and test repository contracts for plans, fields, notifications, and
+  work records.
+- Put the current localStorage envelope behind repository implementations
+  before adding authentication or a shared database.
 - Add a visible "clear demo data / reset localStorage" control.
 - Add import validation messages for unsupported Shapefile/GeoJSON geometries.
-- Add lightweight browser smoke test automation for dashboard/map/admin/history.
 - Decide whether large public parcel datasets should stay in Git or move to external object storage.

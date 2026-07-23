@@ -191,6 +191,77 @@ assert(weather.speed === 2.3 && weather.forecastChecked, `weather forecast was n
 assert(!weather.humanChecked && !weather.onsiteChecked && !weather.actualSpeed,
   `forecast retrieval completed a human/onsite check: ${JSON.stringify(weather)}`);
 
+// --- scenario 1c: browser exports retain their real filenames and content --
+const exports = await evaluate(`(async () => {
+  const blobs = new Map();
+  const downloads = [];
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const originalClick = HTMLAnchorElement.prototype.click;
+  const originalPrint = window.print;
+  let objectId = 0;
+  let printCalls = 0;
+  URL.createObjectURL = (blob) => {
+    const url = "blob:export-smoke-" + (++objectId);
+    blobs.set(url, blob);
+    return url;
+  };
+  URL.revokeObjectURL = () => {};
+  HTMLAnchorElement.prototype.click = function () {
+    downloads.push({ filename: this.download, blob: blobs.get(this.href) });
+  };
+  window.print = () => { printCalls += 1; };
+  try {
+    exportCsv();
+    exportHistoryCsv();
+    if (!activePlan().prescription) createPrescription();
+    exportPrescriptionGeoJSON();
+    printDocument("precheck");
+    const files = [];
+    for (const item of downloads) {
+      const bytes = item.blob ? Array.from(new Uint8Array(await item.blob.arrayBuffer()).slice(0, 3)) : [];
+      files.push({
+        filename: item.filename,
+        type: item.blob?.type,
+        text: item.blob ? await item.blob.text() : "",
+        bytes,
+      });
+    }
+    const printStarted = document.body.classList.contains("printing");
+    const printText = document.querySelector("#printSheet")?.textContent || "";
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return {
+      files,
+      printCalls,
+      printStarted,
+      printRestored: !document.body.classList.contains("printing"),
+      printHidden: document.querySelector("#printSheet")?.getAttribute("aria-hidden"),
+      printText,
+    };
+  } finally {
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+    HTMLAnchorElement.prototype.click = originalClick;
+    window.print = originalPrint;
+  }
+})()`);
+const planCsv = exports.files.find((file) => file.filename.startsWith("tonari-hatake-safety-"));
+const historyCsv = exports.files.find((file) => file.filename.startsWith("tonari-hatake-history-"));
+const prescriptionGeoJson = exports.files.find((file) => file.filename.startsWith("tonari-hatake-rx-"));
+assert(planCsv?.filename.endsWith(".csv") && planCsv.type === "text/csv;charset=utf-8",
+  `plan CSV metadata: ${JSON.stringify(planCsv)}`);
+assert(planCsv.bytes.join(",") === "239,187,191" && planCsv.text.includes('"日付","時間","地区"'),
+  "plan CSV lost its BOM or header");
+assert(historyCsv?.text.includes('"資材種別","資材名"') && historyCsv.text.includes("農薬"),
+  "history CSV lost its material columns or data");
+assert(prescriptionGeoJson?.type === "application/geo+json;charset=utf-8",
+  `prescription GeoJSON metadata: ${JSON.stringify(prescriptionGeoJson)}`);
+assert(JSON.parse(prescriptionGeoJson.text).type === "FeatureCollection",
+  "prescription export is not a GeoJSON FeatureCollection");
+assert(exports.printCalls === 1 && exports.printStarted && exports.printRestored && exports.printHidden === "true",
+  `print lifecycle failed: ${JSON.stringify(exports)}`);
+assert(exports.printText.includes("農薬散布前 確認記録"), "precheck print content was not built");
+
 // --- scenario 2: legacy bare v3 blob migrates in place -------------------
 await evaluate(`(() => {
   const legacy = {
