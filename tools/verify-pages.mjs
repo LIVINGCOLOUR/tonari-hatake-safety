@@ -152,6 +152,10 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
     navigation: [...document.querySelectorAll('.nav-item')]
       .filter((item) => getComputedStyle(item).display !== 'none')
       .map((item) => item.querySelector('span:last-child')?.textContent.trim()),
+    workflowTargets: [...document.querySelectorAll('#roleActionPanel [data-view-target]')]
+      .map((item) => item.dataset.viewTarget),
+    timelineTitles: [...document.querySelectorAll('#timeline li strong')]
+      .map((item) => item.textContent.trim()),
     kpiCount: document.querySelectorAll('#kpiGrid .kpi-card').length,
     overflow: document.documentElement.scrollWidth - innerWidth,
   })`, { width: 1440, height: 960 }, 3500);
@@ -160,6 +164,18 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
   assert(result.value.role === expectedRoleLabel, `${role} demo opened as ${result.value.role}`);
   assert(JSON.stringify(result.value.navigation) === JSON.stringify(expected), `${role} navigation mismatch: ${result.value.navigation.join(" / ")}`);
   assert(result.value.kpiCount === expectedKpiCount, `${role} KPI count: ${result.value.kpiCount}`);
+  if (role === "sprayer") {
+    assert(result.value.workflowTargets.includes("history"), "Sprayer workflow must end in work history");
+    assert(result.value.timelineTitles.includes("作業履歴"), "Sprayer timeline must include work history");
+  }
+  if (role === "neighbor") {
+    assert(result.value.workflowTargets.includes("fields"), "Neighbor workflow must expose field privacy settings");
+    assert(result.value.timelineTitles.includes("公開範囲"), "Neighbor timeline must include privacy scope");
+  }
+  if (role === "admin") {
+    assert(!result.value.workflowTargets.includes("plans"), "Admin workflow must not expose spray-plan editing");
+    assert(result.value.timelineTitles.includes("位置づけ"), "Admin timeline must preserve the non-approval statement");
+  }
   assert(result.value.overflow <= 0, `${role} app overflows by ${result.value.overflow}px`);
   assert(result.errors.length === 0, `${role} runtime errors: ${result.errors.join(", ")}`);
 }

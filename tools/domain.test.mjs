@@ -46,10 +46,17 @@ import {
   resetCoverageGridCacheForTest,
 } from "../js/domain/coverage.mjs";
 import {
+  buildAdminTimeline,
   buildAdminDashboardMetrics,
   buildAdminQueueItems,
+  buildNeighborTimeline,
   buildNeighborDashboardMetrics,
+  buildSprayerNextActions,
+  buildSprayerTimeline,
+  buildSprayerWorkflowModel,
   buildSprayerDashboardMetrics,
+  rankDashboardPlans,
+  rankNeighborNotices,
   summarizeAdminDashboard,
 } from "../js/domain/dashboard.mjs";
 
@@ -281,6 +288,69 @@ test("role dashboard metrics preserve labels, counts, and alert states", () => {
   });
   assert.deepEqual(neighbor.slice(0, 3).map((metric) => metric.value), ["1件", "2件", "1件"]);
   assert.equal(neighbor.at(-1).alert, true);
+});
+
+test("dashboard view models preserve role priorities and workflow order", () => {
+  const rankedPlans = rankDashboardPlans([
+    { id: "later", score: 2, date: "2026-07-24", timeWindow: "06:00" },
+    { id: "urgent", score: 8, date: "2026-07-25", timeWindow: "06:00" },
+    { id: "earlier", score: 2, date: "2026-07-23", timeWindow: "06:00" },
+    { id: "clear", score: 0, date: "2026-07-22", timeWindow: "06:00" },
+  ], { attentionOnly: true });
+  assert.deepEqual(rankedPlans.map((item) => item.id), ["urgent", "earlier", "later"]);
+
+  const notices = rankNeighborNotices([
+    { id: "confirmed", response: "確認しました", plan: { date: "2026-07-23", timeWindow: "06:00" } },
+    { id: "consulting", response: "電話希望", plan: { date: "2026-07-24", timeWindow: "06:00" } },
+    { id: "pending", response: "未回答", plan: { date: "2026-07-25", timeWindow: "06:00" } },
+  ]);
+  assert.deepEqual(notices.map((notice) => notice.id), ["pending", "consulting", "confirmed"]);
+
+  const actions = buildSprayerNextActions({
+    unnotifiedRisks: [{ name: "有機ほ場B", message: "通知が必要" }],
+    checks: { weatherForecast: false, wind: false, weatherEnv: false, dips: false },
+    actualSpeed: "",
+    droneImported: false,
+    reportDone: false,
+    planDate: "2026-07-23",
+    today: "2026-07-23",
+  });
+  assert.deepEqual(
+    actions.map((action) => action.view),
+    ["notify", "weather", "weather", "weather", "checklist", "drone", "report"],
+  );
+
+  const workflow = buildSprayerWorkflowModel({
+    plan: {
+      fieldName: "デモほ場A",
+      timeWindow: "06:00-07:00",
+      pesticide: "資材A",
+      checks: { organic: true, sensitive: true, weatherEnv: true, wind: true },
+      droneLog: { imported: true },
+      report: { doneDate: "2026-07-23" },
+    },
+    progress: { done: 15, total: 16, percent: 94 },
+    riskCount: 2,
+    notificationSummary: "2/2件 通知済み",
+    notificationComplete: true,
+    weatherSummary: "予報取得済み / 散布者確認済み / 実測済み",
+    droneSummary: "ログ取込済み",
+    actions: [],
+  });
+  assert.equal(workflow.preSteps.length, 5);
+  assert.deepEqual(workflow.postSteps.map((step) => step.view), ["drone", "report", "history"]);
+  assert.equal(workflow.postSteps.at(-1).done, true);
+
+  assert.equal(buildSprayerTimeline({ plan: { report: {} } }).at(-1).title, "作業履歴");
+  assert.equal(buildNeighborTimeline({
+    field: { name: "有機ほ場B" },
+    notices: [{ response: "未回答" }],
+  })[2].detail, "1件");
+  assert.equal(buildAdminTimeline({
+    prefecture: "茨城県",
+    municipality: "笠間市",
+    summary: { date: "2026-07-23", planned: 1, done: 2 },
+  })[0].detail, "茨城県 笠間市");
 });
 
 test("legacy bare state migrates into a versioned envelope without data loss", () => {

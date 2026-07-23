@@ -2,6 +2,200 @@ function count(items, predicate) {
   return (items || []).filter(predicate).length;
 }
 
+export function rankDashboardPlans(items = [], { attentionOnly = false, limit = 5 } = {}) {
+  return items
+    .filter((item) => !attentionOnly || Number(item.score || 0) > 0)
+    .slice()
+    .sort((a, b) => (
+      Number(b.score || 0) - Number(a.score || 0)
+      || `${a.date || ""} ${a.timeWindow || ""}`.localeCompare(`${b.date || ""} ${b.timeWindow || ""}`)
+    ))
+    .slice(0, limit);
+}
+
+export function rankNeighborNotices(notices = [], { limit = Number.POSITIVE_INFINITY } = {}) {
+  const responseRank = (response) => (response === "未回答" ? 0 : response === "確認しました" ? 2 : 1);
+  return notices
+    .slice()
+    .sort((a, b) => (
+      responseRank(a.response) - responseRank(b.response)
+      || `${a.plan?.date || ""} ${a.plan?.timeWindow || ""}`.localeCompare(
+        `${b.plan?.date || ""} ${b.plan?.timeWindow || ""}`,
+      )
+    ))
+    .slice(0, limit);
+}
+
+export function buildSprayerNextActions({
+  unnotifiedRisks = [],
+  checks = {},
+  actualSpeed,
+  droneImported = false,
+  reportDone = false,
+  planDate = "",
+  today = "",
+} = {}) {
+  const actions = unnotifiedRisks.slice(0, 2).map((risk) => ({
+    title: `${risk.name}へ通知`,
+    detail: risk.message,
+    view: "notify",
+  }));
+  if (!checks.weatherForecast) {
+    actions.push({
+      title: "API予報を取得",
+      detail: "Open-Meteoの予報値を散布予定時刻に合わせて取得します。",
+      view: "weather",
+    });
+  }
+  if (!actualSpeed || !checks.wind) {
+    actions.push({
+      title: "散布直前に風速を実測",
+      detail: "現地の風向・風速、測定場所、測定者を記録します。",
+      view: "weather",
+    });
+  }
+  if (!checks.weatherEnv) {
+    actions.push({
+      title: "散布者確認を記録",
+      detail: "予報と実測を見た上で、確認済みチェックを入れます。",
+      view: "weather",
+    });
+  }
+  if (!checks.dips) {
+    actions.push({
+      title: "DIPS飛行計画を確認",
+      detail: "V1では確認記録としてチェックを残します。",
+      view: "checklist",
+    });
+  }
+  if (!droneImported) {
+    actions.push({
+      title: "散布後にドローンログ取込",
+      detail: "飛行ルート、高度、散布ON/OFFログを記録に紐付けます。",
+      view: "drone",
+    });
+  }
+  if (!reportDone && planDate <= today) {
+    actions.push({
+      title: "実施後報告を作成",
+      detail: "実施日時、気象、問い合わせ有無を散布者控えとして残します。",
+      view: "report",
+    });
+  }
+  return actions;
+}
+
+export function buildSprayerWorkflowModel({
+  plan = {},
+  progress = { done: 0, total: 0, percent: 0 },
+  riskCount = 0,
+  notificationSummary = "",
+  notificationComplete = false,
+  weatherSummary = "",
+  droneSummary = "",
+  actions = [],
+} = {}) {
+  return {
+    actions,
+    preSteps: [
+      {
+        title: "計画登録",
+        detail: `${plan.fieldName || ""} / ${plan.timeWindow || ""}`,
+        done: Boolean(plan.fieldName && plan.pesticide),
+        view: "plans",
+      },
+      {
+        title: "周辺確認",
+        detail: `${riskCount}件の確認項目`,
+        done: Boolean(plan.checks?.organic && plan.checks?.sensitive),
+        view: "map",
+      },
+      {
+        title: "近隣通知",
+        detail: notificationSummary,
+        done: notificationComplete,
+        view: "notify",
+      },
+      {
+        title: "気象確認",
+        detail: weatherSummary,
+        done: Boolean(plan.checks?.weatherEnv && plan.checks?.wind),
+        view: "weather",
+      },
+      {
+        title: "散布前チェック",
+        detail: `${progress.done}/${progress.total}項目`,
+        done: progress.percent >= 85,
+        view: "checklist",
+      },
+    ],
+    postSteps: [
+      {
+        title: "飛行ログ",
+        detail: droneSummary,
+        done: Boolean(plan.droneLog?.imported),
+        view: "drone",
+      },
+      {
+        title: "実施後報告",
+        detail: plan.report?.doneDate ? "提出済み" : "未提出",
+        done: Boolean(plan.report?.doneDate),
+        view: "report",
+      },
+      {
+        title: "作業履歴",
+        detail: plan.report?.doneDate ? "履歴に反映済み" : "報告保存後に反映",
+        done: Boolean(plan.report?.doneDate),
+        view: "history",
+      },
+    ],
+  };
+}
+
+export function buildSprayerTimeline({
+  plan = {},
+  riskCount = 0,
+  notificationSummary = "",
+  weatherSummary = "",
+} = {}) {
+  return [
+    { title: "散布計画登録", detail: `${plan.date || ""} ${plan.timeWindow || ""} / ${plan.operator || ""}` },
+    { title: "周辺確認", detail: `${riskCount}件の周辺確認項目` },
+    { title: "近隣通知", detail: notificationSummary },
+    { title: "風向・風速確認", detail: weatherSummary },
+    { title: "実施後報告", detail: plan.report?.doneDate ? `${plan.report.doneDate} 提出済み` : "未提出" },
+    { title: "作業履歴", detail: plan.report?.doneDate ? "履歴に反映済み" : "実施後報告の保存後に反映" },
+  ];
+}
+
+export function buildNeighborTimeline({ field = {}, notices = [] } = {}) {
+  return [
+    {
+      title: "自分の圃場",
+      detail: `${field.name || ""} / ${field.cultivation || "未登録"} / ${field.notifyPreference || "通知未確認"}`,
+    },
+    { title: "公開範囲", detail: field.publicScope || "概略のみ共有" },
+    { title: "未返信通知", detail: `${count(notices, (notice) => notice.response === "未回答")}件` },
+    { title: "次の操作", detail: "通知への返信、連絡方法、公開範囲を確認します。" },
+  ];
+}
+
+export function buildAdminTimeline({ prefecture = "", municipality = "", summary = {} } = {}) {
+  return [
+    { title: "地域条件", detail: `${prefecture} ${municipality}`.trim() },
+    {
+      title: "対象日",
+      detail: `${summary.date || ""} / 予定 ${summary.planned || 0}件・実施済み ${summary.done || 0}件`,
+    },
+    {
+      title: "確認キュー",
+      detail: `通知未完了 ${summary.notifyIncomplete || 0}件 / 報告未提出 ${summary.reportMissing || 0}件 / ドローンログ未取込 ${summary.droneMissing || 0}件`,
+    },
+    { title: "航空写真表示", detail: "黄が散布予定、緑が実施済み、赤が追加確認対象です。" },
+    { title: "位置づけ", detail: "散布の許可・承認ではなく、記録状況と追加確認対象の一覧です。" },
+  ];
+}
+
 export function summarizeAdminDashboard({
   date,
   today,

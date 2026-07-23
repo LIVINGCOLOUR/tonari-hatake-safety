@@ -490,7 +490,7 @@ async function init() {
     import("./domain/spray.mjs?v=20260723-phase6"),
     import("./domain/prescription.mjs?v=20260723-phase6"),
     import("./domain/coverage.mjs?v=20260723-phase6"),
-    import("./domain/dashboard.mjs?v=20260723-phase6"),
+    import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -1027,18 +1027,17 @@ function renderRoleActionPanel() {
 function renderSprayerWorkflow(plan) {
   const progress = checkProgress(plan);
   const actions = nextActionsForSprayer(plan);
+  const workflow = domainDashboard.buildSprayerWorkflowModel({
+    plan,
+    progress,
+    riskCount: riskItemsForPlan(plan).length,
+    notificationSummary: notificationLabel(plan),
+    notificationComplete: notificationIsComplete(plan),
+    weatherSummary: weatherCheckSummary(plan),
+    droneSummary: droneLogLabel(plan.droneLog || createSampleDroneLog(false)),
+    actions,
+  });
   const remainingActions = actions.slice(1, 5);
-  const preSteps = [
-    { title: "計画登録", detail: `${plan.fieldName} / ${plan.timeWindow}`, done: Boolean(plan.fieldName && plan.pesticide), view: "plans" },
-    { title: "周辺確認", detail: `${riskItemsForPlan(plan).length}件の確認項目`, done: Boolean(plan.checks.organic && plan.checks.sensitive), view: "map" },
-    { title: "近隣通知", detail: notificationLabel(plan), done: notificationIsComplete(plan), view: "notify" },
-    { title: "気象確認", detail: weatherCheckSummary(plan), done: Boolean(plan.checks.weatherEnv && plan.checks.wind), view: "weather" },
-    { title: "散布前チェック", detail: `${progress.done}/${progress.total}項目`, done: progress.percent >= 85, view: "checklist" },
-  ];
-  const postSteps = [
-    { title: "飛行ログ", detail: droneLogLabel(plan.droneLog || createSampleDroneLog(false)), done: Boolean(plan.droneLog?.imported), view: "drone" },
-    { title: "実施後報告", detail: plan.report.doneDate ? "提出済み" : "未提出", done: Boolean(plan.report.doneDate), view: "report" },
-  ];
   const renderSteps = (steps, offset = 0) =>
     steps
       .map(
@@ -1078,11 +1077,11 @@ function renderSprayerWorkflow(plan) {
     </div>
     <div class="workflow-section">
       <div class="workflow-section-head"><strong>散布前タスク</strong><span>周辺確認、通知、気象、チェックを先に確認します。</span></div>
-      <div class="workflow-grid">${renderSteps(preSteps)}</div>
+      <div class="workflow-grid">${renderSteps(workflow.preSteps)}</div>
     </div>
     <div class="workflow-section">
-      <div class="workflow-section-head"><strong>散布後タスク</strong><span>ログと報告を記録として残します。</span></div>
-      <div class="workflow-grid compact-workflow">${renderSteps(postSteps, preSteps.length)}</div>
+      <div class="workflow-section-head"><strong>散布後タスク</strong><span>ログ、報告、作業履歴を記録として残します。</span></div>
+      <div class="workflow-grid compact-workflow">${renderSteps(workflow.postSteps, workflow.preSteps.length)}</div>
     </div>
   `;
 }
@@ -1215,30 +1214,15 @@ function noticeWindSummary(notice) {
 }
 
 function nextActionsForSprayer(plan) {
-  const actions = [];
-  riskItemsForPlan(plan)
-    .filter((item) => item.notifyTarget && !item.notified)
-    .slice(0, 2)
-    .forEach((item) => actions.push({ title: `${item.name}へ通知`, detail: item.message, view: "notify" }));
-  if (!plan.checks.weatherForecast) {
-    actions.push({ title: "API予報を取得", detail: "Open-Meteoの予報値を散布予定時刻に合わせて取得します。", view: "weather" });
-  }
-  if (!plan.weather.actualSpeed || !plan.checks.wind) {
-    actions.push({ title: "散布直前に風速を実測", detail: "現地の風向・風速、測定場所、測定者を記録します。", view: "weather" });
-  }
-  if (!plan.checks.weatherEnv) {
-    actions.push({ title: "散布者確認を記録", detail: "予報と実測を見た上で、確認済みチェックを入れます。", view: "weather" });
-  }
-  if (!plan.checks.dips) {
-    actions.push({ title: "DIPS飛行計画を確認", detail: "V1では確認記録としてチェックを残します。", view: "checklist" });
-  }
-  if (!plan.droneLog?.imported) {
-    actions.push({ title: "散布後にドローンログ取込", detail: "飛行ルート、高度、散布ON/OFFログを記録に紐付けます。", view: "drone" });
-  }
-  if (!plan.report.doneDate && plan.date <= dateOffset(0)) {
-    actions.push({ title: "実施後報告を作成", detail: "実施日時、気象、問い合わせ有無を散布者控えとして残します。", view: "report" });
-  }
-  return actions;
+  return domainDashboard.buildSprayerNextActions({
+    unnotifiedRisks: riskItemsForPlan(plan).filter((item) => item.notifyTarget && !item.notified),
+    checks: plan.checks,
+    actualSpeed: plan.weather.actualSpeed,
+    droneImported: Boolean(plan.droneLog?.imported),
+    reportDone: Boolean(plan.report.doneDate),
+    planDate: plan.date,
+    today: dateOffset(0),
+  });
 }
 
 function weatherCheckSummary(plan) {
@@ -1253,7 +1237,7 @@ function weatherCheckSummary(plan) {
 function neighborRelevantNotices() {
   const since = dateOffset(-1);
   const fieldId = activeField().id;
-  return state.plans
+  const notices = state.plans
     .filter((plan) => plan.date >= since)
     .flatMap((plan) =>
       riskItemsForPlan(plan)
@@ -1263,13 +1247,8 @@ function neighborRelevantNotices() {
           plan,
           response: notificationResponse(plan, item.id),
         })),
-    )
-    .sort((a, b) => {
-      const responseRank = (response) => (response === "未回答" ? 0 : response === "確認しました" ? 2 : 1);
-      const responseA = responseRank(a.response);
-      const responseB = responseRank(b.response);
-      return responseA - responseB || `${a.plan.date} ${a.plan.timeWindow}`.localeCompare(`${b.plan.date} ${b.plan.timeWindow}`);
-    });
+    );
+  return domainDashboard.rankNeighborNotices(notices);
 }
 
 function privacyScopeCard(field) {
@@ -1697,10 +1676,15 @@ function renderDashboard() {
     ].join("");
   }
 
-  const priorityPlans = state.plans
-    .map((planItem) => ({ plan: planItem, score: priorityScore(planItem), level: riskLevel(planItem) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+  const priorityPlans = domainDashboard.rankDashboardPlans(
+    state.plans.map((planItem) => ({
+      plan: planItem,
+      score: priorityScore(planItem),
+      level: riskLevel(planItem),
+      date: planItem.date,
+      timeWindow: planItem.timeWindow,
+    })),
+  );
   $("#priorityList").innerHTML = priorityPlans.length
     ? priorityPlans
         .map(
@@ -1849,12 +1833,7 @@ function renderNeighborDashboardContent() {
         .join("")
     : `<div class="empty-state">あなたに関係する近日の散布通知はありません。</div>`;
 
-  $("#timeline").innerHTML = [
-    { title: "自分の圃場", detail: `${field.name} / ${field.cultivation || "未登録"} / ${field.notifyPreference || "通知未確認"}` },
-    { title: "公開範囲", detail: field.publicScope || "概略のみ共有" },
-    { title: "未返信通知", detail: `${notices.filter((notice) => notice.response === "未回答").length}件` },
-    { title: "次の操作", detail: "通知への返信、連絡方法、公開範囲を確認します。" },
-  ]
+  $("#timeline").innerHTML = domainDashboard.buildNeighborTimeline({ field, notices })
     .map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></li>`)
     .join("");
 
@@ -1880,11 +1859,16 @@ function renderNeighborDashboardContent() {
 function renderAdminDashboardContent() {
   const summary = adminDashboardSummary();
   const plans = adminDashboardPlans().sort((a, b) => `${a.date} ${a.timeWindow}`.localeCompare(`${b.date} ${b.timeWindow}`));
-  const attentionPlans = adminRegionPlans()
-    .map((planItem) => ({ plan: planItem, score: priorityScore(planItem), level: riskLevel(planItem) }))
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+  const attentionPlans = domainDashboard.rankDashboardPlans(
+    adminRegionPlans().map((planItem) => ({
+      plan: planItem,
+      score: priorityScore(planItem),
+      level: riskLevel(planItem),
+      date: planItem.date,
+      timeWindow: planItem.timeWindow,
+    })),
+    { attentionOnly: true },
+  );
 
   $("#focusPlanTitle").textContent = `${adminDashboardFilters.municipality} ${summary.date} の散布状況`;
   renderDashboardGisMap();
@@ -1916,13 +1900,11 @@ function renderAdminDashboardContent() {
     });
   });
 
-  $("#timeline").innerHTML = [
-    { title: "地域条件", detail: `${adminDashboardFilters.prefecture} ${adminDashboardFilters.municipality}` },
-    { title: "対象日", detail: `${summary.date} / 予定 ${summary.planned}件・実施済み ${summary.done}件` },
-    { title: "確認キュー", detail: `通知未完了 ${summary.notifyIncomplete}件 / 報告未提出 ${summary.reportMissing}件 / ドローンログ未取込 ${summary.droneMissing}件` },
-    { title: "航空写真表示", detail: "黄が散布予定、緑が実施済み、赤が追加確認対象です。" },
-    { title: "位置づけ", detail: "散布の許可・承認ではなく、記録状況と追加確認対象の一覧です。" },
-  ]
+  $("#timeline").innerHTML = domainDashboard.buildAdminTimeline({
+    prefecture: adminDashboardFilters.prefecture,
+    municipality: adminDashboardFilters.municipality,
+    summary,
+  })
     .map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></li>`)
     .join("");
 
@@ -5375,13 +5357,12 @@ ${risks || "・通知対象は登録されていません。"}
 }
 
 function buildTimeline(plan) {
-  return [
-    { title: "散布計画登録", detail: `${plan.date} ${plan.timeWindow} / ${plan.operator}` },
-    { title: "周辺確認", detail: `${riskItemsForPlan(plan).length}件の周辺確認項目` },
-    { title: "近隣通知", detail: notificationLabel(plan) },
-    { title: "風向・風速確認", detail: weatherLabel(plan) },
-    { title: "実施後報告", detail: plan.report.doneDate ? `${plan.report.doneDate} 提出済み` : "未提出" },
-  ];
+  return domainDashboard.buildSprayerTimeline({
+    plan,
+    riskCount: riskItemsForPlan(plan).length,
+    notificationSummary: notificationLabel(plan),
+    weatherSummary: weatherLabel(plan),
+  });
 }
 
 function statusRow(title, detail, color = "") {

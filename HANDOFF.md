@@ -167,25 +167,28 @@ navigation, data visibility, safety wording, or workflow priorities.
   map GeoJSON. `main.js` only resolves the plan field and converts legacy
   percentage-based demo log points into longitude/latitude coordinates.
 - `js/domain/dashboard.mjs` owns role-specific KPI ViewModels and the regional
-  admin day/region summary. `main.js` converts plans into provider-neutral
-  facts; HTML rendering and interactions remain in the browser layer.
+  admin day/region summary. It now also owns role timelines, sprayer next
+  actions and workflow steps, neighbor notice ordering, and risk-based plan
+  ordering. `main.js` converts plans into provider-neutral facts; HTML
+  rendering and interactions remain in the browser layer.
 - Admin altitude counts now inspect only each plan's own imported flight log.
   Missing logs stay in the separate `droneMissing` queue and cannot inherit
   altitude warnings from whichever plan happens to be active.
-- `js/main.js` was reduced from about 276 KB to about 262 KB without changing
+- `js/main.js` was reduced from about 276 KB to about 258 KB without changing
   the role UI, map rendering, localStorage schema, or user-facing workflows.
-- Domain/integration coverage is now 72 dependency-free `node:test` tests.
-- Browser regression checks still cover desktop/mobile layout, all three role
-  navigation modes, and stored-state migration.
+- Domain/integration coverage is now 73 dependency-free `node:test` tests.
+- Browser regression checks cover desktop/mobile layout, all three role
+  navigation modes, the role-specific dashboard workflow meaning, work
+  history navigation, and stored-state migration.
 
 Next safe extraction order:
 
-1. Move role-specific dashboard timelines, priority lists, and next-action
-   facts into the existing dashboard ViewModel boundary.
-2. Separate browser IO services (weather, boundary files, print/CSV) from view
+1. Separate browser IO services (weather, boundary files, print/CSV) from view
    orchestration before replacing localStorage with authenticated APIs.
-3. Define repository interfaces for plans, fields, notifications, and work
+2. Define repository interfaces for plans, fields, notifications, and work
    records before introducing authenticated backend persistence.
+3. Introduce authenticated persistence behind those interfaces, then connect
+   real notification delivery and provider accounts.
 
 Claude Opus review was attempted with `--effort max`, but the current Claude
 organization rejects subscription access from Claude Code and requests an API
