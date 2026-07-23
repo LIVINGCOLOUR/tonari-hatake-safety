@@ -18,12 +18,30 @@ import {
   stableImportedId,
   wgs84RangeViolation,
 } from "../js/domain/geometry.mjs";
+import {
+  formatAmountValue,
+  formatTotalAmount,
+  plannedTotalAmount,
+  trimNumber,
+} from "../js/domain/spray.mjs";
 
 const polygon = (west, south, east, north, holes = []) => ({
   type: "Polygon",
   coordinates: [[
     [west, south], [east, south], [east, north], [west, north], [west, south],
   ], ...holes],
+});
+
+test("spray amount calculations keep 10a and hectare units consistent", () => {
+  assert.deepEqual(
+    plannedTotalAmount({ ratePer10a: "250", areaHa: "0.8", rateUnit: "mL" }),
+    { value: 2000, unit: "mL" },
+  );
+  assert.equal(formatAmountValue(2000, "mL"), "2L");
+  assert.equal(formatAmountValue(1250, "g"), "1.25kg");
+  assert.equal(formatTotalAmount({ ratePer10a: 80, areaHa: 0.25, rateUnit: "g" }), "200g");
+  assert.equal(formatTotalAmount({ ratePer10a: "", areaHa: 1 }), "\u2014");
+  assert.equal(trimNumber(1.236), "1.24");
 });
 
 test("legacy bare state migrates into a versioned envelope without data loss", () => {

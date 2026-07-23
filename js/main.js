@@ -428,6 +428,7 @@ const SAMPLE_FIELD_GEOMETRY = {
 let domainState;
 let domainGeometry;
 let domainImport;
+let domainSpray;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -479,10 +480,11 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
+    import("./domain/spray.mjs?v=20260723-phase6"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -2071,11 +2073,11 @@ function updatePlanTotalPreview(plan = activePlan()) {
   const source = form && form.elements.ratePer10a
     ? { ratePer10a: form.elements.ratePer10a.value, areaHa: form.elements.areaHa.value, rateUnit: form.elements.rateUnit.value }
     : plan;
-  const total = plannedTotalAmount(source);
+  const total = domainSpray.plannedTotalAmount(source);
   const cov = estimateCoverage(plan);
   const covNote = cov.hasLog && cov.coveragePct != null ? ` ／ 飛行ログのカバー率 ${cov.coveragePct}%` : "";
   el.innerHTML = total
-    ? `総散布量の目安：<strong>${escapeHtml(formatAmountValue(total.value, total.unit))}</strong>（${escapeHtml(trimNumber(toNumber(source.ratePer10a)))}${escapeHtml(source.rateUnit || "mL")}/10a × ${escapeHtml(trimNumber(toNumber(source.areaHa)))}ha）${escapeHtml(covNote)}`
+    ? `総散布量の目安：<strong>${escapeHtml(domainSpray.formatAmountValue(total.value, total.unit))}</strong>（${escapeHtml(domainSpray.trimNumber(toNumber(source.ratePer10a)))}${escapeHtml(source.rateUnit || "mL")}/10a × ${escapeHtml(domainSpray.trimNumber(toNumber(source.areaHa)))}ha）${escapeHtml(covNote)}`
     : "使用量（数値）と面積（ha）を入力すると、総散布量を自動計算します。";
 }
 
@@ -3367,33 +3369,6 @@ function renderReport() {
   `;
 }
 
-const UNIT_STEP_UP = { mL: ["L", 1000], g: ["kg", 1000] };
-
-function trimNumber(n) {
-  return Number(Number(n).toFixed(2)).toString();
-}
-
-function plannedTotalAmount(plan) {
-  const rate = toNumber(plan.ratePer10a);
-  const area = toNumber(plan.areaHa);
-  if (!rate || !area) return null;
-  return { value: rate * area * 10, unit: plan.rateUnit || "mL" };
-}
-
-function formatAmountValue(value, unit) {
-  if (!Number.isFinite(value)) return "";
-  const stepUp = UNIT_STEP_UP[unit];
-  if (stepUp && value >= stepUp[1]) {
-    return `${trimNumber(value / stepUp[1])}${stepUp[0]}`;
-  }
-  return `${trimNumber(value)}${unit}`;
-}
-
-function formatTotalAmount(plan) {
-  const total = plannedTotalAmount(plan);
-  return total ? formatAmountValue(total.value, total.unit) : "—";
-}
-
 function haversineMeters([lng1, lat1], [lng2, lat2]) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -3538,7 +3513,7 @@ function estimateCoverage(plan) {
 function coverageLabel(plan) {
   const cov = estimateCoverage(plan);
   if (!cov.hasLog) return "軌跡なし";
-  return cov.coveragePct != null ? `カバー率 ${cov.coveragePct}%（${trimNumber(cov.coveredHa)}ha）` : "軌跡あり";
+  return cov.coveragePct != null ? `カバー率 ${cov.coveragePct}%（${domainSpray.trimNumber(cov.coveredHa)}ha）` : "軌跡あり";
 }
 
 // Build map GeoJSON for the sprayed/unsprayed grid + current drone position (up to uptoIndex).
@@ -3620,9 +3595,9 @@ function renderCoverageReadout(data) {
   readout.innerHTML = `
     <div class="coverage-figures">
       <div><span>カバー率</span><strong>${gc.coveragePct}%</strong></div>
-      <div><span>散布済み</span><strong>${trimNumber(gc.coveredHa)}ha</strong></div>
-      <div><span>塗り残し</span><strong class="${unsprayed ? "warn" : "good"}">${unsprayed}区画（${trimNumber(unsprayed * cellHa)}ha）</strong></div>
-      <div><span>圃場面積</span><strong>${trimNumber(gc.fieldAreaHa)}ha</strong></div>
+      <div><span>散布済み</span><strong>${domainSpray.trimNumber(gc.coveredHa)}ha</strong></div>
+      <div><span>塗り残し</span><strong class="${unsprayed ? "warn" : "good"}">${unsprayed}区画（${domainSpray.trimNumber(unsprayed * cellHa)}ha）</strong></div>
+      <div><span>圃場面積</span><strong>${domainSpray.trimNumber(gc.fieldAreaHa)}ha</strong></div>
     </div>
     <div class="coverage-legend">
       <span><i style="background:#2fbf6b"></i>散布済み</span>
@@ -3854,16 +3829,16 @@ function renderPrescriptionReadout(rx) {
   const legend = PRESCRIPTION_COLORS.map((color, k) => {
     const low = rx.min + (range * k) / PRESCRIPTION_COLORS.length;
     const high = rx.min + (range * (k + 1)) / PRESCRIPTION_COLORS.length;
-    return `<span><i style="background:${color}"></i>${trimNumber(low)}–${trimNumber(high)}</span>`;
+    return `<span><i style="background:${color}"></i>${domainSpray.trimNumber(low)}–${domainSpray.trimNumber(high)}</span>`;
   }).join("");
   const totalUnit = rx.unit ? rx.unit.replace(/\/?ha$/i, "") : "";
   readout.innerHTML = `
     <div class="rx-name">${escapeHtml(rx.name)}<span>${escapeHtml(rx.importedAt)}</span></div>
     <div class="coverage-figures">
       <div><span>ゾーン数</span><strong>${rx.count}</strong></div>
-      <div><span>施用量</span><strong>${trimNumber(rx.min)}–${trimNumber(rx.max)}${escapeHtml(rx.unit)}</strong></div>
-      <div><span>平均</span><strong>${trimNumber(rx.avg)}${escapeHtml(rx.unit)}</strong></div>
-      <div><span>合計目標量</span><strong>${trimNumber(rx.totalAmount)}${escapeHtml(totalUnit)}（${trimNumber(rx.totalAreaHa)}ha）</strong></div>
+      <div><span>施用量</span><strong>${domainSpray.trimNumber(rx.min)}–${domainSpray.trimNumber(rx.max)}${escapeHtml(rx.unit)}</strong></div>
+      <div><span>平均</span><strong>${domainSpray.trimNumber(rx.avg)}${escapeHtml(rx.unit)}</strong></div>
+      <div><span>合計目標量</span><strong>${domainSpray.trimNumber(rx.totalAmount)}${escapeHtml(totalUnit)}（${domainSpray.trimNumber(rx.totalAreaHa)}ha）</strong></div>
     </div>
     <div class="rx-legend"><span class="rx-legend-label">少 → 多</span>${legend}</div>
     <div class="coverage-track-note">施用量項目：${escapeHtml(rx.rateField)}</div>
@@ -4004,7 +3979,7 @@ function renderPrescriptionEditor(rx) {
       const ha = polygonAreaHa(f.geometry);
       return `
         <div class="rx-zone-row">
-          <span>ゾーン${i + 1}<small>${trimNumber(ha)}ha</small></span>
+          <span>ゾーン${i + 1}<small>${domainSpray.trimNumber(ha)}ha</small></span>
           <input type="number" min="0" step="1" data-rx-rate="${i}" value="${escapeAttr(f.properties.rate)}">
           <span class="rx-zone-unit">${escapeHtml(rx.unit)}</span>
         </div>
@@ -4076,7 +4051,7 @@ function historyRecords() {
         materialType: plan.materialType || "農薬",
         material: report.donePesticide || plan.pesticide,
         rate: `${report.actualAmount || plan.amount || "未記録"}${dilution}`,
-        total: formatTotalAmount(plan),
+        total: domainSpray.formatTotalAmount(plan),
         area: report.doneArea || plan.sprayArea || "未記録",
         hasLog: cov.hasLog,
         coverage: coverageLabel(plan),
@@ -4240,7 +4215,7 @@ function renderAdminDetail() {
   }
   const g = sprayGoNoGo(plan);
   const cov = estimateCoverage(plan);
-  const total = formatTotalAmount(plan);
+  const total = domainSpray.formatTotalAmount(plan);
   const done = Boolean(plan.report.doneDate);
   const rows = [
     ["資材", `${plan.materialType || "農薬"} / ${plan.pesticide}`],
