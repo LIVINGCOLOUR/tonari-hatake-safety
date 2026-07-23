@@ -430,6 +430,7 @@ let domainGeometry;
 let domainImport;
 let domainSpray;
 let domainPrescription;
+let domainCoverage;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -481,12 +482,13 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
     import("./domain/spray.mjs?v=20260723-phase6"),
     import("./domain/prescription.mjs?v=20260723-phase6"),
+    import("./domain/coverage.mjs?v=20260723-phase6"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -3373,104 +3375,27 @@ function renderReport() {
   `;
 }
 
-const COVERAGE_CELL_M = 5;
-const coverageGridCache = new Map();
-
 function coverageField(plan) {
   return fieldForPlan(plan);
 }
 
-// Rasterise the spray field into a metre grid; cache per field geometry.
-function buildCoverageGrid(plan) {
+function coverageInput(plan) {
   const field = coverageField(plan);
-  if (!field) return null;
-  const ringLngLat = fieldPolygonCoordinates(field);
-  const origin = ringLngLat[0];
-  const ring = ringLngLat.map((c) => domainGeometry.projectLngLatToLocalMeters(c, origin));
-  const key = `${field.id}:${ring.map((p) => p.map((n) => Math.round(n)).join(",")).join(";")}`;
-  if (coverageGridCache.has(key)) return coverageGridCache.get(key);
-  const xs = ring.map((p) => p[0]);
-  const ys = ring.map((p) => p[1]);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const cell = COVERAGE_CELL_M;
-  const cells = [];
-  for (let y = minY; y < maxY; y += cell) {
-    for (let x = minX; x < maxX; x += cell) {
-      const cx = x + cell / 2;
-      const cy = y + cell / 2;
-      if (domainGeometry.pointInRing([cx, cy], ring)) cells.push({ x, y, cx, cy });
-    }
-  }
-  const grid = { origin, ring, cells, cell };
-  coverageGridCache.set(key, grid);
-  return grid;
-}
-
-function coverageTrackProjected(grid, plan) {
-  const log = plan.droneLog;
-  const points = Array.isArray(log?.points) ? log.points : [];
-  return points.map((point) => ({
-    proj: domainGeometry.projectLngLatToLocalMeters(lngLatFromPercent(point.x, point.y), grid.origin),
-    sprayOn: Boolean(point.sprayOn),
-  }));
-}
-
-// Flags array (0/1) marking cells sprayed by the log up to `uptoIndex` (inclusive).
-function coverageSprayedFlags(grid, plan, uptoIndex) {
-  const track = coverageTrackProjected(grid, plan);
-  const flags = new Uint8Array(grid.cells.length);
-  if (track.length < 2) return flags;
-  const half = (toNumber(plan.sprayWidthM) || 4) / 2 + grid.cell * 0.4;
-  const end = uptoIndex == null ? track.length - 1 : Math.min(uptoIndex, track.length - 1);
-  for (let i = 1; i <= end; i += 1) {
-    if (!track[i - 1].sprayOn && !track[i].sprayOn) continue;
-    const a = track[i - 1].proj;
-    const b = track[i].proj;
-    for (let c = 0; c < grid.cells.length; c += 1) {
-      if (flags[c]) continue;
-      if (domainGeometry.pointSegmentDistance([grid.cells[c].cx, grid.cells[c].cy], a, b) <= half) flags[c] = 1;
-    }
-  }
-  return flags;
-}
-
-function gridCoverage(plan, uptoIndex) {
-  const log = plan.droneLog;
-  if (!log || !Array.isArray(log.points) || log.points.length < 2) return null;
-  const grid = buildCoverageGrid(plan);
-  if (!grid || !grid.cells.length) return null;
-  const flags = coverageSprayedFlags(grid, plan, uptoIndex);
-  let sprayed = 0;
-  for (let i = 0; i < flags.length; i += 1) sprayed += flags[i];
-  const cellHa = (grid.cell * grid.cell) / 10000;
+  const points = Array.isArray(plan?.droneLog?.points) ? plan.droneLog.points : [];
   return {
-    grid,
-    flags,
-    sprayedCells: sprayed,
-    totalCells: grid.cells.length,
-    coveredHa: sprayed * cellHa,
-    fieldAreaHa: grid.cells.length * cellHa,
-    coveragePct: grid.cells.length ? Math.round((sprayed / grid.cells.length) * 100) : null,
+    fieldId: field?.id || "",
+    ringLngLat: field ? fieldPolygonCoordinates(field) : [],
+    track: points.map((point) => ({
+      coordinates: lngLatFromPercent(point.x, point.y),
+      sprayOn: Boolean(point.sprayOn),
+    })),
+    sprayWidthMetres: plan?.sprayWidthM,
+    imported: Boolean(plan?.droneLog?.imported),
   };
 }
 
 function estimateCoverage(plan) {
-  const log = plan.droneLog;
-  if (!log || !log.imported) return { hasLog: false };
-  const gc = gridCoverage(plan);
-  if (gc) {
-    return {
-      hasLog: true,
-      coveredHa: Number(gc.coveredHa.toFixed(2)),
-      fieldAreaHa: Number(gc.fieldAreaHa.toFixed(2)),
-      coveragePct: gc.coveragePct,
-      unsprayedCells: gc.totalCells - gc.sprayedCells,
-    };
-  }
-  return { hasLog: false };
+  return domainCoverage.estimateCoverage(coverageInput(plan));
 }
 
 function coverageLabel(plan) {
@@ -3479,41 +3404,12 @@ function coverageLabel(plan) {
   return cov.coveragePct != null ? `カバー率 ${cov.coveragePct}%（${domainSpray.trimNumber(cov.coveredHa)}ha）` : "軌跡あり";
 }
 
-// Build map GeoJSON for the sprayed/unsprayed grid + current drone position (up to uptoIndex).
 function coverageMapData(plan, uptoIndex) {
-  const gc = gridCoverage(plan, uptoIndex);
-  if (!gc) return null;
-  const { origin, cell } = gc.grid;
-  const cellFeatures = gc.grid.cells.map((c, i) => ({
-    type: "Feature",
-    geometry: {
-      type: "Polygon",
-      coordinates: [[
-        domainGeometry.unprojectLocalMetersToLngLat([c.x, c.y], origin),
-        domainGeometry.unprojectLocalMetersToLngLat([c.x + cell, c.y], origin),
-        domainGeometry.unprojectLocalMetersToLngLat([c.x + cell, c.y + cell], origin),
-        domainGeometry.unprojectLocalMetersToLngLat([c.x, c.y + cell], origin),
-        domainGeometry.unprojectLocalMetersToLngLat([c.x, c.y], origin),
-      ]],
-    },
-    properties: { sprayed: gc.flags[i] },
-  }));
-  const points = plan.droneLog.points;
-  const idx = uptoIndex == null ? points.length - 1 : Math.max(0, Math.min(uptoIndex, points.length - 1));
-  const marker = points[idx];
-  return {
-    cells: { type: "FeatureCollection", features: cellFeatures },
-    marker: {
-      type: "FeatureCollection",
-      features: marker ? [{ type: "Feature", geometry: { type: "Point", coordinates: lngLatFromPercent(marker.x, marker.y) }, properties: {} }] : [],
-    },
-    gc,
-    idx,
-  };
+  return domainCoverage.coverageMapData(coverageInput(plan), uptoIndex);
 }
 
 function coveragePlanHasLog(plan = activePlan()) {
-  return Boolean(plan?.droneLog?.imported && Array.isArray(plan.droneLog.points) && plan.droneLog.points.length >= 2);
+  return domainCoverage.coveragePlanHasLog(coverageInput(plan));
 }
 
 function renderCoveragePanel() {

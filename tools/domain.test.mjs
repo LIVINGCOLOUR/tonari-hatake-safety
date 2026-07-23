@@ -37,6 +37,14 @@ import {
   prescriptionClassOf,
   prescriptionZonesFeatureCollection,
 } from "../js/domain/prescription.mjs";
+import {
+  buildCoverageGrid,
+  calculateGridCoverage,
+  coverageMapData,
+  coveragePlanHasLog,
+  estimateCoverage,
+  resetCoverageGridCacheForTest,
+} from "../js/domain/coverage.mjs";
 
 const polygon = (west, south, east, north, holes = []) => ({
   type: "Polygon",
@@ -114,6 +122,72 @@ test("prescription zones are deterministic and carry map-only presentation prope
   assert.equal(collection.features.length, 4);
   assert.equal(collection.features[0].properties._color, "a");
   assert.equal(collection.features[0].properties._rate, 100);
+});
+
+test("coverage grid measures sprayed and unsprayed cells from a flight track", () => {
+  resetCoverageGridCacheForTest();
+  const ringLngLat = polygon(140, 36, 140.0003, 36.0003).coordinates[0];
+  const input = {
+    fieldId: "coverage-field",
+    ringLngLat,
+    sprayWidthMetres: 4,
+    imported: true,
+    track: [
+      { coordinates: [140, 36.00015], sprayOn: true },
+      { coordinates: [140.00015, 36.00015], sprayOn: true },
+      { coordinates: [140.0003, 36.00015], sprayOn: true },
+    ],
+  };
+  const grid = buildCoverageGrid(input);
+  assert.ok(grid.cells.length > 0);
+  const partial = calculateGridCoverage(input, 1);
+  const complete = calculateGridCoverage(input);
+  assert.ok(partial.sprayedCells > 0);
+  assert.ok(complete.sprayedCells >= partial.sprayedCells);
+  assert.ok(complete.coveragePct > 0 && complete.coveragePct < 100);
+  assert.equal(coveragePlanHasLog(input), true);
+  const summary = estimateCoverage(input);
+  assert.equal(summary.hasLog, true);
+  assert.equal(summary.coveragePct, complete.coveragePct);
+  assert.equal(summary.unsprayedCells, complete.totalCells - complete.sprayedCells);
+});
+
+test("coverage map data preserves playback marker and spray-off tracks", () => {
+  const input = {
+    fieldId: "coverage-map-field",
+    ringLngLat: polygon(140, 36, 140.0003, 36.0003).coordinates[0],
+    sprayWidthMetres: 4,
+    imported: true,
+    track: [
+      { coordinates: [140, 36.00015], sprayOn: false },
+      { coordinates: [140.00015, 36.00015], sprayOn: false },
+      { coordinates: [140.0003, 36.00015], sprayOn: false },
+    ],
+  };
+  const data = coverageMapData(input, 1);
+  assert.equal(data.idx, 1);
+  assert.deepEqual(data.marker.features[0].geometry.coordinates, input.track[1].coordinates);
+  assert.equal(data.gc.sprayedCells, 0);
+  assert.equal(data.cells.features.length, data.gc.totalCells);
+  assert.deepEqual(estimateCoverage({ ...input, imported: false }), { hasLog: false });
+});
+
+test("invalid track points keep playback indexes without bridging spray segments", () => {
+  const input = {
+    fieldId: "coverage-invalid-track",
+    ringLngLat: polygon(140, 36, 140.0003, 36.0003).coordinates[0],
+    sprayWidthMetres: 4,
+    imported: true,
+    track: [
+      { coordinates: [140, 36.00015], sprayOn: true },
+      { coordinates: [Number.NaN, 36.00015], sprayOn: true },
+      { coordinates: [140.0003, 36.00015], sprayOn: true },
+    ],
+  };
+  const data = coverageMapData(input, 1);
+  assert.equal(data.idx, 1);
+  assert.equal(data.marker.features.length, 0);
+  assert.equal(data.gc.sprayedCells, 0);
 });
 
 test("legacy bare state migrates into a versioned envelope without data loss", () => {

@@ -186,6 +186,8 @@ const sweep = await evaluate(`(async () => {
     await wait(350);
     visited.push(document.querySelector(".view.active")?.dataset.view === view ? view : view + "!MISSING");
   }
+  state.activePlanId = "plan-drone-3";
+  const activeCoverage = coverageMapData(activePlan());
   state.activePlanId = "plan-drone-2";
   saveState();
   renderAll();
@@ -196,9 +198,17 @@ const sweep = await evaluate(`(async () => {
     unresolvedVisited.push(view);
   }
   const coverage = estimateCoverage(activePlan());
-  return { visited, unresolvedVisited, coverageHasLog: coverage.hasLog };
+  return {
+    visited,
+    unresolvedVisited,
+    coverageHasLog: coverage.hasLog,
+    activeCoverageCells: activeCoverage?.cells?.features?.length || 0,
+    activeCoverageMarkers: activeCoverage?.marker?.features?.length || 0,
+  };
 })()`);
 assert(!sweep.visited.some((v) => v.endsWith("!MISSING")), `view sweep failed: ${sweep.visited.join(", ")}`);
+assert(sweep.activeCoverageCells > 0, "active spray plan did not produce coverage map cells");
+assert(sweep.activeCoverageMarkers === 1, "active spray plan did not produce one coverage marker");
 assert(sweep.coverageHasLog === false, "unresolved plan should report no coverage instead of a broken grid");
 
 // --- scenario 5: neighbor views render -----------------------------------

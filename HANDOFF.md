@@ -158,20 +158,23 @@
   parsing, rate-field detection, area/rate statistics, map classes, and
   editable zone generation. Browser file IO and MapLibre updates remain in
   `js/main.js`.
-- `js/main.js` was reduced from about 276 KB to about 270 KB without changing
+- `js/domain/coverage.mjs` owns 5 m coverage-grid rasterization, flight-track
+  projection, spray ON/OFF coverage, playback snapshots, summary metrics, and
+  map GeoJSON. `main.js` only resolves the plan field and converts legacy
+  percentage-based demo log points into longitude/latitude coordinates.
+- `js/main.js` was reduced from about 276 KB to about 266 KB without changing
   the role UI, map rendering, localStorage schema, or user-facing workflows.
-- Domain/integration coverage is now 67 dependency-free `node:test` tests.
+- Domain/integration coverage is now 70 dependency-free `node:test` tests.
 - Browser regression checks still cover desktop/mobile layout, all three role
   navigation modes, and stored-state migration.
 
 Next safe extraction order:
 
-1. Move coverage-grid rasterization and track calculations into a pure
-   `js/domain/coverage.mjs` module, passing field geometry and track coordinates
-   as data instead of reading UI state.
-2. Separate role-specific dashboard view models from HTML rendering.
-3. Separate browser IO services (weather, boundary files, print/CSV) from view
+1. Separate role-specific dashboard view models from HTML rendering.
+2. Separate browser IO services (weather, boundary files, print/CSV) from view
    orchestration before replacing localStorage with authenticated APIs.
+3. Define repository interfaces for plans, fields, notifications, and work
+   records before introducing authenticated backend persistence.
 
 Claude Opus review was attempted with `--effort max`, but the current Claude
 organization rejects subscription access from Claude Code and requests an API
