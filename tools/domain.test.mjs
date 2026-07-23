@@ -14,8 +14,13 @@ import {
   geometryDistanceMeters,
   hashGeometry,
   normalizeGeometry,
+  pointInRing,
+  pointSegmentDistance,
+  polygonAreaHectares,
   polygonFromRing,
+  projectLngLatToLocalMeters,
   stableImportedId,
+  unprojectLocalMetersToLngLat,
   wgs84RangeViolation,
 } from "../js/domain/geometry.mjs";
 import {
@@ -42,6 +47,34 @@ test("spray amount calculations keep 10a and hectare units consistent", () => {
   assert.equal(formatTotalAmount({ ratePer10a: 80, areaHa: 0.25, rateUnit: "g" }), "200g");
   assert.equal(formatTotalAmount({ ratePer10a: "", areaHa: 1 }), "\u2014");
   assert.equal(trimNumber(1.236), "1.24");
+});
+
+test("coverage geometry helpers preserve coordinates and planar distances", () => {
+  const origin = [140.3, 36.3];
+  const coordinate = [140.301, 36.302];
+  const projected = projectLngLatToLocalMeters(coordinate, origin);
+  const restored = unprojectLocalMetersToLngLat(projected, origin);
+  assert.ok(Math.abs(restored[0] - coordinate[0]) < 1e-10);
+  assert.ok(Math.abs(restored[1] - coordinate[1]) < 1e-10);
+  assert.equal(pointInRing([5, 5], [[0, 0], [10, 0], [10, 10], [0, 10]]), true);
+  assert.equal(pointSegmentDistance([5, 3], [0, 0], [10, 0]), 3);
+});
+
+test("prescription area subtracts holes and adds MultiPolygon parts", () => {
+  const outer = polygon(140, 36, 140.002, 36.002);
+  const hole = [[
+    [140.0005, 36.0005], [140.0015, 36.0005], [140.0015, 36.0015],
+    [140.0005, 36.0015], [140.0005, 36.0005],
+  ]];
+  const withHole = polygon(140, 36, 140.002, 36.002, hole);
+  const outerArea = polygonAreaHectares(outer);
+  const holeArea = polygonAreaHectares(withHole);
+  assert.ok(holeArea > 0 && holeArea < outerArea);
+  const multiArea = polygonAreaHectares({
+    type: "MultiPolygon",
+    coordinates: [outer.coordinates, outer.coordinates],
+  });
+  assert.ok(Math.abs(multiArea - outerArea * 2) < 1e-9);
 });
 
 test("legacy bare state migrates into a versioned envelope without data loss", () => {

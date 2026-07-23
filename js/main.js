@@ -3369,49 +3369,8 @@ function renderReport() {
   `;
 }
 
-function haversineMeters([lng1, lat1], [lng2, lat2]) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
 const COVERAGE_CELL_M = 5;
 const coverageGridCache = new Map();
-
-function projectMeters([lng, lat], [lng0, lat0]) {
-  const mPerDegLat = 111320;
-  const mPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
-  return [(lng - lng0) * mPerDegLng, (lat - lat0) * mPerDegLat];
-}
-
-function unprojectMeters([x, y], [lng0, lat0]) {
-  const mPerDegLat = 111320;
-  const mPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
-  return [lng0 + x / mPerDegLng, lat0 + y / mPerDegLat];
-}
-
-function pointInRing([px, py], ring) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-function pointSegmentDistM([px, py], [ax, ay], [bx, by]) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
 
 function coverageField(plan) {
   return fieldForPlan(plan);
@@ -3423,7 +3382,7 @@ function buildCoverageGrid(plan) {
   if (!field) return null;
   const ringLngLat = fieldPolygonCoordinates(field);
   const origin = ringLngLat[0];
-  const ring = ringLngLat.map((c) => projectMeters(c, origin));
+  const ring = ringLngLat.map((c) => domainGeometry.projectLngLatToLocalMeters(c, origin));
   const key = `${field.id}:${ring.map((p) => p.map((n) => Math.round(n)).join(",")).join(";")}`;
   if (coverageGridCache.has(key)) return coverageGridCache.get(key);
   const xs = ring.map((p) => p[0]);
@@ -3438,7 +3397,7 @@ function buildCoverageGrid(plan) {
     for (let x = minX; x < maxX; x += cell) {
       const cx = x + cell / 2;
       const cy = y + cell / 2;
-      if (pointInRing([cx, cy], ring)) cells.push({ x, y, cx, cy });
+      if (domainGeometry.pointInRing([cx, cy], ring)) cells.push({ x, y, cx, cy });
     }
   }
   const grid = { origin, ring, cells, cell };
@@ -3450,7 +3409,7 @@ function coverageTrackProjected(grid, plan) {
   const log = plan.droneLog;
   const points = Array.isArray(log?.points) ? log.points : [];
   return points.map((point) => ({
-    proj: projectMeters(lngLatFromPercent(point.x, point.y), grid.origin),
+    proj: domainGeometry.projectLngLatToLocalMeters(lngLatFromPercent(point.x, point.y), grid.origin),
     sprayOn: Boolean(point.sprayOn),
   }));
 }
@@ -3468,7 +3427,7 @@ function coverageSprayedFlags(grid, plan, uptoIndex) {
     const b = track[i].proj;
     for (let c = 0; c < grid.cells.length; c += 1) {
       if (flags[c]) continue;
-      if (pointSegmentDistM([grid.cells[c].cx, grid.cells[c].cy], a, b) <= half) flags[c] = 1;
+      if (domainGeometry.pointSegmentDistance([grid.cells[c].cx, grid.cells[c].cy], a, b) <= half) flags[c] = 1;
     }
   }
   return flags;
@@ -3526,11 +3485,11 @@ function coverageMapData(plan, uptoIndex) {
     geometry: {
       type: "Polygon",
       coordinates: [[
-        unprojectMeters([c.x, c.y], origin),
-        unprojectMeters([c.x + cell, c.y], origin),
-        unprojectMeters([c.x + cell, c.y + cell], origin),
-        unprojectMeters([c.x, c.y + cell], origin),
-        unprojectMeters([c.x, c.y], origin),
+        domainGeometry.unprojectLocalMetersToLngLat([c.x, c.y], origin),
+        domainGeometry.unprojectLocalMetersToLngLat([c.x + cell, c.y], origin),
+        domainGeometry.unprojectLocalMetersToLngLat([c.x + cell, c.y + cell], origin),
+        domainGeometry.unprojectLocalMetersToLngLat([c.x, c.y + cell], origin),
+        domainGeometry.unprojectLocalMetersToLngLat([c.x, c.y], origin),
       ]],
     },
     properties: { sprayed: gc.flags[i] },
@@ -3684,26 +3643,6 @@ function detectRateField(props) {
   return null;
 }
 
-function ringAreaM2(ring) {
-  if (!Array.isArray(ring) || ring.length < 3) return 0;
-  const origin = ring[0];
-  const pts = ring.map((c) => projectMeters(c, origin));
-  let area = 0;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    area += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
-  }
-  return Math.abs(area / 2);
-}
-
-function polygonAreaHa(geom) {
-  if (!geom) return 0;
-  const ringsArea = (rings) => (rings.length ? ringAreaM2(rings[0]) - rings.slice(1).reduce((s, r) => s + ringAreaM2(r), 0) : 0);
-  let m2 = 0;
-  if (geom.type === "Polygon") m2 = ringsArea(geom.coordinates);
-  else if (geom.type === "MultiPolygon") m2 = geom.coordinates.reduce((s, poly) => s + ringsArea(poly), 0);
-  return Math.max(0, m2) / 10000;
-}
-
 function buildPrescription(features, name, unit) {
   const polys = (features || []).filter(
     (f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"),
@@ -3718,7 +3657,7 @@ function buildPrescription(features, name, unit) {
   let totalAmount = 0;
   let totalAreaHa = 0;
   polys.forEach((f) => {
-    const ha = polygonAreaHa(f.geometry);
+    const ha = domainGeometry.polygonAreaHectares(f.geometry);
     const rate = Number(f.properties[rateField]);
     totalAreaHa += ha;
     if (Number.isFinite(rate)) totalAmount += ha * rate;
@@ -3976,7 +3915,7 @@ function renderPrescriptionEditor(rx) {
   const zoneOptions = [2, 3, 4, 5, 6].map((z) => `<option ${rx.count === z ? "selected" : ""}>${z}</option>`).join("");
   const zoneRows = rx.features
     .map((f, i) => {
-      const ha = polygonAreaHa(f.geometry);
+      const ha = domainGeometry.polygonAreaHectares(f.geometry);
       return `
         <div class="rx-zone-row">
           <span>ゾーン${i + 1}<small>${domainSpray.trimNumber(ha)}ha</small></span>

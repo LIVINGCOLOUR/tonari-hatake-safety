@@ -176,7 +176,7 @@ function projectPolygons(geometry, ref) {
 
 // --- planar polygon distance ---------------------------------------------
 
-function pointInRing(pt, ring) {
+export function pointInRing(pt, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const xi = ring[i][0];
@@ -198,7 +198,7 @@ function pointInPolygon(pt, polygon) {
   return true;
 }
 
-function pointSegmentDistance(p, a, b) {
+export function pointSegmentDistance(p, a, b) {
   const abx = b[0] - a[0];
   const aby = b[1] - a[1];
   const apx = p[0] - a[0];
@@ -294,6 +294,47 @@ export function geometryDistanceMeters(a, b) {
 
 export function geometriesIntersect(a, b) {
   return geometryDistanceMeters(a, b) === 0;
+}
+
+// Local projection used by coverage grids and prescription area estimates.
+// Keep the matching inverse together so browser rendering and calculations
+// use one data-in/data-out implementation.
+export function projectLngLatToLocalMeters([lng, lat], [lng0, lat0]) {
+  const metresPerDegreeLat = EQUATOR_METERS_PER_DEG;
+  const metresPerDegreeLng = EQUATOR_METERS_PER_DEG * Math.cos((lat0 * Math.PI) / 180);
+  return [(lng - lng0) * metresPerDegreeLng, (lat - lat0) * metresPerDegreeLat];
+}
+
+export function unprojectLocalMetersToLngLat([x, y], [lng0, lat0]) {
+  const metresPerDegreeLat = EQUATOR_METERS_PER_DEG;
+  const metresPerDegreeLng = EQUATOR_METERS_PER_DEG * Math.cos((lat0 * Math.PI) / 180);
+  return [lng0 + x / metresPerDegreeLng, lat0 + y / metresPerDegreeLat];
+}
+
+export function ringAreaSquareMeters(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return 0;
+  const origin = ring[0];
+  const points = ring.map((coord) => projectLngLatToLocalMeters(coord, origin));
+  let area = 0;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    area += points[j][0] * points[i][1] - points[i][0] * points[j][1];
+  }
+  return Math.abs(area / 2);
+}
+
+export function polygonAreaHectares(geometry) {
+  if (!geometry) return 0;
+  const ringsArea = (rings) => (
+    rings.length
+      ? ringAreaSquareMeters(rings[0]) - rings.slice(1).reduce((sum, ring) => sum + ringAreaSquareMeters(ring), 0)
+      : 0
+  );
+  let squareMetres = 0;
+  if (geometry.type === "Polygon") squareMetres = ringsArea(geometry.coordinates);
+  if (geometry.type === "MultiPolygon") {
+    squareMetres = geometry.coordinates.reduce((sum, polygon) => sum + ringsArea(polygon), 0);
+  }
+  return Math.max(0, squareMetres) / 10000;
 }
 
 // --- stable hash (deterministic across browser + node) -------------------
