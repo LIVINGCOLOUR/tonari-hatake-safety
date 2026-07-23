@@ -429,6 +429,7 @@ let domainState;
 let domainGeometry;
 let domainImport;
 let domainSpray;
+let domainPrescription;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -480,11 +481,12 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
     import("./domain/spray.mjs?v=20260723-phase6"),
+    import("./domain/prescription.mjs?v=20260723-phase6"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -2501,7 +2503,9 @@ function updateGisMap(map, options = {}) {
   const coverage = !options.dashboard && mapLayer === "coverage" ? coverageMapData(activePlan(), coveragePlayIndex) : null;
   setGeoJsonSource(map, "coverage-grid", coverage ? coverage.cells : emptyFeatureCollection());
   setGeoJsonSource(map, "drone-marker", coverage ? coverage.marker : emptyFeatureCollection());
-  const prescription = !options.dashboard && mapLayer === "prescription" ? prescriptionZonesFeatureCollection(activePlan()) : emptyFeatureCollection();
+  const prescription = !options.dashboard && mapLayer === "prescription"
+    ? domainPrescription.prescriptionZonesFeatureCollection(activePlan().prescription, PRESCRIPTION_COLORS)
+    : emptyFeatureCollection();
   setGeoJsonSource(map, "prescription-zones", prescription);
   applyGisLayerVisibility(map, options);
 }
@@ -3621,71 +3625,6 @@ function resetCoveragePlayback() {
 
 // --- 可変施肥（VRA）処方マップの取込・表示 ---
 const PRESCRIPTION_COLORS = ["#f7fcb9", "#addd8e", "#41ab5d", "#238443", "#00441b"];
-const RATE_KEYS = [
-  "rate", "rx", "rxrate", "dose", "dosage", "amount", "qty", "quantity",
-  "target", "targetrate", "value", "n_rate", "nrate", "施用量", "施肥量", "散布量", "目標",
-];
-
-function detectRateField(props) {
-  const keys = Object.keys(props || {});
-  const isNum = (k) => props[k] !== "" && props[k] !== null && Number.isFinite(Number(props[k]));
-  const lower = keys.map((k) => String(k).toLowerCase());
-  for (const cand of RATE_KEYS) {
-    const i = lower.indexOf(cand);
-    if (i >= 0 && isNum(keys[i])) return keys[i];
-  }
-  for (const k of keys) {
-    if (/(rate|rx|dose|dosage|amount|施用|施肥|散布|目標)/i.test(k) && isNum(k)) return k;
-  }
-  for (const k of keys) {
-    if (isNum(k)) return k;
-  }
-  return null;
-}
-
-function buildPrescription(features, name, unit) {
-  const polys = (features || []).filter(
-    (f) => f?.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"),
-  );
-  if (!polys.length) throw new Error("ポリゴンのGeoJSONが見つかりません。");
-  const rateField = detectRateField(polys[0].properties || {});
-  if (!rateField) throw new Error("施用量（rate）の数値項目が見つかりません。");
-  const rates = polys.map((f) => Number(f.properties[rateField])).filter((n) => Number.isFinite(n));
-  const min = rates.length ? Math.min(...rates) : 0;
-  const max = rates.length ? Math.max(...rates) : 0;
-  const avg = rates.length ? rates.reduce((s, n) => s + n, 0) / rates.length : 0;
-  let totalAmount = 0;
-  let totalAreaHa = 0;
-  polys.forEach((f) => {
-    const ha = domainGeometry.polygonAreaHectares(f.geometry);
-    const rate = Number(f.properties[rateField]);
-    totalAreaHa += ha;
-    if (Number.isFinite(rate)) totalAmount += ha * rate;
-  });
-  return {
-    name: name || "処方マップ",
-    rateField,
-    unit: unit || "",
-    features: polys,
-    count: polys.length,
-    min,
-    max,
-    avg: Number(avg.toFixed(1)),
-    totalAmount: Number(totalAmount.toFixed(1)),
-    totalAreaHa: Number(totalAreaHa.toFixed(2)),
-    importedAt: formatDateTime(new Date()),
-  };
-}
-
-function parsePrescriptionText(text, name) {
-  const data = JSON.parse(text);
-  let features = [];
-  if (data.type === "FeatureCollection") features = data.features || [];
-  else if (data.type === "Feature") features = [data];
-  else if (data.type && data.coordinates) features = [{ type: "Feature", geometry: data, properties: {} }];
-  const unit = (data.unit || data.properties?.unit || "").toString();
-  return buildPrescription(features, name, unit);
-}
 
 function samplePrescription(plan) {
   const field = coverageField(plan);
@@ -3707,32 +3646,12 @@ function samplePrescription(plan) {
       geometry: { type: "Polygon", coordinates: [[[w, y0], [e, y0], [e, y1], [w, y1], [w, y0]]] },
     };
   });
-  return buildPrescription(features, "サンプル処方（可変施肥・化学肥料）", "kg/ha");
-}
-
-function prescriptionClassOf(rate, min, max) {
-  if (!Number.isFinite(rate)) return 0;
-  const range = max - min || 1;
-  return Math.min(PRESCRIPTION_COLORS.length - 1, Math.max(0, Math.floor(((rate - min) / range) * PRESCRIPTION_COLORS.length)));
-}
-
-function prescriptionZonesFeatureCollection(plan) {
-  const rx = plan?.prescription;
-  if (!rx) return emptyFeatureCollection();
-  return {
-    type: "FeatureCollection",
-    features: rx.features.map((f) => {
-      const rate = Number(f.properties[rx.rateField]);
-      return {
-        type: "Feature",
-        geometry: f.geometry,
-        properties: {
-          _color: PRESCRIPTION_COLORS[prescriptionClassOf(rate, rx.min, rx.max)],
-          _rate: Number.isFinite(rate) ? rate : null,
-        },
-      };
-    }),
-  };
+  return domainPrescription.buildPrescription(
+    features,
+    "サンプル処方（可変施肥・化学肥料）",
+    "kg/ha",
+    formatDateTime(new Date()),
+  );
 }
 
 function renderPrescriptionPanel() {
@@ -3752,7 +3671,9 @@ function updatePrescriptionDisplay() {
 function refreshPrescriptionMap() {
   const plan = activePlan();
   if (mapLibreMap && mapLibreMap.getSource("prescription-zones")) {
-    mapLibreMap.getSource("prescription-zones").setData(prescriptionZonesFeatureCollection(plan));
+    mapLibreMap.getSource("prescription-zones").setData(
+      domainPrescription.prescriptionZonesFeatureCollection(plan.prescription, PRESCRIPTION_COLORS),
+    );
   }
   renderPrescriptionReadout(plan.prescription);
 }
@@ -3795,7 +3716,11 @@ function importPrescriptionFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const rx = parsePrescriptionText(String(reader.result), name);
+      const rx = domainPrescription.parsePrescriptionText(
+        String(reader.result),
+        name,
+        formatDateTime(new Date()),
+      );
       const plan = activePlan();
       plan.prescription = rx;
       saveState();
@@ -3835,29 +3760,14 @@ const RATE_UNITS = ["kg/ha", "L/ha", "g/10a", "mL/10a"];
 function generatePrescriptionZones(plan, zones, baseRate, unit, material) {
   const field = coverageField(plan);
   const ring = fieldPolygonCoordinates(field);
-  if (ring.length < 3) return null;
-  const lngs = ring.map((c) => c[0]);
-  const lats = ring.map((c) => c[1]);
-  const w = Math.min(...lngs);
-  const e = Math.max(...lngs);
-  const s = Math.min(...lats);
-  const n = Math.max(...lats);
-  const count = Math.max(2, Math.min(8, Math.round(zones) || 4));
-  const rate = toPositiveNumber(baseRate, 100);
-  const features = [];
-  for (let i = 0; i < count; i += 1) {
-    const y0 = n - ((n - s) * i) / count;
-    const y1 = n - ((n - s) * (i + 1)) / count;
-    features.push({
-      type: "Feature",
-      properties: { zone: i + 1, rate },
-      geometry: { type: "Polygon", coordinates: [[[w, y0], [e, y0], [e, y1], [w, y1], [w, y0]]] },
-    });
-  }
-  const rx = buildPrescription(features, `処方マップ（${material || "可変施肥"}）`, unit || "kg/ha");
-  rx.editable = true;
-  rx.material = material || "化学肥料";
-  return rx;
+  return domainPrescription.buildPrescriptionZones(
+    ring,
+    zones,
+    baseRate,
+    unit,
+    material,
+    formatDateTime(new Date()),
+  );
 }
 
 function createPrescription() {
@@ -3894,7 +3804,7 @@ function updatePrescriptionRate(index, value) {
   const rx = activePlan().prescription;
   if (!rx?.editable || !rx.features[index]) return;
   rx.features[index].properties.rate = toNumber(value) || 0;
-  const stats = buildPrescription(rx.features, rx.name, rx.unit);
+  const stats = domainPrescription.buildPrescription(rx.features, rx.name, rx.unit, rx.importedAt);
   rx.min = stats.min;
   rx.max = stats.max;
   rx.avg = stats.avg;

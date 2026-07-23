@@ -29,6 +29,14 @@ import {
   plannedTotalAmount,
   trimNumber,
 } from "../js/domain/spray.mjs";
+import {
+  buildPrescription,
+  buildPrescriptionZones,
+  detectRateField,
+  parsePrescriptionText,
+  prescriptionClassOf,
+  prescriptionZonesFeatureCollection,
+} from "../js/domain/prescription.mjs";
 
 const polygon = (west, south, east, north, holes = []) => ({
   type: "Polygon",
@@ -75,6 +83,37 @@ test("prescription area subtracts holes and adds MultiPolygon parts", () => {
     coordinates: [outer.coordinates, outer.coordinates],
   });
   assert.ok(Math.abs(multiArea - outerArea * 2) < 1e-9);
+});
+
+test("prescription parsing creates provider-neutral rate statistics", () => {
+  const features = [
+    { type: "Feature", properties: { targetRate: 80 }, geometry: polygon(140, 36, 140.001, 36.001) },
+    { type: "Feature", properties: { targetRate: 120 }, geometry: polygon(140.001, 36, 140.002, 36.001) },
+  ];
+  assert.equal(detectRateField(features[0].properties), "targetRate");
+  const prescription = buildPrescription(features, "test", "kg/ha", "2026-07-23 10:00");
+  assert.equal(prescription.count, 2);
+  assert.equal(prescription.min, 80);
+  assert.equal(prescription.max, 120);
+  assert.equal(prescription.avg, 100);
+  assert.equal(prescription.importedAt, "2026-07-23 10:00");
+  assert.ok(prescription.totalAreaHa > 0);
+  const parsed = parsePrescriptionText(JSON.stringify({ type: "FeatureCollection", unit: "kg/ha", features }), "json");
+  assert.equal(parsed.unit, "kg/ha");
+});
+
+test("prescription zones are deterministic and carry map-only presentation properties", () => {
+  const ring = polygon(140, 36, 140.002, 36.002).coordinates[0];
+  const prescription = buildPrescriptionZones(ring, 4, 100, "kg/ha", "fertilizer", "now");
+  assert.equal(prescription.count, 4);
+  assert.equal(prescription.editable, true);
+  assert.equal(prescription.features[0].properties.rate, 100);
+  assert.equal(prescriptionClassOf(100, 80, 120, 5), 2);
+  const colors = ["a", "b", "c", "d", "e"];
+  const collection = prescriptionZonesFeatureCollection(prescription, colors);
+  assert.equal(collection.features.length, 4);
+  assert.equal(collection.features[0].properties._color, "a");
+  assert.equal(collection.features[0].properties._rate, 100);
 });
 
 test("legacy bare state migrates into a versioned envelope without data loss", () => {
