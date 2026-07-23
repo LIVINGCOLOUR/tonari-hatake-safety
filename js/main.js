@@ -35,7 +35,7 @@ const ROLE_META = {
 };
 
 const ROLE_ALLOWED_VIEWS = {
-  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "profile"],
+  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "history", "profile"],
   neighbor: ["dashboard", "map", "fields", "notify", "profile"],
   admin: ["dashboard", "admin", "profile"],
 };

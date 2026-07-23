@@ -135,12 +135,20 @@ h1, h2, h3 { text-wrap: balance; }
 .flow-list li + li > span::before { content: "→" / ""; color: var(--leaf); }
 .flow-list strong { display: block; margin: 16px 0 0; font-size: 18px; line-height: 1.5; }
 .flow-list li p { margin: 8px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.8; }
+.flow-list .flow-future { padding: 16px; border: 1px solid #d8d4c8; background: #f8f6ef; }
+.flow-list .flow-future > span { margin-bottom: 10px; color: #766638; }
+.flow-list .flow-future strong { margin-top: 8px; }
 
 .features-intro { max-width: 760px; }
 .features-intro > p:last-child { max-width: 640px; color: var(--muted); }
 .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; margin-top: 26px; }
 .feature-item { display: flex; flex-direction: column; padding: 30px 0 32px; border-bottom: 1px solid var(--line); }
 .feature-item::before { content: ""; width: 30px; height: 4px; margin-bottom: 22px; background: var(--leaf); }
+.feature-item-planned::before { background: #9b8546; }
+.feature-status { display: inline-flex; width: fit-content; align-items: center; margin: 0 0 12px; padding: 5px 9px; border: 1px solid; border-radius: 4px; font-size: 12px; font-weight: 900; line-height: 1.2; }
+.status-current { color: #176b38; border-color: #afd3ba; background: #e8f5eb; }
+.status-partial { color: #725b13; border-color: #dec975; background: #fff8d9; }
+.status-planned { color: #625a47; border-color: #cec6b4; background: #f2efe7; }
 .feature-item h3 { margin: 0 0 10px; font-size: 21px; line-height: 1.55; }
 .feature-item p { margin: 0; color: var(--muted); }
 .feature-item a { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; margin-top: auto; padding: 20px 0 4px; color: var(--leaf-link); font-weight: 900; }
@@ -217,6 +225,7 @@ h1, h2, h3 { text-wrap: balance; }
 @media (max-width: 960px) {
   .flow-list { grid-template-columns: 1fr; gap: 0; margin-top: 36px; border-top: 1px solid var(--line); }
   .flow-list li { display: grid; grid-template-columns: 50px 1fr; gap: 14px; padding: 24px 0; border-bottom: 1px solid var(--line); }
+  .flow-list .flow-future { margin: 12px 0; padding: 20px 16px; }
   .flow-list li > span { display: block; padding-top: 5px; }
   .flow-list li > span::after { display: none; }
   .flow-list li + li > span::before { display: none; }

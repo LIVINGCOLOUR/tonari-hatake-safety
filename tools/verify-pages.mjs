@@ -85,6 +85,7 @@ const landingDesktop = await inspectPage("/", `() => ({
   overflow: document.documentElement.scrollWidth - innerWidth,
   roleLinks: [...document.querySelectorAll('.role-card a')].map((link) => link.getAttribute('href')),
   featureLinks: [...document.querySelectorAll('.feature-item a')].map((link) => link.getAttribute('href')),
+  featureStatuses: [...document.querySelectorAll('.feature-item .feature-status')].map((item) => item.textContent.trim()),
 })`);
 assert(landingDesktop.value.title.includes("となり畑セーフティ"), "Landing page title is missing");
 assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: ${landingDesktop.value.imageFailures.join(", ")}`);
@@ -92,6 +93,9 @@ assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");
 assert(landingDesktop.value.featureLinks.length === 4, "Landing page must expose all four planned capabilities");
 assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?role=sprayer#")), "Capability links must open an available sprayer demo view");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "デモで利用可能").length === 2, "Landing page must identify currently available capabilities");
+assert(landingDesktop.value.featureStatuses.some((status) => status === "開発予定"), "Landing page must identify future capabilities");
+assert(landingDesktop.value.featureStatuses.some((status) => status.includes("ライブ連携予定")), "Landing page must distinguish playback from live coverage");
 assert(landingDesktop.errors.length === 0, `Landing runtime errors: ${landingDesktop.errors.join(", ")}`);
 
 // Browser zoom-out increases the CSS viewport. Keep the hero copy from being
@@ -137,7 +141,7 @@ assert(landingNarrow.value.overflow <= 0, `Narrow mobile landing page overflows 
 assert(landingNarrow.value.signalHidden, "Narrow mobile hero should prioritize primary content over the stage signal");
 
 const expectedNavigation = {
-  sprayer: ["プロフィール登録", "トップ", "散布計画", "圃場マップ", "気象メモ", "近隣通知", "散布前チェック", "ドローン連携", "実施後報告"],
+  sprayer: ["プロフィール登録", "トップ", "散布計画", "圃場マップ", "気象メモ", "近隣通知", "散布前チェック", "ドローン連携", "実施後報告", "作業履歴"],
   neighbor: ["プロフィール登録", "トップ", "圃場マップ", "圃場ステータス", "近隣通知"],
   admin: ["プロフィール登録", "トップ", "散布予定・実績"],
 };
@@ -159,6 +163,18 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
   assert(result.value.overflow <= 0, `${role} app overflows by ${result.value.overflow}px`);
   assert(result.errors.length === 0, `${role} runtime errors: ${result.errors.join(", ")}`);
 }
+
+const sprayerHistory = await inspectPage("/app.html?role=sprayer#history", `() => ({
+  activeView: document.querySelector('.view.active')?.dataset.view,
+  activeNavigation: document.querySelector('.nav-item.active span:last-child')?.textContent.trim(),
+  recordCount: document.querySelectorAll('#historyTableBody tr').length,
+  overflow: document.documentElement.scrollWidth - innerWidth,
+})`, { width: 1440, height: 960 }, 3500);
+assert(sprayerHistory.value.activeView === "history", `Sprayer history opened ${sprayerHistory.value.activeView}`);
+assert(sprayerHistory.value.activeNavigation === "作業履歴", `Sprayer history navigation is ${sprayerHistory.value.activeNavigation}`);
+assert(sprayerHistory.value.recordCount > 0, "Sprayer history contains no records");
+assert(sprayerHistory.value.overflow <= 0, `Sprayer history overflows by ${sprayerHistory.value.overflow}px`);
+assert(sprayerHistory.errors.length === 0, `Sprayer history runtime errors: ${sprayerHistory.errors.join(", ")}`);
 
 const legacyRedirect = await inspectPage("/#dashboard", `() => location.pathname`);
 assert(
