@@ -33,7 +33,7 @@ jobs:
         run: |
           while IFS= read -r -d '' file; do
             node --check "$file"
-          done < <(find js functions worker tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+          done < <(find js server worker tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
 
       - name: Run domain and integration tests
         run: node --test tools/bff.test.mjs tools/domain.test.mjs tools/gateway.test.mjs tools/import.test.mjs

@@ -8,7 +8,7 @@ import {
   providerTimeoutMs,
   requiredSecret,
   upstreamFailure,
-} from "../../../_shared/bff.js";
+} from "../bff.js";
 
 let cachedToken = null;
 let tokenRequest = null;

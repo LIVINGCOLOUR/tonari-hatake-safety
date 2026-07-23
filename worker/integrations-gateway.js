@@ -1,7 +1,7 @@
-import { authorizeBff, errorResponse, providerTimeoutMs } from "../functions/_shared/bff.js";
-import { onRequestGet as integrationStatus } from "../functions/api/integrations/status.js";
-import { onRequestGet as wagriFieldPolygons } from "../functions/api/integrations/wagri/field-polygons.js";
-import { onRequestGet as xarvioBoundary } from "../functions/api/integrations/xarvio/boundary.js";
+import { authorizeBff, errorResponse, providerTimeoutMs } from "../server/integrations/bff.js";
+import { onRequestGet as integrationStatus } from "../server/integrations/routes/status.js";
+import { onRequestGet as wagriFieldPolygons } from "../server/integrations/routes/wagri-field-polygons.js";
+import { onRequestGet as xarvioBoundary } from "../server/integrations/routes/xarvio-boundary.js";
 import { runWithProviderConcurrency } from "./concurrency.js";
 import { enforceProviderRateLimit } from "./rate-limit.js";
 

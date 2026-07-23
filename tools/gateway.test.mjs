@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resetWagriTokenCacheForTest } from "../functions/api/integrations/wagri/field-polygons.js";
+import { resetWagriTokenCacheForTest } from "../server/integrations/routes/wagri-field-polygons.js";
 import {
   activeProviderConcurrencyForTest,
   providerConcurrencyLimit,

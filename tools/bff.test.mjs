@@ -8,13 +8,13 @@ import {
   fetchWithTimeout,
   providerTimeoutMs,
   ProviderTimeoutError,
-} from "../functions/_shared/bff.js";
-import { onRequestGet as statusGet } from "../functions/api/integrations/status.js";
+} from "../server/integrations/bff.js";
+import { onRequestGet as statusGet } from "../server/integrations/routes/status.js";
 import {
   onRequestGet as wagriGet,
   resetWagriTokenCacheForTest,
-} from "../functions/api/integrations/wagri/field-polygons.js";
-import { onRequestGet as xarvioGet } from "../functions/api/integrations/xarvio/boundary.js";
+} from "../server/integrations/routes/wagri-field-polygons.js";
+import { onRequestGet as xarvioGet } from "../server/integrations/routes/xarvio-boundary.js";
 
 const BFF_TOKEN = "test-bff-token-with-enough-entropy";
 

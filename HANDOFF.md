@@ -121,10 +121,12 @@
 - Mapping, security boundary, and next integration steps are documented in
   `INTEGRATIONS.md`.
 
-## Phase 4 Read-only BFF PoC (2026-07-21)
+## Phase 4-5 Read-only integrations gateway (2026-07-21 to 2026-07-23)
 
-- Cloudflare Pages Functions under `functions/api/integrations/` proxy only
-  read operations for WAGRI field polygons and one xarvio field boundary.
+- Provider-neutral modules under `server/integrations/` implement read-only
+  WAGRI field polygon and single-field xarvio boundary operations.
+- `worker/integrations-gateway.js` is the only deployed integration entry
+  point. Duplicate Pages Functions routes were removed before cutover.
 - All routes fail closed unless `INTEGRATIONS_ENABLED=true`, an encrypted
   `BFF_ACCESS_TOKEN` exists, and the request supplies the matching
   `X-Tonari-BFF-Token` header. The static frontend does not contain this token.
@@ -138,10 +140,13 @@
   provider call.
 - xarvio ZIP responses stream through the Worker instead of being buffered in
   memory. `XARVIO_MAX_BOUNDARY_BYTES` defaults to 10 MiB; `Content-Length` is
-  checked before streaming and chunked bodies are terminated at the same cap.
-- `wrangler.toml` fixes the Pages output directory and Workers compatibility
-  date without containing secrets.
-- Tests: `node --test tools/bff.test.mjs tools/domain.test.mjs tools/import.test.mjs`.
+  checked before streaming, truncated declared responses fail, and chunked
+  bodies are terminated at the same cap.
+- The gateway applies Cloudflare's native rate limiter plus per-isolate WAGRI
+  and xarvio concurrency guards. Binding failure, saturation, cancellation,
+  malformed JSON, and stream failure all fail closed.
+- `wrangler.integrations.toml` contains only non-secret Worker configuration.
+- Tests: `node --test tools/bff.test.mjs tools/domain.test.mjs tools/gateway.test.mjs tools/import.test.mjs`.
 
 Recommended local launch:
 

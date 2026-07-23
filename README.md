@@ -71,7 +71,8 @@ http://localhost:8080/
 - `js/domain/state.mjs`: 保存形式と圃場参照の移行
 - `js/domain/geometry.mjs`: WGS84形状、距離、方位、安定ハッシュ
 - `js/domain/import.mjs`: 圃場取込の正規化、来歴、外部参照、重複排除
-- `functions/api/integrations/`: 無効状態を既定とする読取専用BFF PoC
+- `server/integrations/`: プロバイダーに依存しない読取専用BFFロジック
+- `worker/`: レート・同時実行制限を持つ外部連携専用Worker
 - `INTEGRATIONS.md`: xarvio/WAGRI連携の対応範囲、項目対応、認証境界
 - `vendor/maplibre-gl/`: MapLibre GL JS
 - `vendor/turf/`: Turf.js

@@ -1,4 +1,4 @@
-import { authorizeBff, jsonResponse } from "../../_shared/bff.js";
+import { authorizeBff, jsonResponse } from "../bff.js";
 
 export function onRequestGet({ request, env }) {
   const denied = authorizeBff(request, env);

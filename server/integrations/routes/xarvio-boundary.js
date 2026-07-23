@@ -13,7 +13,7 @@ import {
   responseByteLimit,
   upstreamFailure,
   uuidIsValid,
-} from "../../../_shared/bff.js";
+} from "../bff.js";
 
 const DEFAULT_MAX_BOUNDARY_BYTES = 10 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 12000;

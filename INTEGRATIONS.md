@@ -56,9 +56,9 @@ A production integration requires a backend or BFF that:
 4. records consent, provenance, revision, and sync audit events;
 5. returns only the minimum field data needed by the browser.
 
-## Read-only BFF PoC
+## Read-only provider modules
 
-Cloudflare Pages Functions provide disabled-by-default proof-of-concept routes:
+The disabled-by-default provider handlers under `server/integrations/` expose:
 
 - `GET /api/integrations/status`
 - `GET /api/integrations/wagri/field-polygons?lat=...&lng=...&cmp=1`
@@ -105,18 +105,18 @@ empty successful responses are converted to a sanitized gateway failure.
 Store all four values as encrypted Cloudflare secrets. For local development,
 put them in an untracked `.dev.vars` file. Never put them in `wrangler.toml`.
 
-Run locally with Pages Functions enabled:
+Run the standalone gateway locally:
 
 ```powershell
-npx.cmd --yes wrangler@latest pages dev .
+npx.cmd --yes wrangler@latest dev --config wrangler.integrations.toml
 ```
 
 The ordinary `python -m http.server` launch still serves the frontend, but it
-does not execute the BFF routes.
+does not execute provider routes.
 
 ## Standalone integrations gateway
 
-Rate-limited provider traffic is moving from Pages Functions to the standalone
+Rate-limited provider traffic is owned by the standalone
 `tonari-hatake-integrations` Worker. Its entry point is
 `worker/integrations-gateway.js`, and `wrangler.integrations.toml` defines a
 native Cloudflare Rate Limiting binding with a provider-route limit of 30
@@ -144,10 +144,10 @@ cancelled by the client, or reaches its safety deadline. This per-isolate guard
 limits local bursts but is not a global concurrency guarantee; use a Durable
 Object-backed implementation if strict tenant-wide limits become necessary.
 
-The existing Pages Functions remain disabled during the staged cutover. After
-the standalone Worker is deployed and verified, move its secrets to the Worker,
-route the intended API hostname/path to it, and remove the duplicate Pages
-Functions routes. Do not enable both provider paths at the same time.
+The duplicate Pages Functions routes have been removed. The static Pages site
+contains no provider credentials and does not execute integration handlers.
+See `INTEGRATIONS_RUNBOOK.md` before changing Worker secrets or enabling the
+operator-only integration flag.
 
 Validate the Worker configuration without deploying:
 
@@ -163,9 +163,10 @@ documented `jose` implementation rather than a custom JWT verifier.
 
 ## Next Step
 
-Obtain licensed, redacted fixtures from each intended account and run them as
-contract tests. Then add a BFF proof of concept with read-only boundary sync
-before implementing bidirectional plan or operation exchange.
+Replace the shared operator token with application authentication or verified
+Cloudflare Access identity. Then obtain licensed, redacted fixtures from each
+intended account and run them as contract tests before enabling read-only sync.
+Do not implement bidirectional plan or operation exchange before those gates.
 
 ## Official References
 
@@ -175,7 +176,7 @@ before implementing bidirectional plan or operation exchange.
 - WAGRI AgriculturalMap3 city-code API: https://wagri.naro.go.jp/wagri_api/agriculturalmap3-getfieldpolygon-citycode/
 - WAGRI AgriculturalMap3 WFS API: https://wagri.naro.go.jp/wagri_api/agriculturalmap3-wfsgetfieldpolygon/
 - WAGRI access token API: https://wagri.naro.go.jp/wagri_api/token/
-- Cloudflare Pages Functions: https://developers.cloudflare.com/pages/functions/
-- Cloudflare Pages secrets: https://developers.cloudflare.com/pages/functions/bindings/
+- Cloudflare Workers secrets: https://developers.cloudflare.com/workers/configuration/secrets/
+- Cloudflare Workers Rate Limiting: https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
 - Cloudflare Workers Streams: https://developers.cloudflare.com/workers/runtime-apis/streams/
 - Cloudflare Access JWT validation: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/

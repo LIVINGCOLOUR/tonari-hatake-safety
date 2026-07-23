@@ -1,4 +1,4 @@
-import { errorResponse } from "../functions/_shared/bff.js";
+import { errorResponse } from "../server/integrations/bff.js";
 
 const RETRY_AFTER_SECONDS = 60;
 
