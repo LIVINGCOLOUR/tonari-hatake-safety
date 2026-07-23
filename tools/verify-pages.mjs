@@ -148,11 +148,14 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
     navigation: [...document.querySelectorAll('.nav-item')]
       .filter((item) => getComputedStyle(item).display !== 'none')
       .map((item) => item.querySelector('span:last-child')?.textContent.trim()),
+    kpiCount: document.querySelectorAll('#kpiGrid .kpi-card').length,
     overflow: document.documentElement.scrollWidth - innerWidth,
   })`, { width: 1440, height: 960 }, 3500);
   const expectedRoleLabel = { sprayer: "散布者", neighbor: "周辺農家", admin: "地域管理" }[role];
+  const expectedKpiCount = { sprayer: 8, neighbor: 5, admin: 9 }[role];
   assert(result.value.role === expectedRoleLabel, `${role} demo opened as ${result.value.role}`);
   assert(JSON.stringify(result.value.navigation) === JSON.stringify(expected), `${role} navigation mismatch: ${result.value.navigation.join(" / ")}`);
+  assert(result.value.kpiCount === expectedKpiCount, `${role} KPI count: ${result.value.kpiCount}`);
   assert(result.value.overflow <= 0, `${role} app overflows by ${result.value.overflow}px`);
   assert(result.errors.length === 0, `${role} runtime errors: ${result.errors.join(", ")}`);
 }

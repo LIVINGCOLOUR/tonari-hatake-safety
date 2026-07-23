@@ -45,6 +45,13 @@ import {
   estimateCoverage,
   resetCoverageGridCacheForTest,
 } from "../js/domain/coverage.mjs";
+import {
+  buildAdminDashboardMetrics,
+  buildAdminQueueItems,
+  buildNeighborDashboardMetrics,
+  buildSprayerDashboardMetrics,
+  summarizeAdminDashboard,
+} from "../js/domain/dashboard.mjs";
 
 const polygon = (west, south, east, north, holes = []) => ({
   type: "Polygon",
@@ -188,6 +195,92 @@ test("invalid track points keep playback indexes without bridging spray segments
   assert.equal(data.idx, 1);
   assert.equal(data.marker.features.length, 0);
   assert.equal(data.gc.sprayedCells, 0);
+});
+
+test("dashboard summaries aggregate day and region facts without UI state", () => {
+  const dayPlans = [
+    {
+      date: "2026-07-23",
+      reportDone: false,
+      highRisk: true,
+      notificationComplete: false,
+      organicNear: true,
+      windNeedsAttention: true,
+      droneImported: false,
+      altitudeNeedsAttention: true,
+      hasInquiry: false,
+      unregisteredNear: true,
+      replyNeed: 1,
+      readiness: 60,
+    },
+    {
+      date: "2026-07-23",
+      reportDone: true,
+      highRisk: false,
+      notificationComplete: true,
+      organicNear: false,
+      windNeedsAttention: false,
+      droneImported: true,
+      altitudeNeedsAttention: false,
+      hasInquiry: true,
+      unregisteredNear: false,
+      replyNeed: 0,
+      readiness: 100,
+    },
+  ];
+  const regionPlans = [...dayPlans, { ...dayPlans[0], date: "2026-07-22", replyNeed: 2 }];
+  const summary = summarizeAdminDashboard({
+    date: "2026-07-23",
+    today: "2026-07-23",
+    dayPlans,
+    regionPlans,
+  });
+  assert.equal(summary.planned, 1);
+  assert.equal(summary.done, 1);
+  assert.equal(summary.attention, 1);
+  assert.equal(summary.reportMissing, 2);
+  assert.equal(summary.replyNeed, 3);
+  assert.equal(summary.inquiry, 1);
+  assert.equal(summary.readiness, 80);
+  assert.equal(buildAdminQueueItems(summary)[0].count, 1);
+  assert.equal(buildAdminDashboardMetrics({ summary, organicRadius: 300 }).length, 9);
+});
+
+test("role dashboard metrics preserve labels, counts, and alert states", () => {
+  const plans = [
+    {
+      date: "2026-07-23",
+      reportDone: false,
+      highRisk: true,
+      notificationComplete: false,
+      organicNear: true,
+      windNeedsAttention: true,
+    },
+    {
+      date: "2026-07-24",
+      reportDone: false,
+      highRisk: false,
+      notificationComplete: true,
+      organicNear: false,
+      windNeedsAttention: false,
+    },
+  ];
+  const sprayer = buildSprayerDashboardMetrics({
+    plans,
+    today: "2026-07-23",
+    tomorrow: "2026-07-24",
+    organicRadius: 300,
+    activeReadiness: 65,
+  });
+  assert.deepEqual(sprayer.map((metric) => metric.value), ["1件", "1件", "1件", "1件", "1件", "1件", "1件", "65"]);
+  assert.equal(sprayer.at(-1).alert, true);
+
+  const neighbor = buildNeighborDashboardMetrics({
+    notices: [{ response: "未回答" }, { response: "電話希望" }],
+    field: { name: "A", publicScope: "概略のみ共有", notifyPreference: "未確認" },
+  });
+  assert.deepEqual(neighbor.slice(0, 3).map((metric) => metric.value), ["1件", "2件", "1件"]);
+  assert.equal(neighbor.at(-1).alert, true);
 });
 
 test("legacy bare state migrates into a versioned envelope without data loss", () => {

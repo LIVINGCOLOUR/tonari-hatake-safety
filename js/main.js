@@ -431,6 +431,7 @@ let domainImport;
 let domainSpray;
 let domainPrescription;
 let domainCoverage;
+let domainDashboard;
 let storageRevision = 0;
 let state = null;
 let activeRole = "sprayer";
@@ -482,13 +483,14 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
     import("./domain/spray.mjs?v=20260723-phase6"),
     import("./domain/prescription.mjs?v=20260723-phase6"),
     import("./domain/coverage.mjs?v=20260723-phase6"),
+    import("./domain/dashboard.mjs?v=20260723-phase6"),
   ]);
   state = loadState();
   if (!state || !Array.isArray(state.plans) || !state.plans.length) {
@@ -1366,44 +1368,13 @@ function adminDashboardSummary() {
   const date = adminDashboardDate();
   const plans = adminDashboardPlans();
   const regionPlans = adminRegionPlans();
-  const planned = plans.filter((plan) => !plan.report.doneDate).length;
-  const done = plans.filter((plan) => Boolean(plan.report.doneDate)).length;
-  const attention = plans.filter((plan) => riskLevel(plan) === "high").length;
-  const notifyIncomplete = plans.filter((plan) => !notificationIsComplete(plan)).length;
-  const organicNear = plans.filter((plan) =>
-    riskItemsForPlan(plan).some((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high"),
-  ).length;
-  const windNeed = plans.filter(windNeedsAttention).length;
-  const droneMissing = plans.filter((plan) => !plan.droneLog?.imported).length;
-  const altitudeNeed = plans.filter((plan) => !plan.checks.altitude || altitudeCheckCount(plan.droneLog || activeDroneLog()) > 0).length;
-  const inquiry = regionPlans.filter((plan) => plan.report?.inquiry && plan.report.inquiry !== "なし").length;
-  const unregisteredNear = plans.filter((plan) => riskItemsForPlan(plan).some((risk) => risk.unregistered || risk.type === "public")).length;
   const today = dateOffset(0);
-  const reportMissing = regionPlans.filter((plan) => plan.date <= today && !plan.report.doneDate).length;
-  const replyNeed = regionPlans.reduce((total, plan) => {
-    const values = Object.values(plan.notificationResponses || {});
-    return total + values.filter((value) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(value)).length;
-  }, 0);
-  const readiness = plans.length
-    ? Math.round(plans.reduce((sum, plan) => sum + readinessScore(plan).value, 0) / plans.length)
-    : 100;
-  return {
+  return domainDashboard.summarizeAdminDashboard({
     date,
-    planned,
-    done,
-    attention,
-    notifyIncomplete,
-    organicNear,
-    windNeed,
-    droneMissing,
-    altitudeNeed,
-    inquiry,
-    unregisteredNear,
-    reportMissing,
-    replyNeed,
-    readiness,
-    total: plans.length,
-  };
+    today,
+    dayPlans: plans.map(dashboardPlanFact),
+    regionPlans: regionPlans.map(dashboardPlanFact),
+  });
 }
 
 function renderAdminHome() {
@@ -1467,15 +1438,7 @@ function renderAdminHome() {
 }
 
 function adminQueueItems(summary) {
-  return [
-    { label: "通知未完了", count: summary.notifyIncomplete },
-    { label: "風向風速要確認", count: summary.windNeed },
-    { label: "報告未提出", count: summary.reportMissing },
-    { label: "ドローンログ未取込", count: summary.droneMissing },
-    { label: "高度要確認", count: summary.altitudeNeed },
-    { label: "問い合わせあり", count: summary.inquiry },
-    { label: "未登録圃場近接", count: summary.unregisteredNear },
-  ];
+  return domainDashboard.buildAdminQueueItems(summary);
 }
 
 function adminAttentionReasons(plan) {
@@ -4990,54 +4953,50 @@ function getDashboardMetrics() {
   const rules = activeSettings();
   const today = dateOffset(0);
   const tomorrow = dateOffset(1);
-  const todayPlans = state.plans.filter((plan) => plan.date === today).length;
-  const tomorrowPlans = state.plans.filter((plan) => plan.date === tomorrow).length;
-  const notifyIncomplete = state.plans.filter((plan) => !notificationIsComplete(plan)).length;
-  const organicNear = state.plans.filter((plan) => riskItemsForPlan(plan).some((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high")).length;
-  const windNeed = state.plans.filter(windNeedsAttention).length;
-  const reportMissing = state.plans.filter((plan) => plan.date <= today && !plan.report.doneDate).length;
-  const highRisk = state.plans.filter((plan) => riskLevel(plan) === "high").length;
   const activeReadiness = readinessScore(activePlan()).value;
-  return [
-    { label: "今日の散布予定", value: `${todayPlans}件`, note: today, alert: false },
-    { label: "明日の散布予定", value: `${tomorrowPlans}件`, note: tomorrow, alert: false },
-    { label: "通知未完了", value: `${notifyIncomplete}件`, note: "近隣通知", alert: notifyIncomplete > 0 },
-    { label: `有機ほ場${rules.organicRadius}m以内`, value: `${organicNear}件`, note: "周辺確認", alert: organicNear > 0 },
-    { label: "風向・風速要確認", value: `${windNeed}件`, note: "気象メモ", alert: windNeed > 0 },
-    { label: "実施後報告未提出", value: `${reportMissing}件`, note: "散布者控え", alert: reportMissing > 0 },
-    { label: "追加確認が必要な予定", value: `${highRisk}件`, note: "管理者確認", alert: highRisk > 0 },
-    { label: "表示中の確認進捗", value: `${activeReadiness}`, note: "説明用指標", alert: activeReadiness < 70 },
-  ];
+  return domainDashboard.buildSprayerDashboardMetrics({
+    plans: state.plans.map(dashboardPlanFact),
+    today,
+    tomorrow,
+    organicRadius: rules.organicRadius,
+    activeReadiness,
+  });
 }
 
 function getNeighborDashboardMetrics() {
   const notices = neighborRelevantNotices();
   const field = activeField();
-  const pending = notices.filter((notice) => notice.response === "未回答").length;
-  const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました").length;
-  return [
-    { label: "未返信通知", value: `${pending}件`, note: "通知インボックス", alert: pending > 0 },
-    { label: "近日散布予定", value: `${notices.length}件`, note: "自分に関係", alert: notices.length > 0 },
-    { label: "時間変更・電話相談", value: `${consulting}件`, note: "返信履歴", alert: consulting > 0 },
-    { label: "公開範囲", value: field.publicScope || "概略のみ共有", note: "圃場情報", alert: false },
-    { label: "通知希望", value: field.notifyPreference || "未確認", note: field.name, alert: field.notifyPreference === "未確認" },
-  ];
+  return domainDashboard.buildNeighborDashboardMetrics({ notices, field });
 }
 
 function getAdminDashboardMetrics() {
   const rules = activeSettings();
   const summary = adminDashboardSummary();
-  return [
-    { label: "対象日の散布予定", value: `${summary.planned}件`, note: summary.date, alert: false },
-    { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣通知", alert: summary.notifyIncomplete > 0 },
-    { label: "風向・風速要確認", value: `${summary.windNeed}件`, note: "気象条件", alert: summary.windNeed > 0 },
-    { label: "実施後報告未提出", value: `${summary.reportMissing}件`, note: "散布者控え", alert: summary.reportMissing > 0 },
-    { label: `有機ほ場${rules.organicRadius}m以内`, value: `${summary.organicNear}件`, note: "周辺確認", alert: summary.organicNear > 0 },
-    { label: "ドローンログ未取込", value: `${summary.droneMissing}件`, note: "飛行ログ", alert: summary.droneMissing > 0 },
-    { label: "高度要確認", value: `${summary.altitudeNeed}件`, note: "作業軌跡", alert: summary.altitudeNeed > 0 },
-    { label: "問い合わせあり", value: `${summary.inquiry}件`, note: "実施後報告", alert: summary.inquiry > 0 },
-    { label: "追加確認が必要な予定", value: `${summary.attention}件`, note: "管理者確認", alert: summary.attention > 0 },
-  ];
+  return domainDashboard.buildAdminDashboardMetrics({ summary, organicRadius: rules.organicRadius });
+}
+
+function dashboardPlanFact(plan) {
+  const risks = riskItemsForPlan(plan);
+  const responses = Object.values(plan.notificationResponses || {});
+  return {
+    date: plan.date,
+    reportDone: Boolean(plan.report?.doneDate),
+    highRisk: riskLevel(plan) === "high",
+    notificationComplete: notificationIsComplete(plan),
+    organicNear: risks.some(
+      (risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high",
+    ),
+    windNeedsAttention: windNeedsAttention(plan),
+    droneImported: Boolean(plan.droneLog?.imported),
+    altitudeNeedsAttention: !plan.checks.altitude
+      || Boolean(plan.droneLog?.imported && altitudeCheckCount(plan.droneLog) > 0),
+    hasInquiry: Boolean(plan.report?.inquiry && plan.report.inquiry !== "なし"),
+    unregisteredNear: risks.some((risk) => risk.unregistered || risk.type === "public"),
+    replyNeed: responses.filter(
+      (value) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(value),
+    ).length,
+    readiness: readinessScore(plan).value,
+  };
 }
 
 function riskItemsForPlan(plan) {
