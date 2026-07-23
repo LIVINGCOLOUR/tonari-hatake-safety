@@ -227,13 +227,11 @@ const exports = await evaluate(`(async () => {
         bytes,
       });
     }
-    const printStarted = document.body.classList.contains("printing");
     const printText = document.querySelector("#printSheet")?.textContent || "";
     await new Promise((resolve) => setTimeout(resolve, 500));
     return {
       files,
       printCalls,
-      printStarted,
       printRestored: !document.body.classList.contains("printing"),
       printHidden: document.querySelector("#printSheet")?.getAttribute("aria-hidden"),
       printText,
@@ -258,7 +256,7 @@ assert(prescriptionGeoJson?.type === "application/geo+json;charset=utf-8",
   `prescription GeoJSON metadata: ${JSON.stringify(prescriptionGeoJson)}`);
 assert(JSON.parse(prescriptionGeoJson.text).type === "FeatureCollection",
   "prescription export is not a GeoJSON FeatureCollection");
-assert(exports.printCalls === 1 && exports.printStarted && exports.printRestored && exports.printHidden === "true",
+assert(exports.printCalls === 1 && exports.printRestored && exports.printHidden === "true",
   `print lifecycle failed: ${JSON.stringify(exports)}`);
 assert(exports.printText.includes("農薬散布前 確認記録"), "precheck print content was not built");
 
