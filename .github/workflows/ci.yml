@@ -57,7 +57,8 @@ jobs:
               tail -n 100 "$CHROME_LOG" || true
             fi
             kill "${CHROME_PID:-}" "${SERVER_PID:-}" 2>/dev/null || true
-            rm -rf "$CHROME_PROFILE"
+            wait "${CHROME_PID:-}" "${SERVER_PID:-}" 2>/dev/null || true
+            rm -rf "$CHROME_PROFILE" || true
             exit "$status"
           }
           trap cleanup EXIT
