@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { createSupabaseAppStateRepository } from "../js/repositories/supabase-app-state.mjs";
 import { createSupabaseStorageService } from "../js/services/supabase-storage.mjs";
+import { buildSyncConflicts, resolveSyncConflicts } from "../js/domain/sync.mjs";
 
 const url = process.env.SUPABASE_URL;
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
@@ -137,6 +138,21 @@ try {
     repository.save({ workspaceId, userId, state: versionedState }),
     (error) => error?.code === "conflict",
   );
+  const latest = await repository.load({ workspaceId, localState: versionedState });
+  const localChoiceState = {
+    ...versionedState,
+    plans: versionedState.plans.map((plan) => ({
+      ...plan,
+      date: "2026-07-26",
+    })),
+  };
+  const conflicts = buildSyncConflicts(localChoiceState, latest);
+  assert(conflicts.some((entry) => entry.key === "plan:plan-adapter-e2e"));
+  const resolved = resolveSyncConflicts(localChoiceState, latest, {
+    "plan:plan-adapter-e2e": "local",
+  });
+  const resolvedSave = await repository.save({ workspaceId, userId, state: resolved });
+  assert.equal(resolvedSave.plans, 1);
 
   const assets = await client
     .from("app_assets")

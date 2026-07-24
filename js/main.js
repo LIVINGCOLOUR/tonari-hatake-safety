@@ -458,6 +458,7 @@ let supabaseAuthUnsubscribe = null;
 let supabaseDataRepository = null;
 let supabaseSyncCoordinator = null;
 let supabaseSyncState = { status: "local", message: "端末だけに保存しています。" };
+let supabaseConflictData = null;
 let suppressRemoteSync = false;
 let stateRepository;
 let planRepository;
@@ -768,6 +769,8 @@ function bindEvents() {
   $("#acceptWorkspaceInviteButton")?.addEventListener("click", acceptSupabaseWorkspaceInvite);
   $("#enableCloudSyncButton")?.addEventListener("click", enableSupabaseSync);
   $("#reloadCloudDataButton")?.addEventListener("click", reloadSupabaseState);
+  $("#refreshConflictButton")?.addEventListener("click", () => prepareSupabaseConflict());
+  $("#resolveConflictButton")?.addEventListener("click", resolveSupabaseConflict);
   $("#supabaseWorkspaceSelect")?.addEventListener("change", (event) => {
     const workspaceId = String(event.target.value || "");
     if (workspaceId) localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
@@ -4107,6 +4110,7 @@ function configureRemoteSync() {
   supabaseSyncCoordinator?.cancel();
   supabaseSyncCoordinator = null;
   supabaseDataRepository = null;
+  supabaseConflictData = null;
   const membership = activeSupabaseMembership();
   const userId = supabaseSession?.user?.id;
   if (!supabaseRuntime?.enabled || !membership?.workspace_id || !userId) {
@@ -4127,6 +4131,7 @@ function configureRemoteSync() {
     }),
     onStatus: ({ status, result }) => {
       if (status === "synced" && result?.remoteVersions) {
+        supabaseConflictData = null;
         suppressRemoteSync = true;
         try {
           state = normalizeState(domainSync.applyRemoteVersions(state, result.remoteVersions));
@@ -4145,6 +4150,9 @@ function configureRemoteSync() {
         error: "端末には保存済みです。クラウド同期を再試行してください。",
       };
       setSupabaseSyncState(status, messages[status] || "クラウド同期の状態を確認してください。");
+      if (status === "conflict") {
+        prepareSupabaseConflict().catch(() => {});
+      }
     },
   });
   setSupabaseSyncState(
@@ -4269,6 +4277,193 @@ function renderSupabaseSyncControls() {
   enableButton.textContent = enabled ? "現在の端末データを同期" : "端末データをクラウドへ移行";
   enableButton.disabled = supabaseSyncState.status === "syncing";
   reloadButton.disabled = supabaseSyncState.status === "syncing";
+  renderSupabaseConflictDetails();
+}
+
+const CONFLICT_KEY_LABELS = Object.freeze({
+  name: "名称",
+  type: "圃場区分",
+  crop: "作物",
+  cultivation: "栽培状況",
+  chemicalUse: "農薬使用",
+  organicJas: "有機JAS",
+  notifyPreference: "通知希望",
+  contactMethod: "連絡方法",
+  harvestWindow: "収穫予定",
+  visibilityLevel: "公開範囲",
+  geometry: "圃場境界",
+  fieldId: "対象圃場",
+  date: "予定日",
+  timeWindow: "時間帯",
+  district: "地区",
+  operator: "作業者",
+  pesticide: "使用資材",
+  purpose: "目的",
+  status: "状態",
+  weather: "気象",
+  checks: "散布前確認",
+  notificationTargets: "通知先",
+  notificationResponses: "返信",
+  report: "実施後報告",
+  droneLog: "飛行ログ",
+});
+
+function conflictRecordTitle(entry) {
+  const record = entry.local || entry.remote || {};
+  if (entry.kind === "field") return record.name || `圃場 ${entry.id}`;
+  const field = state.fields.find((item) => item.id === record.fieldId);
+  return `${record.date || "日付未設定"} ${field?.name || record.district || "散布計画"}`;
+}
+
+function conflictValue(value, key) {
+  if (value === null || value === undefined || value === "") return "未設定";
+  if (typeof value === "boolean") return value ? "あり" : "なし";
+  if (typeof value !== "object") return String(value).slice(0, 60);
+  if (key === "geometry") return value?.coordinates ? "境界あり" : "境界なし";
+  if (key === "checks") {
+    const checks = Object.values(value);
+    return `${checks.filter(Boolean).length}/${checks.length}項目確認`;
+  }
+  if (key === "notificationTargets") {
+    return `${Object.values(value).filter(Boolean).length}件通知`;
+  }
+  if (key === "notificationResponses") {
+    return `${Object.keys(value).length}件返信`;
+  }
+  if (key === "weather") {
+    return `風速${value.windSpeed ?? "未確認"}m/s・${value.source || "取得元未設定"}`;
+  }
+  if (key === "report") return value.doneDate ? `${value.doneDate} 実施` : "未報告";
+  if (key === "droneLog") return value.imported ? "取込済み" : "未取込";
+  return "内容に差があります";
+}
+
+function renderSupabaseConflictDetails() {
+  const panel = $("#supabaseConflictDetails");
+  if (!panel) return;
+  const visible = supabaseSyncState.status === "conflict" && Boolean(supabaseConflictData);
+  panel.hidden = !visible;
+  if (!visible) return;
+  const conflicts = supabaseConflictData.conflicts || [];
+  $("#supabaseConflictSummary").textContent = conflicts.length
+    ? `${conflicts.length}件の違いがあります。変更内容を確認して採用する版を選んでください。`
+    : "記録の差分を特定できませんでした。比較を更新するか、クラウドから再読込してください。";
+  $("#supabaseConflictList").innerHTML = conflicts.map((entry) => {
+    const stateLabel = {
+      changed: "両方で変更",
+      "local-only": "端末で追加",
+      "remote-only": "クラウドで追加",
+    }[entry.state];
+    const values = entry.changedKeys.slice(0, 6).map((key) => `
+      <span>
+        <b>${escapeHtml(CONFLICT_KEY_LABELS[key] || key)}</b>：
+        クラウド「${escapeHtml(conflictValue(entry.remote?.[key], key))}」 /
+        端末「${escapeHtml(conflictValue(entry.local?.[key], key))}」
+      </span>
+    `).join("");
+    const selector = entry.state === "changed"
+      ? `<label>採用する内容
+          <select data-conflict-key="${escapeAttr(entry.key)}">
+            <option value="remote">クラウド版（推奨）</option>
+            <option value="local">端末版</option>
+          </select>
+        </label>`
+      : `<span class="cloud-conflict-fixed">${
+        entry.state === "local-only" ? "端末の追加を保存" : "クラウドの追加を保持"
+      }</span>`;
+    return `
+      <div class="cloud-conflict-row">
+        <div>
+          <strong>${escapeHtml(conflictRecordTitle(entry))}</strong>
+          <span class="cloud-conflict-state">${escapeHtml(stateLabel)}</span>
+          <div class="cloud-conflict-values">${values}</div>
+        </div>
+        ${selector}
+      </div>
+    `;
+  }).join("");
+  $("#resolveConflictButton").disabled = !conflicts.length || supabaseSyncState.status === "syncing";
+}
+
+async function prepareSupabaseConflict(payloadOverride = null) {
+  const membership = activeSupabaseMembership();
+  if (!supabaseDataRepository || !membership) return;
+  const localState = structuredClone(state);
+  let payload = payloadOverride;
+  if (!payload) {
+    const account = await supabaseAuthService.loadProfile();
+    payload = await supabaseDataRepository.load({
+      workspaceId: membership.workspace_id,
+      localState: {
+        ...localState,
+        profile: account.profile,
+        equipmentTemplate: account.equipmentTemplate,
+      },
+    });
+  }
+  supabaseConflictData = {
+    localState,
+    payload,
+    conflicts: domainSync.buildSyncConflicts(localState, payload),
+  };
+  renderSupabaseSyncControls();
+}
+
+async function resolveSupabaseConflict() {
+  const membership = activeSupabaseMembership();
+  if (!supabaseConflictData || !supabaseSyncCoordinator || !membership) return;
+  const currentConflicts = domainSync.buildSyncConflicts(state, supabaseConflictData.payload);
+  const previousKeys = supabaseConflictData.conflicts.map((entry) => entry.key).sort().join("|");
+  const currentKeys = currentConflicts.map((entry) => entry.key).sort().join("|");
+  if (previousKeys !== currentKeys) {
+    supabaseConflictData = {
+      ...supabaseConflictData,
+      localState: structuredClone(state),
+      conflicts: currentConflicts,
+    };
+    renderSupabaseSyncControls();
+    showToast("比較中に端末内容が変わりました。差分を更新したので、もう一度選んでください。");
+    return;
+  }
+  const selections = Object.fromEntries(
+    $$("[data-conflict-key]", $("#supabaseConflictList"))
+      .map((select) => [select.dataset.conflictKey, select.value]),
+  );
+  const localSelections = Object.values(selections).filter((value) => value === "local").length;
+  if (localSelections && !confirm(
+    `端末版を${localSelections}件採用します。クラウド側の変更内容を置き換えるため、比較内容を確認してから続けてください。`,
+  )) return;
+
+  const button = $("#resolveConflictButton");
+  try {
+    button.disabled = true;
+    const merged = domainSync.resolveSyncConflicts(state, supabaseConflictData.payload, selections);
+    suppressRemoteSync = true;
+    try {
+      state = normalizeState(merged);
+      stateRepository.save(state);
+      renderAll();
+    } finally {
+      suppressRemoteSync = false;
+    }
+    setSupabaseSyncState("syncing", "選んだ内容をクラウドへ保存しています。");
+    await supabaseSyncCoordinator.flush(structuredClone(state));
+    localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+    supabaseConflictData = null;
+    setSupabaseSyncState("synced", "競合を解決し、クラウドと同期しました。");
+    showToast("選んだ内容で競合を解決しました。");
+  } catch (error) {
+    setSupabaseSyncState(
+      error?.code === "conflict" ? "conflict" : "error",
+      error?.code === "conflict"
+        ? "解決中に別の更新がありました。比較を更新してください。"
+        : "競合の解決内容を保存できませんでした。端末の内容は残っています。",
+    );
+    if (error?.code === "conflict") await prepareSupabaseConflict().catch(() => {});
+    showToast(error?.message || "競合を解決できませんでした。");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function enableSupabaseSync() {
@@ -4297,6 +4492,7 @@ async function enableSupabaseSync() {
             "conflict",
             "クラウドに既存データがあります。内容を確認してから再読込してください。",
           );
+          await prepareSupabaseConflict(cloudPayload);
           return;
         }
         suppressRemoteSync = true;
@@ -4366,6 +4562,7 @@ async function reloadSupabaseState() {
     state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
     stateRepository.save(state);
     localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+    supabaseConflictData = null;
     renderAll();
     setSupabaseSyncState("synced", "クラウドの最新データを読み込みました。");
     showToast("クラウドの最新データへ更新しました。");
@@ -4400,6 +4597,7 @@ async function signOutSupabase() {
     supabaseSyncCoordinator?.cancel();
     supabaseSyncCoordinator = null;
     supabaseDataRepository = null;
+    supabaseConflictData = null;
     localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
     renderSupabaseAccount();
     showToast("クラウドからログアウトしました。デモデータは端末に残ります。");

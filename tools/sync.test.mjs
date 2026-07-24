@@ -7,8 +7,10 @@ import {
   SyncBoundaryError,
   applyRemoteSyncPayload,
   applyRemoteVersions,
+  buildSyncConflicts,
   buildRemoteSyncPayload,
   extractDeviceState,
+  resolveSyncConflicts,
   validateRemoteSyncPayload,
 } from "../js/domain/sync.mjs";
 
@@ -152,4 +154,55 @@ test("remote save versions are attached without changing device-owned state", ()
   assert.equal(next.plans[0].remoteVersion, 7);
   assert.equal(next.role, "neighbor");
   assert.equal(state.fields[0].remoteVersion, undefined);
+});
+
+test("field and plan conflicts identify user-relevant top-level changes", () => {
+  const local = sampleState();
+  local.fields[0].name = "端末の圃場名";
+  local.fields[0].remoteVersion = 2;
+  local.plans[0].date = "2026-07-25";
+  local.plans[0].remoteVersion = 4;
+  const remote = buildRemoteSyncPayload({
+    ...sampleState(),
+    fields: [{ ...sampleState().fields[0], name: "クラウドの圃場名", remoteVersion: 3 }],
+    plans: [{ ...sampleState().plans[0], date: "2026-07-26", remoteVersion: 5 }],
+  });
+  const conflicts = buildSyncConflicts(local, remote);
+  assert.deepEqual(conflicts.map((entry) => entry.key), ["field:f1", "plan:p1"]);
+  assert(conflicts[0].changedKeys.includes("name"));
+  assert(conflicts[1].changedKeys.includes("date"));
+  assert(!conflicts[0].changedKeys.includes("remoteVersion"));
+});
+
+test("conflict resolution defaults to cloud and applies only explicitly selected local records", () => {
+  const local = sampleState();
+  local.fields[0] = { ...local.fields[0], name: "端末圃場", remoteVersion: 2 };
+  local.plans[0] = { ...local.plans[0], date: "2026-07-25", remoteVersion: 4 };
+  const remote = buildRemoteSyncPayload({
+    ...sampleState(),
+    fields: [{ ...sampleState().fields[0], name: "クラウド圃場", remoteVersion: 3 }],
+    plans: [{ ...sampleState().plans[0], date: "2026-07-26", remoteVersion: 5 }],
+  });
+  const resolved = resolveSyncConflicts(local, remote, { "plan:p1": "local" });
+  assert.equal(resolved.fields[0].name, "クラウド圃場");
+  assert.equal(resolved.fields[0].remoteVersion, 3);
+  assert.equal(resolved.plans[0].date, "2026-07-25");
+  assert.equal(resolved.plans[0].remoteVersion, 5);
+  assert.equal(resolved.plans[0].report.photoData, "data:image/jpeg;base64,AAAA");
+  assert.equal(resolved.role, "neighbor");
+});
+
+test("local-only records remain queued and remote-only records remain visible", () => {
+  const local = sampleState();
+  local.fields.push({ id: "local-new", name: "端末追加" });
+  const remote = buildRemoteSyncPayload({
+    ...sampleState(),
+    fields: [...sampleState().fields, { id: "remote-new", name: "クラウド追加" }],
+  });
+  const conflicts = buildSyncConflicts(local, remote);
+  assert.equal(conflicts.find((entry) => entry.key === "field:local-new").state, "local-only");
+  assert.equal(conflicts.find((entry) => entry.key === "field:remote-new").state, "remote-only");
+  const resolved = resolveSyncConflicts(local, remote);
+  assert(resolved.fields.some((field) => field.id === "local-new"));
+  assert(resolved.fields.some((field) => field.id === "remote-new"));
 });

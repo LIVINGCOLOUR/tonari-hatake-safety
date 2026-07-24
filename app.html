@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>デモ | となり畑セーフティ</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260724-conflicts">
+    <link rel="stylesheet" href="css/styles.css?v=20260725-conflict-compare">
   </head>
   <body>
     <div class="app-shell">
@@ -976,9 +976,23 @@
                 <span class="small-note" id="supabaseSyncStatus">端末だけに保存しています。</span>
                 <p class="cloud-conflict-notice" id="supabaseConflictNotice" hidden>
                   別の端末で先に更新されています。端末の入力内容は残っています。
-                  内容を確認してから「クラウドから再読込」を実行してください。
+                  下の比較から採用する内容を選んでください。
                 </p>
               </div>
+              <section class="cloud-conflict-details" id="supabaseConflictDetails" hidden>
+                <div class="cloud-conflict-head">
+                  <div>
+                    <strong>クラウド版と端末版の比較</strong>
+                    <p class="small-note" id="supabaseConflictSummary"></p>
+                  </div>
+                  <button class="ghost-button compact" id="refreshConflictButton" type="button">比較を更新</button>
+                </div>
+                <div class="cloud-conflict-list" id="supabaseConflictList"></div>
+                <div class="cloud-conflict-actions">
+                  <button class="primary-button" id="resolveConflictButton" type="button">選んだ内容で解決</button>
+                  <span class="small-note">未選択の記録は、安全のためクラウド版を採用します。</span>
+                </div>
+              </section>
               <div class="cloud-sync-actions">
                 <button class="primary-button" id="enableCloudSyncButton" type="button">端末データをクラウドへ移行</button>
                 <button class="ghost-button" id="reloadCloudDataButton" type="button">クラウドから再読込</button>
@@ -1231,6 +1245,6 @@
     <script src="vendor/shpjs/shp.min.js" defer></script>
     <script src="vendor/supabase/supabase.min.js" defer></script>
     <script src="js/config/supabase-runtime.js" defer></script>
-    <script src="js/main.js?v=20260724-conflicts" defer></script>
+    <script src="js/main.js?v=20260725-conflict-compare" defer></script>
   </body>
 </html>

@@ -222,3 +222,92 @@ export function applyRemoteVersions(localState, remoteVersions = {}) {
   }));
   return local;
 }
+
+function comparableRecord(value) {
+  if (Array.isArray(value)) return value.map(comparableRecord);
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value).sort().reduce((result, key) => {
+    if (["remoteVersion", "photoData", "points"].includes(key)) return result;
+    result[key] = comparableRecord(value[key]);
+    return result;
+  }, {});
+}
+
+function changedTopLevelKeys(local, remote) {
+  const keys = new Set([
+    ...Object.keys(objectValue(local)),
+    ...Object.keys(objectValue(remote)),
+  ]);
+  return [...keys]
+    .filter((key) => !["remoteVersion", "photoData", "points"].includes(key))
+    .filter((key) => JSON.stringify(comparableRecord(local?.[key]))
+      !== JSON.stringify(comparableRecord(remote?.[key])))
+    .sort();
+}
+
+function conflictEntries(kind, localRecords, remoteRecords) {
+  const localById = new Map(arrayValue(localRecords).map((record) => [String(record?.id || ""), record]));
+  const remoteById = new Map(arrayValue(remoteRecords).map((record) => [String(record?.id || ""), record]));
+  const ids = new Set([...localById.keys(), ...remoteById.keys()]);
+  ids.delete("");
+  return [...ids].sort().flatMap((id) => {
+    const local = localById.get(id) || null;
+    const remote = remoteById.get(id) || null;
+    if (
+      local
+      && remote
+      && JSON.stringify(comparableRecord(local)) === JSON.stringify(comparableRecord(remote))
+    ) {
+      return [];
+    }
+    return [{
+      key: `${kind}:${id}`,
+      kind,
+      id,
+      local,
+      remote,
+      state: local && remote ? "changed" : (local ? "local-only" : "remote-only"),
+      changedKeys: changedTopLevelKeys(local, remote),
+    }];
+  });
+}
+
+export function buildSyncConflicts(localState, remotePayload) {
+  const remote = validateRemoteSyncPayload(remotePayload);
+  const local = objectValue(localState);
+  return [
+    ...conflictEntries(
+      "field",
+      local.fields,
+      remote.workspace.fields,
+    ),
+    ...conflictEntries(
+      "plan",
+      local.plans,
+      remote.workspace.plans,
+    ),
+  ];
+}
+
+export function resolveSyncConflicts(localState, remotePayload, selections = {}) {
+  const conflicts = buildSyncConflicts(localState, remotePayload);
+  const merged = applyRemoteSyncPayload(localState, remotePayload);
+  const fieldById = new Map(arrayValue(merged.fields).map((field) => [String(field?.id || ""), field]));
+  const planById = new Map(arrayValue(merged.plans).map((plan) => [String(plan?.id || ""), plan]));
+
+  conflicts.forEach((entry) => {
+    const target = entry.kind === "field" ? fieldById : planById;
+    if (entry.state === "local-only") {
+      target.set(entry.id, cloneJson(entry.local, {}));
+    }
+    if (entry.state === "changed" && selections[entry.key] === "local") {
+      target.set(entry.id, {
+        ...cloneJson(entry.local, {}),
+        remoteVersion: Number(entry.remote?.remoteVersion || 0),
+      });
+    }
+  });
+  merged.fields = [...fieldById.values()];
+  merged.plans = [...planById.values()];
+  return merged;
+}

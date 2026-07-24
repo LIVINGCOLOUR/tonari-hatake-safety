@@ -200,12 +200,31 @@ for (const viewport of [
     const account = document.querySelector('#supabaseAccountPanel');
     const sync = document.querySelector('#supabaseSyncPanel');
     const notice = document.querySelector('#supabaseConflictNotice');
+    const details = document.querySelector('#supabaseConflictDetails');
+    const list = document.querySelector('#supabaseConflictList');
     account.hidden = false;
     sync.hidden = false;
     notice.hidden = false;
+    details.hidden = false;
+    list.innerHTML = \`
+      <div class="cloud-conflict-row">
+        <div>
+          <strong>北側圃場</strong>
+          <span class="cloud-conflict-state">両方で変更</span>
+          <div class="cloud-conflict-values">
+            <span><b>予定日</b>：クラウド「2026-07-26」 / 端末「2026-07-25」</span>
+            <span><b>使用資材</b>：クラウド「除草剤A」 / 端末「液肥B」</span>
+          </div>
+        </div>
+        <label>採用する内容
+          <select><option>クラウド版（推奨）</option><option>端末版</option></select>
+        </label>
+      </div>\`;
     return {
       text: notice.textContent.trim(),
       noticeWidth: notice.getBoundingClientRect().width,
+      detailsWidth: details.getBoundingClientRect().width,
+      selectorVisible: getComputedStyle(list.querySelector('select')).display !== 'none',
       viewportWidth: innerWidth,
       overflow: document.documentElement.scrollWidth - innerWidth,
     };
@@ -215,6 +234,11 @@ for (const viewport of [
     conflictPanel.value.noticeWidth <= conflictPanel.value.viewportWidth,
     `Conflict notice is wider than the ${viewport.width}px viewport`,
   );
+  assert(
+    conflictPanel.value.detailsWidth <= conflictPanel.value.viewportWidth,
+    `Conflict comparison is wider than the ${viewport.width}px viewport`,
+  );
+  assert(conflictPanel.value.selectorVisible, "Conflict choice is not visible");
   assert(
     conflictPanel.value.overflow <= 0,
     `Conflict notice causes ${conflictPanel.value.overflow}px overflow at ${viewport.width}px`,
