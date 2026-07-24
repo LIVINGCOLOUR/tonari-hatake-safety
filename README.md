@@ -30,7 +30,9 @@ python -m http.server 8080
 http://localhost:8080/
 ```
 
-入力内容はブラウザの `localStorage` に保存されます。保存キーは `tonariHatakeSafetyMvp.v3.coverage` です。
+未登録デモの入力はブラウザの `localStorage` に保存されます。保存キーは
+`tonariHatakeSafetyMvp.v3.coverage` です。ログイン後に利用者が明示的に移行した地域は、
+端末保存を維持しながらSupabaseへ同期します。
 
 ## 主な機能
 
@@ -59,6 +61,9 @@ http://localhost:8080/
 - 散布予定・実績一覧、行クリック詳細、上空写真、作業詳細、気象確認状況
 - 管理者ロールでは、操作タブを `トップ` と `散布予定・実績` に限定
 - PDF印刷用ビュー
+- Magic Linkログイン、地域ワークスペース、3ロール所属
+- Supabaseへの圃場・計画・通知・報告の同期
+- 非公開Storageへの報告写真・飛行ログ保存
 
 ## データ構成
 
@@ -73,6 +78,11 @@ http://localhost:8080/
 - `js/domain/import.mjs`: 圃場取込の正規化、来歴、外部参照、重複排除
 - `js/domain/sync.mjs`: アカウント・地域・端末の同期境界と遠隔同期ペイロード
 - `js/repositories/app-state.mjs`: 計画、圃場、通知、作業記録の保存契約
+- `js/repositories/supabase-app-state.mjs`: Supabase正規化テーブルとの同期アダプター
+- `js/services/supabase-auth.mjs`: Magic Link、プロフィール、地域所属
+- `js/services/supabase-storage.mjs`: 非公開写真・飛行ログ保存
+- `supabase/migrations/`: Postgres / PostGIS、RLS、監査、Storage
+- `SUPABASE_RUNBOOK.md`: Supabaseの反映、検証、FreeからProへの移行手順
 - `server/integrations/`: プロバイダーに依存しない読取専用BFFロジック
 - `worker/`: レート・同時実行制限を持つ外部連携専用Worker
 - `INTEGRATIONS.md`: xarvio/WAGRI連携の対応範囲、項目対応、認証境界
@@ -106,7 +116,12 @@ xarvio/WAGRIは、公開仕様で確認できる圃場境界だけをプロバ�
 
 ## V1で未実装のもの
 
-実認証、バックエンドDB、LINE実送信、DIPS連携、ドローンメーカーSDK実連携、圃場台帳との本番連携、権限管理、監査ログ、本番用の個人情報管理は未実装です。
+LINE実送信、DIPS連携、ドローンメーカーSDK実連携、圃場台帳との本番連携、
+同時編集の競合解決、本番用の個人情報運用は未実装です。
+
+認証、バックエンドDB、RLS、監査イベント、非公開StorageはFree開発環境へ実装済みです。
+実利用者を受け入れる前にProへ移行し、バックアップ、復旧、監査保持、退会・削除手順を
+運用として確定します。
 
 気象情報はOpen-Meteoの予報値を取得しますが、散布直前の現地実測の代替ではありません。
 

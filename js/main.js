@@ -1,4 +1,6 @@
 const STORAGE_KEY = "tonariHatakeSafetyMvp.v3.coverage";
+const ACTIVE_WORKSPACE_KEY = "tonariHatakeSafety.activeWorkspaceId";
+const CLOUD_SYNC_KEY_PREFIX = "tonariHatakeSafety.cloudSync.";
 
 const VIEW_META = {
   profile: ["初期設定・プロフィール", "利用区分、対象市町村、公開範囲"],
@@ -442,6 +444,21 @@ let weatherService;
 let boundaryIOService;
 let exportIOService;
 let repositoryService;
+let supabaseRepositoryModule;
+let remoteSyncModule;
+let domainSync;
+let supabaseStorageModule;
+let supabaseClientService;
+let supabaseAuthModule;
+let supabaseRuntime;
+let supabaseAuthService;
+let supabaseSession = null;
+let supabaseMemberships = [];
+let supabaseAuthUnsubscribe = null;
+let supabaseDataRepository = null;
+let supabaseSyncCoordinator = null;
+let supabaseSyncState = { status: "local", message: "端末だけに保存しています。" };
+let suppressRemoteSync = false;
 let stateRepository;
 let planRepository;
 let fieldRepository;
@@ -497,7 +514,7 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -509,7 +526,32 @@ async function init() {
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
     import("./repositories/app-state.mjs?v=20260723-repository-bundle"),
+    import("./repositories/supabase-app-state.mjs?v=20260724-supabase-data"),
+    import("./services/remote-sync.mjs?v=20260724-supabase-data"),
+    import("./domain/sync.mjs?v=20260724-supabase-data"),
+    import("./services/supabase-storage.mjs?v=20260724-supabase-data"),
+    import("./services/supabase-client.mjs?v=20260724-supabase-auth"),
+    import("./services/supabase-auth.mjs?v=20260724-supabase-auth"),
   ]);
+  supabaseRuntime = supabaseClientService.createSupabaseRuntime({
+    config: window.__TONARI_SUPABASE__ || {},
+    library: window.supabase,
+    storage: localStorage,
+  });
+  if (supabaseRuntime.enabled) {
+    supabaseAuthService = supabaseAuthModule.createSupabaseAuthService({
+      client: supabaseRuntime.client,
+      redirectUrl: `${location.origin}${location.pathname}#profile`,
+    });
+    await refreshSupabaseSession({ render: false });
+    supabaseAuthUnsubscribe = supabaseAuthService.onAuthStateChange(({ session }) => {
+      supabaseSession = session;
+      refreshSupabaseSession().catch(() => {
+        renderSupabaseAccount();
+      });
+    });
+    window.addEventListener("pagehide", () => supabaseAuthUnsubscribe?.(), { once: true });
+  }
   stateRepository = repositoryService.createLocalStorageAppStateRepository({
     storage: localStorage,
     key: STORAGE_KEY,
@@ -528,6 +570,8 @@ async function init() {
   fieldRepository = repositories.fields;
   notificationRepository = repositories.notifications;
   workRecordRepository = repositories.workRecords;
+  configureRemoteSync();
+  await loadRemoteStateWhenEnabled();
   const requestedRole = new URLSearchParams(location.search).get("role");
   if (!profileRole(state) && ROLE_META[requestedRole]) {
     state.role = requestedRole;
@@ -712,12 +756,24 @@ function bindEvents() {
     updateWeatherFromForm();
   });
 
-  $("#profileForm")?.addEventListener("submit", (event) => {
+  $("#profileForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    saveProfileFromForm();
+    await saveProfileFromForm();
   });
 
   $("#resetProfileButton")?.addEventListener("click", resetProfileToDemoMode);
+  $("#sendMagicLinkButton")?.addEventListener("click", sendSupabaseMagicLink);
+  $("#supabaseSignOutButton")?.addEventListener("click", signOutSupabase);
+  $("#createWorkspaceButton")?.addEventListener("click", createSupabaseWorkspace);
+  $("#acceptWorkspaceInviteButton")?.addEventListener("click", acceptSupabaseWorkspaceInvite);
+  $("#enableCloudSyncButton")?.addEventListener("click", enableSupabaseSync);
+  $("#reloadCloudDataButton")?.addEventListener("click", reloadSupabaseState);
+  $("#supabaseWorkspaceSelect")?.addEventListener("change", (event) => {
+    const workspaceId = String(event.target.value || "");
+    if (workspaceId) localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+    configureRemoteSync();
+    renderSupabaseAccount();
+  });
 
   $("#reportForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -903,6 +959,7 @@ function renderAll() {
   renderHistory();
   renderAdmin();
   renderRulesForm();
+  renderSupabaseAccount();
   renderProfileForm();
   renderSources();
   renderRoleNavigation();
@@ -4022,6 +4079,329 @@ function updateSettingsFromForm() {
   state.settings = next;
 }
 
+function activeSupabaseMembership() {
+  const selected = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+  const membership = supabaseMemberships.find((item) => item.workspace_id === selected)
+    || supabaseMemberships[0]
+    || null;
+  if (membership && membership.workspace_id !== selected) {
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, membership.workspace_id);
+  }
+  return membership;
+}
+
+function cloudSyncKey(workspaceId) {
+  return `${CLOUD_SYNC_KEY_PREFIX}${String(workspaceId || "")}`;
+}
+
+function cloudSyncEnabled(workspaceId = activeSupabaseMembership()?.workspace_id) {
+  return Boolean(workspaceId && localStorage.getItem(cloudSyncKey(workspaceId)) === "enabled");
+}
+
+function setSupabaseSyncState(status, message) {
+  supabaseSyncState = { status, message };
+  renderSupabaseSyncControls();
+}
+
+function configureRemoteSync() {
+  supabaseSyncCoordinator?.cancel();
+  supabaseSyncCoordinator = null;
+  supabaseDataRepository = null;
+  const membership = activeSupabaseMembership();
+  const userId = supabaseSession?.user?.id;
+  if (!supabaseRuntime?.enabled || !membership?.workspace_id || !userId) {
+    setSupabaseSyncState("local", "端末だけに保存しています。");
+    return;
+  }
+  supabaseDataRepository = supabaseRepositoryModule.createSupabaseAppStateRepository({
+    client: supabaseRuntime.client,
+    storageService: supabaseStorageModule.createSupabaseStorageService({
+      client: supabaseRuntime.client,
+    }),
+  });
+  supabaseSyncCoordinator = remoteSyncModule.createRemoteSyncCoordinator({
+    saveRemote: (snapshot) => supabaseDataRepository.save({
+      workspaceId: membership.workspace_id,
+      userId,
+      state: snapshot,
+    }),
+    onStatus: ({ status, result }) => {
+      const messages = {
+        idle: "クラウド同期を待機しています。",
+        syncing: "クラウドへ保存しています。",
+        synced: result?.assetsPending
+          ? `同期済み。写真・飛行ログ ${result.assetsPending}件は添付移行待ちです。`
+          : "クラウドと同期済みです。",
+        error: "端末には保存済みです。クラウド同期を再試行してください。",
+      };
+      setSupabaseSyncState(status, messages[status] || "クラウド同期の状態を確認してください。");
+    },
+  });
+  setSupabaseSyncState(
+    cloudSyncEnabled(membership.workspace_id) ? "idle" : "local",
+    cloudSyncEnabled(membership.workspace_id)
+      ? "クラウド同期を待機しています。"
+      : "端末データはまだクラウドへ移行されていません。",
+  );
+}
+
+async function loadRemoteStateWhenEnabled() {
+  const membership = activeSupabaseMembership();
+  if (!supabaseDataRepository || !cloudSyncEnabled(membership?.workspace_id)) return;
+  try {
+    setSupabaseSyncState("syncing", "クラウドから地域データを読み込んでいます。");
+    const account = await supabaseAuthService.loadProfile();
+    const payload = await supabaseDataRepository.load({
+      workspaceId: membership.workspace_id,
+      localState: {
+        ...state,
+        profile: account.profile,
+        equipmentTemplate: account.equipmentTemplate,
+      },
+    });
+    if (!payload.workspace.fields.length && !payload.workspace.plans.length) {
+      setSupabaseSyncState("idle", "クラウドは空です。端末データの移行を実行してください。");
+      return;
+    }
+    suppressRemoteSync = true;
+    state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
+    stateRepository.save(state);
+    setSupabaseSyncState("synced", "クラウドの最新データを読み込みました。");
+  } catch (error) {
+    setSupabaseSyncState("error", "クラウドを読めないため、端末保存データを表示しています。");
+  } finally {
+    suppressRemoteSync = false;
+  }
+}
+
+async function refreshSupabaseSession({ render = true } = {}) {
+  if (!supabaseAuthService) {
+    supabaseSession = null;
+    supabaseMemberships = [];
+    if (render) renderSupabaseAccount();
+    return;
+  }
+  supabaseSession = await supabaseAuthService.session();
+  supabaseMemberships = supabaseSession
+    ? await supabaseAuthService.memberships()
+    : [];
+  activeSupabaseMembership();
+  configureRemoteSync();
+  if (render) renderSupabaseAccount();
+}
+
+function renderSupabaseAccount() {
+  const panel = $("#supabaseAccountPanel");
+  if (!panel) return;
+  const enabled = Boolean(supabaseRuntime?.enabled);
+  panel.hidden = !enabled;
+  if (!enabled) return;
+
+  const signedIn = Boolean(supabaseSession?.user?.id);
+  const badge = $("#supabaseConnectionBadge");
+  const status = $("#supabaseAccountStatus");
+  const signedOutPanel = $("#supabaseSignedOutPanel");
+  const signedInPanel = $("#supabaseSignedInPanel");
+  const workspacePanel = $("#supabaseWorkspacePanel");
+  const syncPanel = $("#supabaseSyncPanel");
+  const workspaceSelect = $("#supabaseWorkspaceSelect");
+  const membership = activeSupabaseMembership();
+
+  badge.textContent = signedIn ? "接続済み" : "ログイン待ち";
+  badge.className = `pill ${signedIn ? "green" : "amber"}`;
+  status.textContent = signedIn
+    ? "プロフィールと地域データを安全に同期します。"
+    : "メールで本人確認すると、地域データを複数端末で共有できます。";
+  signedOutPanel.hidden = signedIn;
+  signedInPanel.hidden = !signedIn;
+  workspacePanel.hidden = !signedIn;
+  syncPanel.hidden = !signedIn || !membership;
+  if (!signedIn) return;
+
+  $("#supabaseSignedInEmail").textContent = supabaseSession.user.email || "ログイン済み";
+  $("#supabaseWorkspaceSummary").textContent = supabaseMemberships.length
+    ? `${new Set(supabaseMemberships.map((item) => item.workspace_id)).size}地域に所属`
+    : "所属地域はまだありません";
+
+  const workspaceMap = new Map();
+  supabaseMemberships.forEach((item) => {
+    const workspace = Array.isArray(item.workspaces) ? item.workspaces[0] : item.workspaces;
+    if (!workspace?.id) return;
+    const current = workspaceMap.get(workspace.id) || { ...workspace, roles: [] };
+    if (!current.roles.includes(item.role)) current.roles.push(item.role);
+    workspaceMap.set(workspace.id, current);
+  });
+  workspaceSelect.innerHTML = workspaceMap.size
+    ? [...workspaceMap.values()].map((workspace) => `
+        <option value="${escapeAttr(workspace.id)}">
+          ${escapeHtml(workspace.name)}（${workspace.roles.map((role) => PROFILE_ROLE_LABELS[role] || role).join("・")}）
+        </option>
+      `).join("")
+    : '<option value="">地域を作成または招待参加してください</option>';
+  workspaceSelect.value = membership?.workspace_id || "";
+  renderSupabaseSyncControls();
+}
+
+function renderSupabaseSyncControls() {
+  const panel = $("#supabaseSyncPanel");
+  if (!panel) return;
+  const membership = activeSupabaseMembership();
+  const enabled = cloudSyncEnabled(membership?.workspace_id);
+  panel.hidden = !supabaseSession || !membership;
+  if (panel.hidden) return;
+  const status = $("#supabaseSyncStatus");
+  const enableButton = $("#enableCloudSyncButton");
+  const reloadButton = $("#reloadCloudDataButton");
+  status.textContent = supabaseSyncState.message;
+  enableButton.textContent = enabled ? "現在の端末データを同期" : "端末データをクラウドへ移行";
+  enableButton.disabled = supabaseSyncState.status === "syncing";
+  reloadButton.disabled = supabaseSyncState.status === "syncing";
+}
+
+async function enableSupabaseSync() {
+  const membership = activeSupabaseMembership();
+  if (!supabaseDataRepository || !membership || !supabaseSession?.user?.id) return;
+  const alreadyEnabled = cloudSyncEnabled(membership.workspace_id);
+  if (!alreadyEnabled) {
+    const accepted = confirm(
+      "この端末のプロフィール、圃場、計画、通知状況、実施報告を選択中の地域へ保存します。続けますか？",
+    );
+    if (!accepted) return;
+  }
+  const button = $("#enableCloudSyncButton");
+  try {
+    button.disabled = true;
+    setSupabaseSyncState("syncing", "端末データをクラウドへ保存しています。");
+    await supabaseAuthService.saveProfile(state.profile, state.equipmentTemplate);
+    const result = await supabaseSyncCoordinator.flush(structuredClone(state));
+    localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+    setSupabaseSyncState(
+      "synced",
+      result?.assetsPending
+        ? `基本データを同期しました。写真・飛行ログ ${result.assetsPending}件は添付移行待ちです。`
+        : "端末データをクラウドへ移行しました。",
+    );
+    showToast("クラウド同期を開始しました。");
+  } catch (error) {
+    setSupabaseSyncState("error", "移行できませんでした。端末データはそのまま残っています。");
+    showToast(error?.message || "クラウドへ移行できませんでした。");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function reloadSupabaseState() {
+  const membership = activeSupabaseMembership();
+  if (!supabaseDataRepository || !membership) return;
+  const accepted = confirm("クラウドの地域データで、この端末の表示内容を更新します。続けますか？");
+  if (!accepted) return;
+  try {
+    setSupabaseSyncState("syncing", "クラウドから地域データを読み込んでいます。");
+    const account = await supabaseAuthService.loadProfile();
+    const payload = await supabaseDataRepository.load({
+      workspaceId: membership.workspace_id,
+      localState: {
+        ...state,
+        profile: account.profile,
+        equipmentTemplate: account.equipmentTemplate,
+      },
+    });
+    if (!payload.workspace.fields.length && !payload.workspace.plans.length) {
+      showToast("クラウドに地域データがありません。");
+      setSupabaseSyncState("idle", "クラウドは空です。");
+      return;
+    }
+    suppressRemoteSync = true;
+    state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
+    stateRepository.save(state);
+    localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+    renderAll();
+    setSupabaseSyncState("synced", "クラウドの最新データを読み込みました。");
+    showToast("クラウドの最新データへ更新しました。");
+  } catch (error) {
+    setSupabaseSyncState("error", "クラウドから読み込めませんでした。");
+    showToast(error?.message || "クラウドから読み込めませんでした。");
+  } finally {
+    suppressRemoteSync = false;
+  }
+}
+
+async function sendSupabaseMagicLink() {
+  if (!supabaseAuthService) return;
+  const button = $("#sendMagicLinkButton");
+  try {
+    button.disabled = true;
+    await supabaseAuthService.sendMagicLink($("#supabaseLoginEmail").value);
+    showToast("ログイン用メールを送りました。メール内のリンクを開いてください。");
+  } catch (error) {
+    showToast(error?.message || "ログイン用メールを送れませんでした。");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function signOutSupabase() {
+  if (!supabaseAuthService) return;
+  try {
+    await supabaseAuthService.signOut();
+    supabaseSession = null;
+    supabaseMemberships = [];
+    supabaseSyncCoordinator?.cancel();
+    supabaseSyncCoordinator = null;
+    supabaseDataRepository = null;
+    localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+    renderSupabaseAccount();
+    showToast("クラウドからログアウトしました。デモデータは端末に残ります。");
+  } catch (error) {
+    showToast(error?.message || "ログアウトできませんでした。");
+  }
+}
+
+async function createSupabaseWorkspace() {
+  if (!supabaseAuthService || !supabaseSession) return;
+  const button = $("#createWorkspaceButton");
+  try {
+    button.disabled = true;
+    const workspaceId = await supabaseAuthService.createWorkspace({
+      name: $("#workspaceNameInput").value.trim(),
+      prefecture: $("#workspacePrefectureInput").value.trim(),
+      municipality: $("#workspaceMunicipalityInput").value.trim(),
+      district: $("#workspaceDistrictInput").value.trim(),
+    });
+    const selectedRole = $("#profileForm")?.elements.role.value || activeRole;
+    if (selectedRole && selectedRole !== "admin") {
+      await supabaseAuthService.addWorkspaceRole(workspaceId, selectedRole);
+    }
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+    await refreshSupabaseSession();
+    showToast("地域を作成しました。");
+  } catch (error) {
+    showToast(error?.message || "地域を作成できませんでした。");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function acceptSupabaseWorkspaceInvite() {
+  if (!supabaseAuthService || !supabaseSession) return;
+  const button = $("#acceptWorkspaceInviteButton");
+  try {
+    button.disabled = true;
+    const result = await supabaseAuthService.acceptInvite($("#workspaceInviteInput").value);
+    const accepted = Array.isArray(result) ? result[0] : result;
+    if (accepted?.workspace_id) {
+      localStorage.setItem(ACTIVE_WORKSPACE_KEY, accepted.workspace_id);
+    }
+    $("#workspaceInviteInput").value = "";
+    await refreshSupabaseSession();
+    showToast("招待された地域へ参加しました。");
+  } catch (error) {
+    showToast(error?.message || "招待コードを確認してください。");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderProfileForm() {
   const form = $("#profileForm");
   if (!form) return;
@@ -4159,7 +4539,7 @@ function boundaryStatusLabel(status) {
   }[status] || "未読込";
 }
 
-function saveProfileFromForm() {
+async function saveProfileFromForm() {
   const form = $("#profileForm");
   if (!form) return;
   const role = form.elements.role.value;
@@ -4249,10 +4629,20 @@ function saveProfileFromForm() {
     applyNeighborProfileToField();
   }
   saveState();
+  let cloudSaved = true;
+  if (supabaseAuthService && supabaseSession) {
+    try {
+      await supabaseAuthService.saveProfile(state.profile, state.equipmentTemplate);
+    } catch {
+      cloudSaved = false;
+    }
+  }
   renderAll();
   switchView("dashboard");
   loadProfileLightBoundaries();
-  showToast("プロフィールを保存しました。");
+  showToast(cloudSaved
+    ? "プロフィールを保存しました。"
+    : "端末へ保存しました。クラウド同期は再試行してください。");
 }
 
 function resetProfileToDemoMode() {
@@ -6566,6 +6956,14 @@ function activeSettings() {
 function saveState() {
   try {
     stateRepository.save(state);
+    if (
+      !suppressRemoteSync
+      && supabaseSyncCoordinator
+      && cloudSyncEnabled()
+      && supabaseSession?.user?.id
+    ) {
+      supabaseSyncCoordinator.schedule(structuredClone(state));
+    }
   } catch (error) {
     const message = error?.code === "conflict"
       ? repositoryService.repositoryErrorMessage(error)

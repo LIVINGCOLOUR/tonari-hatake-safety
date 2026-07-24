@@ -1,0 +1,17 @@
+{
+  "name": "tonari-hatake-safety",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:vendor": "esbuild ./node_modules/@supabase/supabase-js/dist/index.mjs --bundle --minify --format=iife --global-name=supabase --outfile=vendor/supabase/supabase.min.js",
+    "test": "node --test tools/*.test.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.110.8"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "supabase": "2.109.1"
+  }
+}

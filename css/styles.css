@@ -2220,6 +2220,81 @@ label {
   gap: 18px;
 }
 
+.cloud-account-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.cloud-account-panel[hidden],
+.cloud-auth-form[hidden],
+.cloud-account-actions[hidden],
+.cloud-workspace-grid[hidden],
+.cloud-sync-panel[hidden] {
+  display: none !important;
+}
+
+.cloud-auth-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.cloud-account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cloud-account-actions > div {
+  display: grid;
+  gap: 3px;
+}
+
+.cloud-account-actions span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.cloud-workspace-select {
+  min-width: 220px;
+}
+
+.cloud-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.cloud-workspace-block {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.cloud-sync-panel {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.cloud-sync-panel > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.cloud-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .profile-panel {
   display: grid;
   gap: 14px;
@@ -3315,6 +3390,25 @@ label {
 
   .profile-role-grid {
     grid-template-columns: 1fr;
+  }
+
+  .cloud-auth-form,
+  .cloud-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-account-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-workspace-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cloud-auth-form .primary-button {
+    width: 100%;
   }
 
   .neighbor-home-grid {

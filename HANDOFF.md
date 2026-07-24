@@ -342,3 +342,22 @@ Invoke-WebRequest -UseBasicParsing -Uri "https://tonari-hatake-safety.pages.dev/
 5. デモデータを初期化する画面上の操作を追加する。
 6. 非対応Shapefile・GeoJSONに対する取込エラー表示を改善する。
 7. 大量の公開筆ポリゴンをGitに置くか、外部オブジェクト保存へ移すかを決める。
+
+## 第12段階 Supabase Freeバックエンド（2026-07-24）
+
+- 東京リージョンに専用Free開発プロジェクト`tonari-hatake-safety-dev`を作成しました。
+- Magic Link、プロフィール、地域ワークスペース、複数ロール所属、招待を実装しました。
+- Postgres / PostGISへ圃場、計画、気象、チェック、通知、実施後報告、飛行ログ、
+  監査イベントを分離しました。
+- 全アプリテーブルでRLSを有効化し、匿名利用者へテーブル権限を与えていません。
+- 未登録デモは自動送信しません。利用者が地域を選び、移行確認を行った後だけ
+  localStorageとSupabaseをhybrid同期します。
+- 報告写真と飛行ログ点列は通常JSONから分離し、非公開Storageへ保存します。
+- 実DB lintは`public`スキーマで警告・エラー0件です。
+- 匿名読書き拒否、2ユーザーの非公開・通知共有・更新拒否、実同期アダプターの
+  DB/Storage往復を確認し、試験データは削除済みです。
+- 単体テストは142件です。PC・スマホ相当と3ロールの実ブラウザ確認も通過しています。
+- 運用手順は`SUPABASE_RUNBOOK.md`、構成は`SUPABASE_ARCHITECTURE.md`を参照してください。
+
+次は、Magic Linkを実メールで1回確認し、テスト済みコミットをpushしてCloudflare Pagesへ
+デプロイします。その後は同時編集の競合解決と本番Pro移行準備が優先です。

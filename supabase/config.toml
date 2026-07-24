@@ -1,0 +1,42 @@
+project_id = "tonari-hatake-safety"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[local_smtp]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "25MiB"
+
+[auth]
+enabled = true
+site_url = "https://tonari-hatake-safety.pages.dev"
+additional_redirect_urls = [
+  "http://127.0.0.1:4177/app.html",
+  "http://127.0.0.1:4178/app.html",
+  "http://localhost:8080/app.html",
+  "https://tonari-hatake-safety.pages.dev/app.html"
+]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>デモ | となり畑セーフティ</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260716-entry">
+    <link rel="stylesheet" href="css/styles.css?v=20260724-supabase">
   </head>
   <body>
     <div class="app-shell">
@@ -924,6 +924,65 @@
             </div>
           </div>
 
+          <article class="panel cloud-account-panel" id="supabaseAccountPanel" hidden>
+            <div class="panel-head">
+              <div>
+                <span class="tag tag-blue">クラウド接続</span>
+                <h4 id="supabaseAccountTitle">アカウント</h4>
+              </div>
+              <span class="pill amber" id="supabaseConnectionBadge">未接続</span>
+            </div>
+            <p class="small-note" id="supabaseAccountStatus"></p>
+
+            <div class="cloud-auth-form" id="supabaseSignedOutPanel">
+              <label>メールアドレス
+                <input id="supabaseLoginEmail" type="email" autocomplete="email">
+              </label>
+              <button class="primary-button" id="sendMagicLinkButton" type="button">ログイン用メールを送る</button>
+            </div>
+
+            <div class="cloud-account-actions" id="supabaseSignedInPanel" hidden>
+              <div>
+                <strong id="supabaseSignedInEmail"></strong>
+                <span id="supabaseWorkspaceSummary"></span>
+              </div>
+              <label class="cloud-workspace-select">地域
+                <select id="supabaseWorkspaceSelect"></select>
+              </label>
+              <button class="ghost-button" id="supabaseSignOutButton" type="button">ログアウト</button>
+            </div>
+
+            <div class="cloud-workspace-grid" id="supabaseWorkspacePanel" hidden>
+              <div class="cloud-workspace-block">
+                <strong>地域を作成</strong>
+                <div class="form-grid">
+                  <label>地域名<input id="workspaceNameInput" type="text" value="笠間市周辺実証"></label>
+                  <label>都道府県<input id="workspacePrefectureInput" type="text" value="茨城県"></label>
+                  <label>市町村<input id="workspaceMunicipalityInput" type="text" value="笠間市"></label>
+                  <label>地区<input id="workspaceDistrictInput" type="text"></label>
+                </div>
+                <button class="primary-button" id="createWorkspaceButton" type="button">地域を作成</button>
+              </div>
+              <div class="cloud-workspace-block">
+                <strong>招待された地域へ参加</strong>
+                <label>招待コード<input id="workspaceInviteInput" type="text" autocomplete="off"></label>
+                <button class="ghost-button" id="acceptWorkspaceInviteButton" type="button">参加する</button>
+              </div>
+            </div>
+
+            <div class="cloud-sync-panel" id="supabaseSyncPanel" hidden>
+              <div>
+                <strong>地域データの同期</strong>
+                <span class="small-note" id="supabaseSyncStatus">端末だけに保存しています。</span>
+              </div>
+              <div class="cloud-sync-actions">
+                <button class="primary-button" id="enableCloudSyncButton" type="button">端末データをクラウドへ移行</button>
+                <button class="ghost-button" id="reloadCloudDataButton" type="button">クラウドから再読込</button>
+              </div>
+              <p class="small-note">移行を実行するまで、未登録デモや端末内のサンプルデータがクラウドへ送られることはありません。</p>
+            </div>
+          </article>
+
           <form class="profile-layout" id="profileForm">
             <article class="panel profile-panel">
               <div class="panel-head">
@@ -1166,6 +1225,8 @@
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
     <script src="vendor/turf/turf.min.js" defer></script>
     <script src="vendor/shpjs/shp.min.js" defer></script>
-    <script src="js/main.js?v=20260723-entity-repositories" defer></script>
+    <script src="vendor/supabase/supabase.min.js" defer></script>
+    <script src="js/config/supabase-runtime.js" defer></script>
+    <script src="js/main.js?v=20260724-supabase" defer></script>
   </body>
 </html>
