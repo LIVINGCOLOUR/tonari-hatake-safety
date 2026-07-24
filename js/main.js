@@ -4126,12 +4126,22 @@ function configureRemoteSync() {
       state: snapshot,
     }),
     onStatus: ({ status, result }) => {
+      if (status === "synced" && result?.remoteVersions) {
+        suppressRemoteSync = true;
+        try {
+          state = normalizeState(domainSync.applyRemoteVersions(state, result.remoteVersions));
+          stateRepository.save(state);
+        } finally {
+          suppressRemoteSync = false;
+        }
+      }
       const messages = {
         idle: "クラウド同期を待機しています。",
         syncing: "クラウドへ保存しています。",
         synced: result?.assetsPending
           ? `同期済み。写真・飛行ログ ${result.assetsPending}件は添付移行待ちです。`
           : "クラウドと同期済みです。",
+        conflict: "別の端末で先に更新されています。クラウドから再読込してください。",
         error: "端末には保存済みです。クラウド同期を再試行してください。",
       };
       setSupabaseSyncState(status, messages[status] || "クラウド同期の状態を確認してください。");
@@ -4252,7 +4262,10 @@ function renderSupabaseSyncControls() {
   const status = $("#supabaseSyncStatus");
   const enableButton = $("#enableCloudSyncButton");
   const reloadButton = $("#reloadCloudDataButton");
+  const conflictNotice = $("#supabaseConflictNotice");
   status.textContent = supabaseSyncState.message;
+  status.dataset.status = supabaseSyncState.status;
+  conflictNotice.hidden = supabaseSyncState.status !== "conflict";
   enableButton.textContent = enabled ? "現在の端末データを同期" : "端末データをクラウドへ移行";
   enableButton.disabled = supabaseSyncState.status === "syncing";
   reloadButton.disabled = supabaseSyncState.status === "syncing";
@@ -4261,16 +4274,49 @@ function renderSupabaseSyncControls() {
 async function enableSupabaseSync() {
   const membership = activeSupabaseMembership();
   if (!supabaseDataRepository || !membership || !supabaseSession?.user?.id) return;
-  const alreadyEnabled = cloudSyncEnabled(membership.workspace_id);
-  if (!alreadyEnabled) {
-    const accepted = confirm(
-      "この端末のプロフィール、圃場、計画、通知状況、実施報告を選択中の地域へ保存します。続けますか？",
-    );
-    if (!accepted) return;
-  }
   const button = $("#enableCloudSyncButton");
   try {
     button.disabled = true;
+    const alreadyEnabled = cloudSyncEnabled(membership.workspace_id);
+    if (!alreadyEnabled) {
+      const account = await supabaseAuthService.loadProfile();
+      const cloudPayload = await supabaseDataRepository.load({
+        workspaceId: membership.workspace_id,
+        localState: {
+          ...state,
+          profile: account.profile,
+          equipmentTemplate: account.equipmentTemplate,
+        },
+      });
+      if (cloudPayload.workspace.fields.length || cloudPayload.workspace.plans.length) {
+        const accepted = confirm(
+          "この地域にはすでにクラウドデータがあります。端末データで上書きせず、クラウドの最新内容を読み込みます。続けますか？",
+        );
+        if (!accepted) {
+          setSupabaseSyncState(
+            "conflict",
+            "クラウドに既存データがあります。内容を確認してから再読込してください。",
+          );
+          return;
+        }
+        suppressRemoteSync = true;
+        try {
+          state = normalizeState(domainSync.applyRemoteSyncPayload(state, cloudPayload));
+          stateRepository.save(state);
+          localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+          renderAll();
+        } finally {
+          suppressRemoteSync = false;
+        }
+        setSupabaseSyncState("synced", "クラウドの最新データを読み込みました。");
+        showToast("この地域のクラウドデータを読み込みました。");
+        return;
+      }
+      const accepted = confirm(
+        "この端末のプロフィール、圃場、計画、通知状況、実施報告を選択中の地域へ保存します。続けますか？",
+      );
+      if (!accepted) return;
+    }
     setSupabaseSyncState("syncing", "端末データをクラウドへ保存しています。");
     await supabaseAuthService.saveProfile(state.profile, state.equipmentTemplate);
     const result = await supabaseSyncCoordinator.flush(structuredClone(state));
@@ -4283,7 +4329,12 @@ async function enableSupabaseSync() {
     );
     showToast("クラウド同期を開始しました。");
   } catch (error) {
-    setSupabaseSyncState("error", "移行できませんでした。端末データはそのまま残っています。");
+    setSupabaseSyncState(
+      error?.code === "conflict" ? "conflict" : "error",
+      error?.code === "conflict"
+        ? "別の端末で先に更新されています。クラウドから再読込してください。"
+        : "移行できませんでした。端末データはそのまま残っています。",
+    );
     showToast(error?.message || "クラウドへ移行できませんでした。");
   } finally {
     button.disabled = false;

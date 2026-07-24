@@ -207,3 +207,18 @@ export function applyRemoteSyncPayload(localState, payload) {
     boundaryPinned: device.boundaryPinned,
   };
 }
+
+export function applyRemoteVersions(localState, remoteVersions = {}) {
+  const local = cloneJson(objectValue(localState), {});
+  const fieldVersions = objectValue(remoteVersions.fields);
+  const planVersions = objectValue(remoteVersions.plans);
+  local.fields = arrayValue(local.fields).map((field) => ({
+    ...field,
+    remoteVersion: Number(fieldVersions[String(field?.id || "")] || field?.remoteVersion || 0),
+  }));
+  local.plans = arrayValue(local.plans).map((plan) => ({
+    ...plan,
+    remoteVersion: Number(planVersions[String(plan?.id || "")] || plan?.remoteVersion || 0),
+  }));
+  return local;
+}

@@ -3,6 +3,7 @@ export const SYNC_STATUS = Object.freeze({
   IDLE: "idle",
   SYNCING: "syncing",
   SYNCED: "synced",
+  CONFLICT: "conflict",
   ERROR: "error",
 });
 
@@ -48,7 +49,10 @@ export function createRemoteSyncCoordinator({
         return result;
       })
       .catch((error) => {
-        publish(SYNC_STATUS.ERROR, { error });
+        publish(
+          error?.code === "conflict" ? SYNC_STATUS.CONFLICT : SYNC_STATUS.ERROR,
+          { error },
+        );
         throw error;
       })
       .finally(() => {

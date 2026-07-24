@@ -6,6 +6,7 @@ import {
   SYNC_PAYLOAD_VERSION,
   SyncBoundaryError,
   applyRemoteSyncPayload,
+  applyRemoteVersions,
   buildRemoteSyncPayload,
   extractDeviceState,
   validateRemoteSyncPayload,
@@ -139,4 +140,16 @@ test("sync payload validation rejects unknown versions and malformed collections
     }),
     (error) => error instanceof SyncBoundaryError && error.code === "invalid-sync-payload",
   );
+});
+
+test("remote save versions are attached without changing device-owned state", () => {
+  const state = sampleState();
+  const next = applyRemoteVersions(state, {
+    fields: { f1: 4 },
+    plans: { p1: 7 },
+  });
+  assert.equal(next.fields[0].remoteVersion, 4);
+  assert.equal(next.plans[0].remoteVersion, 7);
+  assert.equal(next.role, "neighbor");
+  assert.equal(state.fields[0].remoteVersion, undefined);
 });

@@ -192,6 +192,36 @@ assert(sprayerHistory.value.recordCount > 0, "Sprayer history contains no record
 assert(sprayerHistory.value.overflow <= 0, `Sprayer history overflows by ${sprayerHistory.value.overflow}px`);
 assert(sprayerHistory.errors.length === 0, `Sprayer history runtime errors: ${sprayerHistory.errors.join(", ")}`);
 
+for (const viewport of [
+  { width: 1440, height: 960 },
+  { width: 390, height: 844 },
+]) {
+  const conflictPanel = await inspectPage("/app.html?role=sprayer#profile", `() => {
+    const account = document.querySelector('#supabaseAccountPanel');
+    const sync = document.querySelector('#supabaseSyncPanel');
+    const notice = document.querySelector('#supabaseConflictNotice');
+    account.hidden = false;
+    sync.hidden = false;
+    notice.hidden = false;
+    return {
+      text: notice.textContent.trim(),
+      noticeWidth: notice.getBoundingClientRect().width,
+      viewportWidth: innerWidth,
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  }`, viewport, 3500);
+  assert(conflictPanel.value.text.includes("別の端末"), "Conflict notice does not explain the cause");
+  assert(
+    conflictPanel.value.noticeWidth <= conflictPanel.value.viewportWidth,
+    `Conflict notice is wider than the ${viewport.width}px viewport`,
+  );
+  assert(
+    conflictPanel.value.overflow <= 0,
+    `Conflict notice causes ${conflictPanel.value.overflow}px overflow at ${viewport.width}px`,
+  );
+  assert(conflictPanel.errors.length === 0, `Conflict UI runtime errors: ${conflictPanel.errors.join(", ")}`);
+}
+
 const legacyRedirect = await inspectPage("/#dashboard", `() => location.pathname`);
 assert(
   legacyRedirect.value.endsWith("/app.html") || legacyRedirect.value.endsWith("/app"),

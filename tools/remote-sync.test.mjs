@@ -38,3 +38,19 @@ test("保存失敗を状態として通知し再試行できる", async () => {
   await coordinator.flush({ revision: 1 });
   assert.equal(coordinator.status(), SYNC_STATUS.SYNCED);
 });
+
+test("別端末による更新競合は通常の通信失敗と区別する", async () => {
+  const statuses = [];
+  const coordinator = createRemoteSyncCoordinator({
+    saveRemote: async () => {
+      const error = new Error("stale");
+      error.code = "conflict";
+      throw error;
+    },
+    debounceMs: 0,
+    onStatus: ({ status }) => statuses.push(status),
+  });
+  await assert.rejects(coordinator.flush({ revision: 1 }), /stale/);
+  assert.equal(coordinator.status(), SYNC_STATUS.CONFLICT);
+  assert.deepEqual(statuses, [SYNC_STATUS.SYNCING, SYNC_STATUS.CONFLICT]);
+});

@@ -67,6 +67,56 @@ function resultData(result, operation) {
   return result?.data || [];
 }
 
+function remoteVersion(value) {
+  const version = Number(value);
+  return Number.isInteger(version) && version > 0 ? version : null;
+}
+
+async function saveVersionedRows({
+  client,
+  table,
+  rows,
+  sourceByClientRef,
+  operation,
+}) {
+  const saved = [];
+  const inserts = [];
+
+  for (const row of rows) {
+    const source = sourceByClientRef.get(String(row.client_ref));
+    const expectedVersion = remoteVersion(source?.remoteVersion);
+    if (!expectedVersion) {
+      inserts.push(row);
+      continue;
+    }
+
+    const result = await client.from(table)
+      .update(row)
+      .eq("workspace_id", row.workspace_id)
+      .eq("client_ref", row.client_ref)
+      .eq("version", expectedVersion)
+      .select("id, client_ref, version");
+    const updated = resultData(result, operation);
+    if (!updated.length) {
+      throw new SupabaseRepositoryError(
+        "conflict",
+        "別の端末で先に更新されています。クラウドから最新データを再読込してください。",
+      );
+    }
+    saved.push(...updated);
+  }
+
+  if (inserts.length) {
+    saved.push(...resultData(
+      await client.from(table)
+        .upsert(inserts, { onConflict: "workspace_id,client_ref" })
+        .select("id, client_ref, version"),
+      operation,
+    ));
+  }
+  return saved;
+}
+
 function dateOrNull(value) {
   const normalized = String(value || "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
@@ -339,25 +389,33 @@ export function createSupabaseAppStateRepository({ client, storageService = null
       };
       const payload = buildRemoteSyncPayload(state);
       const fieldRows = payload.workspace.fields.map((field) => fieldToRow(field, context));
+      const fieldSourceByClientRef = new Map(
+        arrayValue(state?.fields).map((field) => [String(field?.id || ""), field]),
+      );
       const savedFields = fieldRows.length
-        ? resultData(
-          await client.from("fields")
-            .upsert(fieldRows, { onConflict: "workspace_id,client_ref" })
-            .select("id, client_ref"),
-          "fields-save",
-        )
+        ? await saveVersionedRows({
+          client,
+          table: "fields",
+          rows: fieldRows,
+          sourceByClientRef: fieldSourceByClientRef,
+          operation: "fields-save",
+        })
         : [];
       const fieldUuidByClientRef = new Map(
         arrayValue(savedFields).map((row) => [String(row.client_ref), String(row.id)]),
       );
       const planRows = payload.workspace.plans.map((plan) => planToRow(plan, context, fieldUuidByClientRef));
+      const planSourceByClientRef = new Map(
+        arrayValue(state?.plans).map((plan) => [String(plan?.id || ""), plan]),
+      );
       const savedPlans = planRows.length
-        ? resultData(
-          await client.from("operation_plans")
-            .upsert(planRows, { onConflict: "workspace_id,client_ref" })
-            .select("id, client_ref"),
-          "plans-save",
-        )
+        ? await saveVersionedRows({
+          client,
+          table: "operation_plans",
+          rows: planRows,
+          sourceByClientRef: planSourceByClientRef,
+          operation: "plans-save",
+        })
         : [];
       const planUuidByClientRef = new Map(
         arrayValue(savedPlans).map((row) => [String(row.client_ref), String(row.id)]),
@@ -474,6 +532,14 @@ export function createSupabaseAppStateRepository({ client, storageService = null
         plans: savedPlans.length,
         assetsPending: Math.max(0, payload.assets.length - savedAssets),
         assetsSaved: savedAssets,
+        remoteVersions: {
+          fields: Object.fromEntries(
+            savedFields.map((row) => [String(row.client_ref), Number(row.version || 1)]),
+          ),
+          plans: Object.fromEntries(
+            savedPlans.map((row) => [String(row.client_ref), Number(row.version || 1)]),
+          ),
+        },
       };
     },
   });

@@ -83,6 +83,7 @@ http://localhost:8080/
 - `js/services/supabase-storage.mjs`: 非公開写真・飛行ログ保存
 - `supabase/migrations/`: Postgres / PostGIS、RLS、監査、Storage
 - `SUPABASE_RUNBOOK.md`: Supabaseの反映、検証、FreeからProへの移行手順
+- `SYNC_CONFLICTS.md`: 複数端末で同時編集した場合の上書き防止と利用者の操作
 - `server/integrations/`: プロバイダーに依存しない読取専用BFFロジック
 - `worker/`: レート・同時実行制限を持つ外部連携専用Worker
 - `INTEGRATIONS.md`: xarvio/WAGRI連携の対応範囲、項目対応、認証境界
@@ -117,7 +118,7 @@ xarvio/WAGRIは、公開仕様で確認できる圃場境界だけをプロバ�
 ## V1で未実装のもの
 
 LINE実送信、DIPS連携、ドローンメーカーSDK実連携、圃場台帳との本番連携、
-同時編集の競合解決、本番用の個人情報運用は未実装です。
+競合内容の差分比較画面、本番用の個人情報運用は未実装です。
 
 認証、バックエンドDB、RLS、監査イベント、非公開StorageはFree開発環境へ実装済みです。
 実利用者を受け入れる前にProへ移行し、バックアップ、復旧、監査保持、退会・削除手順を

@@ -123,6 +123,21 @@ try {
   );
   assert.equal(loaded.workspace.plans[0].report.actualAmount, "500mL");
 
+  const versionedState = {
+    ...state,
+    fields: loaded.workspace.fields,
+    plans: loaded.workspace.plans.map((plan) => ({
+      ...plan,
+      report: { ...(plan.report || {}), photoData: undefined },
+      droneLog: { ...(plan.droneLog || {}), points: undefined },
+    })),
+  };
+  await repository.save({ workspaceId, userId, state: versionedState });
+  await assert.rejects(
+    repository.save({ workspaceId, userId, state: versionedState }),
+    (error) => error?.code === "conflict",
+  );
+
   const assets = await client
     .from("app_assets")
     .select("id, bucket_id, object_path")

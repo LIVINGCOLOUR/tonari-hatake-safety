@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>デモ | となり畑セーフティ</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260724-supabase">
+    <link rel="stylesheet" href="css/styles.css?v=20260724-conflicts">
   </head>
   <body>
     <div class="app-shell">
@@ -974,6 +974,10 @@
               <div>
                 <strong>地域データの同期</strong>
                 <span class="small-note" id="supabaseSyncStatus">端末だけに保存しています。</span>
+                <p class="cloud-conflict-notice" id="supabaseConflictNotice" hidden>
+                  別の端末で先に更新されています。端末の入力内容は残っています。
+                  内容を確認してから「クラウドから再読込」を実行してください。
+                </p>
               </div>
               <div class="cloud-sync-actions">
                 <button class="primary-button" id="enableCloudSyncButton" type="button">端末データをクラウドへ移行</button>
@@ -1227,6 +1231,6 @@
     <script src="vendor/shpjs/shp.min.js" defer></script>
     <script src="vendor/supabase/supabase.min.js" defer></script>
     <script src="js/config/supabase-runtime.js" defer></script>
-    <script src="js/main.js?v=20260724-supabase" defer></script>
+    <script src="js/main.js?v=20260724-conflicts" defer></script>
   </body>
 </html>

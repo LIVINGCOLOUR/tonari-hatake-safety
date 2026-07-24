@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createSupabaseAppStateRepository,
   fieldToRow,
   notificationToRow,
   planToRow,
@@ -71,4 +72,75 @@ test("気象・通知・実施報告に安定した同期キーを付ける", ()
   assert.equal(notice.target_key, "field:field-a");
   assert.equal(notice.response_code, "confirmed");
   assert.equal(report.idempotency_key, "work-record:plan-a");
+});
+
+function versionedClient(updatedRows) {
+  return {
+    from(table) {
+      if (table === "fields") {
+        const chain = {
+          update() {
+            return chain;
+          },
+          eq() {
+            return chain;
+          },
+          async select() {
+            return { data: updatedRows, error: null };
+          },
+        };
+        return chain;
+      }
+      if (table === "workspaces") {
+        return {
+          update() {
+            return {
+              async eq() {
+                return { data: [], error: null };
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`unexpected table: ${table}`);
+    },
+  };
+}
+
+test("最後に読んだ版と一致する場合だけ圃場を更新する", async () => {
+  const repository = createSupabaseAppStateRepository({
+    client: versionedClient([{
+      id: "00000000-0000-4000-8000-000000000010",
+      client_ref: "field-a",
+      version: 5,
+    }]),
+  });
+  const result = await repository.save({
+    workspaceId: context.workspaceId,
+    userId: context.userId,
+    state: {
+      fields: [{ id: "field-a", name: "圃場A", remoteVersion: 4 }],
+      plans: [],
+      settings: {},
+    },
+  });
+  assert.equal(result.remoteVersions.fields["field-a"], 5);
+});
+
+test("版が一致しない更新は競合として停止する", async () => {
+  const repository = createSupabaseAppStateRepository({
+    client: versionedClient([]),
+  });
+  await assert.rejects(
+    repository.save({
+      workspaceId: context.workspaceId,
+      userId: context.userId,
+      state: {
+        fields: [{ id: "field-a", name: "圃場A", remoteVersion: 4 }],
+        plans: [],
+        settings: {},
+      },
+    }),
+    (error) => error?.code === "conflict",
+  );
 });
