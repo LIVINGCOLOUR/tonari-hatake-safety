@@ -1,182 +1,173 @@
-# xarvio / WAGRI Integration Boundary
+# xarvio・WAGRI 外部連携の境界設計
 
-## Purpose
+## 目的
 
-Provider data is normalized at the import boundary. UI state and saved field
-records consume one canonical GeoJSON Polygon/MultiPolygon model and do not
-depend on provider response shapes.
+外部プロバイダーのデータは、取込境界でアプリ共通形式へ正規化します。UIと保存済み圃場は、
+共通のGeoJSON `Polygon`・`MultiPolygon` 形式だけを使用し、プロバイダー固有の
+レスポンス形式には依存しません。
 
 ## WAGRI
 
-Supported public response contracts:
+公開仕様に基づいて対応するレスポンス形式は次のとおりです。
 
-- FieldPolygonID v2/v3 records containing `polygon_uuid`, land metadata, and
-  `Polygons[].Coordinates[]`
-- FieldPolygonID GeoJSON `FeatureCollection`
-- AgriculturalMap3 `{ targetFeatures }` responses whose geometry type is
-  `LinearPolygon`
+- `polygon_uuid`、土地情報、`Polygons[].Coordinates[]` を含むFieldPolygonID v2・v3形式
+- FieldPolygonIDのGeoJSON `FeatureCollection` 形式
+- `targetFeatures` と `LinearPolygon` を含むAgriculturalMap3形式
 
-Canonical mapping:
+共通圃場形式への対応関係は次のとおりです。
 
-| WAGRI | Canonical field |
+| WAGRI | アプリ共通の圃場項目 |
 | --- | --- |
-| `polygon_uuid`, `ID`, `LastPolygonUuid` | `externalRefs[].externalId` |
-| `edit_year` / `EditYear` | `externalRefs[].revision` |
-| polygon coordinates | GeoJSON EPSG:4326 geometry |
-| `land_type` / `FieldType` | `properties.sourceLandType` only |
+| `polygon_uuid`、`ID`、`LastPolygonUuid` | `externalRefs[].externalId` |
+| `edit_year`・`EditYear` | `externalRefs[].revision` |
+| ポリゴン座標 | GeoJSON EPSG:4326 geometry |
+| `land_type`・`FieldType` | `properties.sourceLandType` のみ |
 
-`land_type` and `FieldType` identify paddy/upland categories. They do not show
-whether chemicals are used. WAGRI parcels therefore import as neutral,
-unregistered (`public`) fields until a user or an authoritative workflow
-assigns the app-specific safety status.
+`land_type` と `FieldType` は水田・畑などの土地分類を示すもので、農薬使用状況を
+示すものではありません。そのため、WAGRIの筆ポリゴンは、利用者または権限のある運用で
+このアプリ固有の安全ステータスを設定するまで、中立かつ未登録の `public` 圃場として
+取り込みます。
 
 ## xarvio FIELD MANAGER
 
-The public boundary API exports KML, SHP, SVG, or DJI KML. The browser may
-parse a single exported boundary to GeoJSON, then call the xarvio adapter with
-the field UUID used in the API request.
+公開されている圃場境界APIは、KML、SHP、SVG、DJI KMLを出力できます。ブラウザ側では、
+単一の出力境界をGeoJSONへ変換し、API呼出時に使ったxarvio圃場UUIDとともに
+xarvioアダプターへ渡します。
 
-The adapter intentionally rejects:
+アダプターは次の入力を意図的に拒否します。
 
-- a boundary without an explicit xarvio field UUID
-- multiple polygons bound to one UUID
-- automatic matching of shapes to UUIDs from undocumented archive attributes
+- 明示的なxarvio圃場UUIDがない境界
+- 1つのUUIDへ複数ポリゴンを割り当てる入力
+- 公開仕様にないアーカイブ属性を使った、形状とUUIDの自動対応付け
 
-## Authentication and Secrets
+## 認証と秘密情報
 
-The current product is a static frontend. Production provider credentials,
-OAuth refresh tokens, WAGRI tokens, and account identifiers must not be stored
-in JavaScript, localStorage, or deployed static files.
+現在の製品は静的フロントエンドです。本番用のプロバイダー認証情報、OAuth更新トークン、
+WAGRIトークン、アカウントIDをJavaScript、`localStorage`、公開静的ファイルへ
+保存してはいけません。
 
-A production integration requires a backend or BFF that:
+本番連携には、次の責務を持つバックエンドまたはBFFが必要です。
 
-1. performs provider authentication and token refresh;
-2. calls provider APIs under the correct tenant/account;
-3. validates and converts payloads to the documented adapter contract;
-4. records consent, provenance, revision, and sync audit events;
-5. returns only the minimum field data needed by the browser.
+1. プロバイダー認証とトークン更新を行う。
+2. 正しい組織・アカウントの権限でプロバイダーAPIを呼び出す。
+3. レスポンスを検証し、文書化されたアダプター契約へ変換する。
+4. 同意、来歴、更新番号、同期監査イベントを記録する。
+5. ブラウザに必要な最小限の圃場データだけを返す。
 
-## Read-only provider modules
+## 読み取り専用プロバイダーモジュール
 
-The disabled-by-default provider handlers under `server/integrations/` expose:
+`server/integrations/` にある、既定で無効なプロバイダー処理は次のAPIを定義しています。
 
 - `GET /api/integrations/status`
 - `GET /api/integrations/wagri/field-polygons?lat=...&lng=...&cmp=1`
 - `GET /api/integrations/xarvio/boundary?fieldUuid=...`
 
-Every route requires `INTEGRATIONS_ENABLED=true`, the encrypted
-`BFF_ACCESS_TOKEN` secret, and an `X-Tonari-BFF-Token` request header. This
-shared token is for operator testing only. It must not be embedded in the
-static browser app. Before exposing provider sync to end users, replace this
-guard with real application authentication or Cloudflare Access authorization.
-Use at least 32 random characters for `BFF_ACCESS_TOKEN`; shorter values are
-rejected as a configuration error.
+すべてのAPIは、`INTEGRATIONS_ENABLED=true`、暗号化された
+`BFF_ACCESS_TOKEN`、一致する `X-Tonari-BFF-Token` ヘッダーを必要とします。
+この共通トークンは担当者試験専用であり、静的フロントエンドへ埋め込んではなりません。
+一般利用者へプロバイダー同期を公開する前に、実際のアプリ認証またはCloudflare Access
+認可へ置き換えます。`BFF_ACCESS_TOKEN` は32文字以上のランダムな値とし、
+それより短い場合は設定エラーとして拒否します。
 
-Provider secrets:
+プロバイダーの秘密情報は次のとおりです。
 
-- WAGRI: `WAGRI_CLIENT_ID`, `WAGRI_CLIENT_SECRET`
-- xarvio: `XARVIO_ACCESS_TOKEN` (a previously issued OAuth2 access token)
+- WAGRI: `WAGRI_CLIENT_ID`、`WAGRI_CLIENT_SECRET`
+- xarvio: `XARVIO_ACCESS_TOKEN`（事前発行済みOAuth2アクセストークン）
 
-Optional safety settings:
+任意の安全設定は次のとおりです。
 
-- `XARVIO_MAX_BOUNDARY_BYTES`: maximum proxied ZIP size; defaults to 10 MiB
-  and is hard-capped at 25 MiB. Declared oversized responses are rejected
-  before streaming; chunked responses are terminated if they cross the cap.
-  When `Content-Length` is present, a stream that ends before the declared
-  length is treated as truncated instead of a successful ZIP download.
-- `WAGRI_TIMEOUT_MS`: absolute deadline for each WAGRI authentication or JSON
-  request; defaults to 12 seconds and is clamped to 1-30 seconds.
-- `XARVIO_TIMEOUT_MS`: deadline for xarvio response headers; defaults to 12
-  seconds and is clamped to 1-30 seconds.
-- `XARVIO_STREAM_TIMEOUT_MS`: absolute deadline for the streamed xarvio ZIP
-  body; defaults to 30 seconds and is clamped to 1-120 seconds. A timeout after
-  streaming starts terminates the response body because its HTTP 200 status
-  can no longer be replaced with a 504 response.
+- `XARVIO_MAX_BOUNDARY_BYTES`: 中継するZIPの最大サイズ。既定値は10 MiB、
+  上限は25 MiBです。宣言されたサイズが上限を超える場合は通信開始前に拒否し、
+  チャンク形式でも同じ上限を超えた時点で終了します。`Content-Length` がある場合に
+  宣言サイズより短く終了したレスポンスは、正常なZIPではなく切断として扱います。
+- `WAGRI_TIMEOUT_MS`: WAGRI認証・JSON通信の絶対期限。既定値は12秒で、
+  1秒から30秒へ制限します。
+- `XARVIO_TIMEOUT_MS`: xarvioのレスポンスヘッダー待機期限。既定値は12秒で、
+  1秒から30秒へ制限します。
+- `XARVIO_STREAM_TIMEOUT_MS`: xarvio ZIP本文全体の絶対期限。既定値は30秒で、
+  1秒から120秒へ制限します。本文送信開始後はHTTP 200を504へ変更できないため、
+  期限超過時はレスポンス本文を終了します。
 
-Provider timeouts return a sanitized `504 provider-timeout` response before a
-response body starts and include `Retry-After: 5`. Client cancellation remains
-distinct from an upstream timeout. Invalid timeout settings use the documented
-defaults rather than disabling the limit.
+プロバイダーの期限超過は、本文送信前であれば内容を限定した
+`504 provider-timeout` と `Retry-After: 5` を返します。利用者側の通信中止は
+プロバイダー期限超過と区別します。不正な期限設定は制限を無効化せず、文書化された
+既定値を使用します。
 
-Provider error bodies and diagnostic headers are never forwarded. WAGRI
-authentication and field responses must contain valid JSON, and malformed or
-empty successful responses are converted to a sanitized gateway failure.
+外部プロバイダーのエラー本文と診断ヘッダーは転送しません。WAGRIの認証レスポンスと
+圃場レスポンスには正しいJSONを要求し、空または不正な成功レスポンスは、内容を限定した
+ゲートウェイエラーへ変換します。
 
-Store all four values as encrypted Cloudflare secrets. For local development,
-put them in an untracked `.dev.vars` file. Never put them in `wrangler.toml`.
+4つの値はすべてCloudflareの暗号化シークレットとして保存します。ローカル開発では、
+Git管理外の `.dev.vars` に置きます。`wrangler.toml` には記載しません。
 
-Run the standalone gateway locally:
+単独ゲートウェイをローカルで起動する場合は、次を実行します。
 
 ```powershell
 npx.cmd --yes wrangler@latest dev --config wrangler.integrations.toml
 ```
 
-The ordinary `python -m http.server` launch still serves the frontend, but it
-does not execute provider routes.
+通常の `python -m http.server` はフロントエンドを配信しますが、
+プロバイダーAPIは実行しません。
 
-## Standalone integrations gateway
+## 単独外部連携ゲートウェイ
 
-Rate-limited provider traffic is owned by the standalone
-`tonari-hatake-integrations` Worker. Its entry point is
-`worker/integrations-gateway.js`, and `wrangler.integrations.toml` defines a
-native Cloudflare Rate Limiting binding with a provider-route limit of 30
-requests per 60 seconds.
+レート制限付きのプロバイダー通信は、単独の
+`tonari-hatake-integrations` Workerが担当します。入口は
+`worker/integrations-gateway.js` で、`wrangler.integrations.toml` には
+60秒あたり30リクエストのCloudflare Rate Limitingバインディングを定義しています。
 
-Disabled-by-default deployment:
+既定で無効なデプロイ先:
 `https://tonari-hatake-integrations.makoto-monda.workers.dev`
 
-The gateway authorizes the operator before counting a request. It fails closed
-with `503 rate-limit-unavailable` when the binding is missing or fails, and
-returns `429 rate-limit-exceeded` with `Retry-After: 60` before calling a
-provider when the limit is reached. The binding is a protection mechanism, not
-an accounting system; Cloudflare documents it as permissive and eventually
-consistent within each location.
+ゲートウェイは、レート制限を数える前に担当者認証を行います。バインディングがない、
+または失敗した場合は安全側に停止して `503 rate-limit-unavailable` を返します。
+上限到達時はプロバイダーを呼び出す前に、`Retry-After: 60` を付けた
+`429 rate-limit-exceeded` を返します。このバインディングは防御機構であり、
+厳密な集計機構ではありません。Cloudflareの仕様上、各拠点で最終的に整合する
+許容型の制限です。
 
-Each Worker isolate also applies a fail-fast provider concurrency guard:
+各Worker分離環境では、プロバイダーごとの同時実行制限も即時適用します。
 
-- `WAGRI_MAX_CONCURRENCY`: defaults to 4 active JSON operations.
-- `XARVIO_MAX_CONCURRENCY`: defaults to 2 active ZIP streams.
+- `WAGRI_MAX_CONCURRENCY`: JSON処理の同時実行数。既定値は4。
+- `XARVIO_MAX_CONCURRENCY`: ZIPストリームの同時実行数。既定値は2。
 
-Both values are clamped to 1-10. Saturated providers return
-`503 provider-busy` with `Retry-After: 2` before another provider request is
-started. A xarvio slot remains active until the ZIP body closes, errors, is
-cancelled by the client, or reaches its safety deadline. This per-isolate guard
-limits local bursts but is not a global concurrency guarantee; use a Durable
-Object-backed implementation if strict tenant-wide limits become necessary.
+どちらも1から10へ制限します。上限到達時は、新しいプロバイダー通信を始める前に
+`Retry-After: 2` を付けた `503 provider-busy` を返します。xarvioの実行枠は、
+ZIP本文の終了、エラー、中止、または安全期限到達まで保持します。この制限は各Worker
+分離環境内の局所的な急増を抑えるもので、地域全体での厳密な同時実行保証ではありません。
+地域単位で厳密に制限する場合は、Durable Objectsを使った実装が必要です。
 
-The duplicate Pages Functions routes have been removed. The static Pages site
-contains no provider credentials and does not execute integration handlers.
-See `INTEGRATIONS_RUNBOOK.md` before changing Worker secrets or enabling the
-operator-only integration flag.
+重複していたPages FunctionsのAPIは削除済みです。静的Pagesサイトには
+プロバイダー認証情報を含めず、外部連携処理も実行しません。Workerの秘密情報や
+担当者試験フラグを変更する前に、`INTEGRATIONS_RUNBOOK.md` を確認します。
 
-Validate the Worker configuration without deploying:
+設定をデプロイせずに検証する場合は、次を実行します。
 
 ```powershell
 npx.cmd --yes wrangler@latest deploy --config wrangler.integrations.toml --dry-run
 ```
 
-Before replacing the operator-only shared token with Cloudflare Access, add
-server-side verification of `Cf-Access-Jwt-Assertion`. The signature, issuer,
-and application audience must all be verified against the team JWKS; trusting
-the presence of the header alone is not authentication. Use Cloudflare's
-documented `jose` implementation rather than a custom JWT verifier.
+担当者用共通トークンをCloudflare Accessへ置き換える前に、
+`Cf-Access-Jwt-Assertion` をサーバー側で検証します。チームのJWKSを使って、
+署名、発行者、アプリケーションの対象者をすべて検証する必要があります。
+ヘッダーが存在するだけで認証済みとして扱ってはいけません。独自JWT実装ではなく、
+Cloudflareが文書化している `jose` 実装を使用します。
 
-## Next Step
+## 次の段階
 
-Replace the shared operator token with application authentication or verified
-Cloudflare Access identity. Then obtain licensed, redacted fixtures from each
-intended account and run them as contract tests before enabling read-only sync.
-Do not implement bidirectional plan or operation exchange before those gates.
+共通の担当者トークンを、アプリ認証または検証済みCloudflare Access認証へ
+置き換えます。その後、対象アカウントから利用許諾を得て機密情報を除いたデータを取得し、
+契約テストへ追加してから読み取り専用同期を有効化します。これらの条件を満たす前に、
+散布計画や作業実績の双方向連携を実装してはいけません。
 
-## Official References
+## 公式資料
 
 - xarvio FIELD MANAGER Public API: https://developer.xarvio.com/api.html
 - WAGRI FieldPolygonID v3: https://wagri.naro.go.jp/wagri_api/fieldpolygonid3-get/
-- WAGRI FieldPolygonID v2 specification: https://wagri.naro.go.jp/wp-content/uploads/2022/08/FieldPolygonID2.pdf
-- WAGRI AgriculturalMap3 city-code API: https://wagri.naro.go.jp/wagri_api/agriculturalmap3-getfieldpolygon-citycode/
+- WAGRI FieldPolygonID v2仕様: https://wagri.naro.go.jp/wp-content/uploads/2022/08/FieldPolygonID2.pdf
+- WAGRI AgriculturalMap3 市町村コードAPI: https://wagri.naro.go.jp/wagri_api/agriculturalmap3-getfieldpolygon-citycode/
 - WAGRI AgriculturalMap3 WFS API: https://wagri.naro.go.jp/wagri_api/agriculturalmap3-wfsgetfieldpolygon/
-- WAGRI access token API: https://wagri.naro.go.jp/wagri_api/token/
-- Cloudflare Workers secrets: https://developers.cloudflare.com/workers/configuration/secrets/
+- WAGRIアクセストークンAPI: https://wagri.naro.go.jp/wagri_api/token/
+- Cloudflare Workers Secrets: https://developers.cloudflare.com/workers/configuration/secrets/
 - Cloudflare Workers Rate Limiting: https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
-- Cloudflare Workers Streams: https://developers.cloudflare.com/workers/runtime-apis/streams/
-- Cloudflare Access JWT validation: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
+- Cloudflare Access JWT検証: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/

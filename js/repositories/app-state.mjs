@@ -181,6 +181,181 @@ export function createAggregateEntityRepository({
   });
 }
 
+export function createAggregateRepositoryBundle({
+  getAggregate,
+} = {}) {
+  const aggregate = requiredFunction(getAggregate, "集約データ取得処理");
+  const plans = createAggregateEntityRepository({
+    getAggregate: aggregate,
+    collectionName: "plans",
+  });
+  const fields = createAggregateEntityRepository({
+    getAggregate: aggregate,
+    collectionName: "fields",
+  });
+  const notifications = createPlanNotificationRepository({
+    getPlan: (id) => plans.get(id),
+    savePlan: (plan) => plans.save(plan),
+  });
+  const workRecords = createPlanWorkRecordRepository({
+    listPlans: () => plans.list(),
+    getPlan: (id) => plans.get(id),
+    savePlan: (plan) => plans.save(plan),
+  });
+  return assertRepositoryPorts({
+    plans,
+    fields,
+    notifications,
+    workRecords,
+  });
+}
+
+export function createPlanNotificationRepository({
+  getPlan,
+  savePlan,
+} = {}) {
+  const findPlan = requiredFunction(getPlan, "散布計画取得処理");
+  const persistPlan = requiredFunction(savePlan, "散布計画保存処理");
+
+  function requiredId(value, label) {
+    const id = String(value || "").trim();
+    if (!id) {
+      throw new RepositoryError("invalid-notification", `${label}が設定されていません。`);
+    }
+    return id;
+  }
+
+  function planFor(planId) {
+    const id = requiredId(planId, "散布計画ID");
+    const plan = findPlan(id);
+    if (!plan) {
+      throw new RepositoryError("missing-plan", `散布計画が見つかりません：${id}`);
+    }
+    return plan;
+  }
+
+  function recordsFor(plan) {
+    const deliveries = plan.notificationTargets || {};
+    const responses = plan.notificationResponses || {};
+    const fieldIds = [...new Set([...Object.keys(deliveries), ...Object.keys(responses)])];
+    return fieldIds.map((fieldId) => ({
+      id: `${plan.id}:${fieldId}`,
+      planId: String(plan.id),
+      fieldId,
+      delivered: Boolean(deliveries[fieldId]),
+      response: responses[fieldId] || "未回答",
+    }));
+  }
+
+  function recordFor(plan, fieldId) {
+    return recordsFor(plan).find((record) => record.fieldId === fieldId) || {
+      id: `${plan.id}:${fieldId}`,
+      planId: String(plan.id),
+      fieldId,
+      delivered: false,
+      response: "未回答",
+    };
+  }
+
+  return Object.freeze({
+    listByPlan(planId) {
+      return recordsFor(planFor(planId));
+    },
+
+    saveDelivery(planId, fieldId, delivered = true) {
+      const plan = planFor(planId);
+      const targetId = requiredId(fieldId, "通知対象圃場ID");
+      plan.notificationTargets = {
+        ...(plan.notificationTargets || {}),
+        [targetId]: Boolean(delivered),
+      };
+      persistPlan(plan);
+      return recordFor(plan, targetId);
+    },
+
+    saveResponse(planId, fieldId, response = "未回答") {
+      const plan = planFor(planId);
+      const targetId = requiredId(fieldId, "通知対象圃場ID");
+      const nextResponse = String(response || "未回答");
+      plan.notificationResponses = {
+        ...(plan.notificationResponses || {}),
+        [targetId]: nextResponse,
+      };
+      if (nextResponse !== "未回答") {
+        plan.notificationTargets = {
+          ...(plan.notificationTargets || {}),
+          [targetId]: true,
+        };
+      }
+      persistPlan(plan);
+      return recordFor(plan, targetId);
+    },
+  });
+}
+
+export function createPlanWorkRecordRepository({
+  listPlans,
+  getPlan,
+  savePlan,
+} = {}) {
+  const listAllPlans = requiredFunction(listPlans, "散布計画一覧取得処理");
+  const findPlan = requiredFunction(getPlan, "散布計画取得処理");
+  const persistPlan = requiredFunction(savePlan, "散布計画保存処理");
+
+  function recordFor(plan) {
+    if (!plan) return null;
+    const planId = String(plan.id || "").trim();
+    if (!planId) {
+      throw new RepositoryError("invalid-work-record", "散布計画IDが設定されていません。");
+    }
+    return {
+      id: planId,
+      planId,
+      ...(plan.report || {}),
+    };
+  }
+
+  function planFor(planId) {
+    const id = String(planId || "").trim();
+    if (!id) {
+      throw new RepositoryError("invalid-work-record", "作業記録の散布計画IDが設定されていません。");
+    }
+    const plan = findPlan(id);
+    if (!plan) {
+      throw new RepositoryError("missing-plan", `散布計画が見つかりません：${id}`);
+    }
+    return plan;
+  }
+
+  return Object.freeze({
+    list() {
+      return listAllPlans().map(recordFor);
+    },
+
+    get(planId) {
+      const id = String(planId || "").trim();
+      if (!id) return null;
+      return recordFor(findPlan(id));
+    },
+
+    save(record) {
+      const planId = String(record?.planId || record?.id || "").trim();
+      const plan = planFor(planId);
+      const { id: _id, planId: _planId, ...report } = record || {};
+      plan.report = {
+        ...(plan.report || {}),
+        ...report,
+      };
+      plan.checks = {
+        ...(plan.checks || {}),
+        report: Boolean(plan.report.doneDate),
+      };
+      persistPlan(plan);
+      return recordFor(plan);
+    },
+  });
+}
+
 export function repositoryErrorMessage(error) {
   if (error instanceof RepositoryError) return error.message;
   return "保存処理に失敗しました。";

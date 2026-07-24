@@ -6,13 +6,17 @@ import {
   RepositoryError,
   assertRepositoryPorts,
   createAggregateEntityRepository,
+  createAggregateRepositoryBundle,
   createLocalStorageAppStateRepository,
+  createPlanNotificationRepository,
+  createPlanWorkRecordRepository,
 } from "../js/repositories/app-state.mjs";
 import {
   SCHEMA_VERSION,
   nextEnvelope,
   parseStoredState,
 } from "../js/domain/state.mjs";
+import { exerciseRepositoryContract } from "./repository-contract.mjs";
 
 function memoryStorage(initialValue = null) {
   let value = initialValue;
@@ -53,6 +57,27 @@ test("repository port validation reports every missing operation", () => {
       && error.message.includes("notifications.saveResponse")
       && error.message.includes("workRecords.save"),
   );
+});
+
+test("aggregate repository bundle satisfies the shared application contract", () => {
+  const state = {
+    plans: [{
+      id: "p1",
+      name: "Plan 1",
+      checks: {},
+      notificationTargets: {},
+      notificationResponses: {},
+      report: {},
+    }],
+    fields: [{ id: "f1", name: "Field 1" }],
+  };
+  const repositories = createAggregateRepositoryBundle({
+    getAggregate: () => state,
+  });
+  const finalState = exerciseRepositoryContract(repositories);
+  assert.deepEqual(finalState.plans.map((plan) => plan.id), ["p1"]);
+  assert.deepEqual(finalState.fields.map((field) => field.id), ["f1"]);
+  assert.equal(finalState.workRecords[0].doneDate, "2026-07-23");
 });
 
 test("local repository loads a legacy bare state without changing it", () => {
@@ -177,5 +202,166 @@ test("aggregate entity repository validates ids and initializes a missing collec
   assert.throws(
     () => plans.save({ name: "missing id" }),
     (error) => error instanceof RepositoryError && error.code === "invalid-entity",
+  );
+});
+
+test("notification repository reads the legacy embedded delivery and response maps", () => {
+  const plans = new Map([
+    ["p1", {
+      id: "p1",
+      notificationTargets: { f1: true, f2: false },
+      notificationResponses: { f1: "確認しました", f3: "電話希望" },
+    }],
+  ]);
+  const notifications = createPlanNotificationRepository({
+    getPlan: (id) => plans.get(id),
+    savePlan: (plan) => plans.set(plan.id, plan),
+  });
+  assert.deepEqual(notifications.listByPlan("p1"), [
+    {
+      id: "p1:f1",
+      planId: "p1",
+      fieldId: "f1",
+      delivered: true,
+      response: "確認しました",
+    },
+    {
+      id: "p1:f2",
+      planId: "p1",
+      fieldId: "f2",
+      delivered: false,
+      response: "未回答",
+    },
+    {
+      id: "p1:f3",
+      planId: "p1",
+      fieldId: "f3",
+      delivered: false,
+      response: "電話希望",
+    },
+  ]);
+});
+
+test("notification repository saves delivery and marks a replied notice as delivered", () => {
+  const plan = { id: "p1", notificationTargets: {}, notificationResponses: {} };
+  let saves = 0;
+  const notifications = createPlanNotificationRepository({
+    getPlan: (id) => id === plan.id ? plan : null,
+    savePlan: () => { saves += 1; },
+  });
+  assert.deepEqual(notifications.saveDelivery("p1", "f1"), {
+    id: "p1:f1",
+    planId: "p1",
+    fieldId: "f1",
+    delivered: true,
+    response: "未回答",
+  });
+  assert.deepEqual(notifications.saveResponse("p1", "f2", "時間変更希望"), {
+    id: "p1:f2",
+    planId: "p1",
+    fieldId: "f2",
+    delivered: true,
+    response: "時間変更希望",
+  });
+  assert.equal(saves, 2);
+  assert.equal(plan.notificationTargets.f1, true);
+  assert.equal(plan.notificationTargets.f2, true);
+  assert.equal(plan.notificationResponses.f2, "時間変更希望");
+});
+
+test("notification repository validates plan and field identifiers", () => {
+  const notifications = createPlanNotificationRepository({
+    getPlan: () => null,
+    savePlan() {},
+  });
+  assert.throws(
+    () => notifications.listByPlan("missing"),
+    (error) => error instanceof RepositoryError && error.code === "missing-plan",
+  );
+  assert.throws(
+    () => notifications.saveDelivery("", "f1"),
+    (error) => error instanceof RepositoryError && error.code === "invalid-notification",
+  );
+  const existing = createPlanNotificationRepository({
+    getPlan: () => ({ id: "p1" }),
+    savePlan() {},
+  });
+  assert.throws(
+    () => existing.saveResponse("p1", "", "確認しました"),
+    (error) => error instanceof RepositoryError && error.code === "invalid-notification",
+  );
+});
+
+test("work-record repository presents embedded reports as plan-linked records", () => {
+  const plans = [
+    { id: "p1", report: { doneDate: "2026-07-23", actualAmount: "600mL/10a" } },
+    { id: "p2", report: {} },
+  ];
+  const records = createPlanWorkRecordRepository({
+    listPlans: () => plans,
+    getPlan: (id) => plans.find((plan) => plan.id === id),
+    savePlan() {},
+  });
+  assert.deepEqual(records.list(), [
+    {
+      id: "p1",
+      planId: "p1",
+      doneDate: "2026-07-23",
+      actualAmount: "600mL/10a",
+    },
+    { id: "p2", planId: "p2" },
+  ]);
+  assert.equal(records.get("p1").actualAmount, "600mL/10a");
+  assert.equal(records.get("missing"), null);
+  assert.equal(records.get(""), null);
+});
+
+test("work-record repository saves reports and keeps the report check in sync", () => {
+  const plan = {
+    id: "p1",
+    checks: { notice: true, report: false },
+    report: { incident: "なし" },
+  };
+  let saves = 0;
+  const records = createPlanWorkRecordRepository({
+    listPlans: () => [plan],
+    getPlan: (id) => id === plan.id ? plan : null,
+    savePlan: () => { saves += 1; },
+  });
+  const saved = records.save({
+    id: "p1",
+    planId: "p1",
+    doneDate: "2026-07-23",
+    doneTime: "06:30",
+    actualAmount: "600mL/10a",
+  });
+  assert.equal(saved.doneDate, "2026-07-23");
+  assert.equal(plan.report.incident, "なし");
+  assert.equal(plan.report.actualAmount, "600mL/10a");
+  assert.equal(plan.checks.notice, true);
+  assert.equal(plan.checks.report, true);
+  assert.equal(saves, 1);
+
+  records.save({ planId: "p1", doneDate: "" });
+  assert.equal(plan.checks.report, false);
+});
+
+test("work-record repository validates adapters, records, and missing plans", () => {
+  assert.throws(
+    () => createPlanWorkRecordRepository({}),
+    (error) => error instanceof RepositoryError && error.code === "invalid-adapter",
+  );
+  const records = createPlanWorkRecordRepository({
+    listPlans: () => [],
+    getPlan: () => null,
+    savePlan() {},
+  });
+  assert.throws(
+    () => records.save({}),
+    (error) => error instanceof RepositoryError && error.code === "invalid-work-record",
+  );
+  assert.throws(
+    () => records.save({ planId: "missing" }),
+    (error) => error instanceof RepositoryError && error.code === "missing-plan",
   );
 });

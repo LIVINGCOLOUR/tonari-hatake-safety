@@ -1,358 +1,344 @@
-# HANDOFF
+# 開発引継ぎ
 
-Product scope, role workflows, implementation status, and future features are
-defined in `FEATURE_MAP.md`. Treat it as the product baseline before changing
-navigation, data visibility, safety wording, or workflow priorities.
+製品の対象範囲、3種類の利用者フロー、現在の実装状況、将来機能は
+`FEATURE_MAP.md` を正本とします。ナビゲーション、データ公開範囲、安全上の表現、
+作業フローの優先順位を変更する前に必ず確認してください。
 
-## Current Status
+## 現在の状態
 
-- Project: `となり畑セーフティ MVP`
-- Repository: `https://github.com/LIVINGCOLOUR/tonari-hatake-safety`
-- Repository visibility: private
-- Public demo: `https://tonari-hatake-safety.pages.dev/`
-- Cloudflare Pages project: `tonari-hatake-safety`
-- Baseline audited commit before this handoff/refactor: `d4d01cd 地域管理を自治体向けに刷新: 散布一覧＋クリック詳細`
-- Local branch state at audit: `main...origin/main`, clean
-- Production deployment at audit: Cloudflare Pages production was on `d4d01cd`
+- プロジェクト: `となり畑セーフティ MVP`
+- GitHub: `https://github.com/LIVINGCOLOUR/tonari-hatake-safety`
+- GitHubの公開範囲: private
+- 公開デモ: `https://tonari-hatake-safety.pages.dev/`
+- Cloudflare Pagesプロジェクト: `tonari-hatake-safety`
+- この一連の内部構造移行前に監査した基準コミット:
+  `d4d01cd 地域管理を自治体向けに刷新: 散布一覧＋クリック詳細`
+- 監査時のブランチ状態: `main...origin/main`、変更なし
+- 監査時の本番デプロイ: Cloudflare Pages productionは `d4d01cd`
 
-## What This App Is
+## このアプリの目的
 
-農薬・液体肥料などの散布を、被害記録ではなく「散布前の事故予防」として支援するフロントエンドMVPです。
+農薬・液体肥料などの散布を、被害発生後の記録ではなく、散布前の事故予防として支援する
+フロントエンドMVPです。
 
-主な利用者は3つです。
+主な利用者は次の3種類です。
 
-- 散布者: 計画、気象、周辺確認、通知、飛行ログ、報告
-- 周辺農家: 農薬不使用・有機・収穫前などの圃場ステータス登録と通知返信
-- 地域管理: 自治体・JA向けに予定・実績・実施可否を一覧確認
+- 散布者: 計画、気象、周辺確認、通知、飛行ログ、実施後報告
+- 周辺農家: 農薬不使用・有機・収穫前などの圃場ステータス登録、公開範囲設定、通知返信
+- 地域管理者: 自治体・JA向けの予定・実績・通知・報告状況と確認キュー
 
-## Important Files
+地域管理画面は散布を許可・承認する画面ではありません。記録状況と追加確認が必要な案件を
+一覧化する画面です。
 
-- `index.html`: SPAの全画面マークアップ
-- `css/styles.css`: 画面全体のスタイル
-- `js/main.js`: UI状態、地図、気象、境界取込のIO、VRA、CSV/PDFを含む
-- `js/domain/`: 保存・幾何・圃場取込・散布量・処方マップの純粋なドメイン処理
+## 重要なファイル
+
+- `index.html`: サービス紹介ページ
+- `app.html`: MVP本体の全画面マークアップ
+- `css/landing.css`: 紹介ページのスタイル
+- `css/styles.css`: MVP本体のスタイル
+- `js/landing.js`: 紹介ページの操作
+- `js/main.js`: UI状態、描画、地図、気象・境界取込の連携、VRA、CSV・印刷の組立
+- `js/domain/`: 保存形式、幾何、圃場取込、散布量、処方マップ、カバレッジ、同期境界
+- `js/services/`: 気象、境界ファイル、出力のブラウザ外縁処理
+- `js/repositories/app-state.mjs`: 計画、圃場、通知、作業記録の保存契約
+- `server/integrations/`: プロバイダーに依存しない読み取り専用BFF処理
+- `worker/integrations-gateway.js`: 外部連携専用Cloudflare Worker
 - `data/boundaries/index.json`: 市町村境界カタログ
 - `data/boundaries/*.geojson`: 軽量デモ境界
-- `data/boundaries/*-fude.zip`: 筆ポリゴンShapefile zip
+- `data/boundaries/*-fude.zip`: 筆ポリゴンShapefile ZIP
 - `vendor/maplibre-gl/`: MapLibre
 - `vendor/turf/`: Turf.js
 - `vendor/shpjs/`: Shapefile読込
 
-## Runtime Notes
+## 実行時の注意
 
-- No build step.
-- No backend.
-- No package manager dependency is required for the app itself.
-- Browser state is stored in `localStorage`.
-- Current storage key: `tonariHatakeSafetyMvp.v3.coverage`. Since the Phase 1
-  domain migration the value is a versioned envelope
-  `{ schemaVersion: 4, revision, savedAt, data }`; bare pre-envelope blobs are
-  migrated in place on load (`js/domain/state.mjs`).
-- `js/main.js` is a classic script that dynamically imports the modules under
-  `js/domain/` inside `init()`. Module
-  scripts require a JavaScript MIME type, so the app must be served over HTTP
-  (`node tools/static-server.mjs . 4177` serves the repository with explicit
-  JavaScript MIME types; do not rename the modules to `.js`).
-- The app should be opened over HTTP. Direct `file://` open now fails fully
-  (dynamic module import is blocked in that mode) and shows a fatal-error
-  screen pointing at the HTTP requirement.
+- フロントエンドのビルド工程はありません。
+- 本番用のアプリ認証・共有DBはまだありません。
+- アプリ本体の実行にパッケージマネージャー依存はありません。
+- ブラウザ状態は `localStorage` に保存します。
+- 保存キーは `tonariHatakeSafetyMvp.v3.coverage` です。Phase 1以降の値は
+  `{ schemaVersion: 4, revision, savedAt, data }` 形式です。旧形式のデータは
+  `js/domain/state.mjs` が読込時に移行します。
+- `js/main.js` は通常スクリプトとして読み込まれ、`init()` 内で `js/domain/` などの
+  ES Modulesを動的に読み込みます。
+- ES ModulesにはJavaScriptのMIME typeが必要なため、HTTP経由で起動します。
+  `node tools/static-server.mjs . 4177` は適切なMIME typeでリポジトリを配信します。
+- `file://` で直接開くと動的importが拒否され、HTTP起動を案内するエラー画面を表示します。
 
-## Phase 1 Domain Migration (2026-07-21)
+## 第1段階 ドメイン移行（2026-07-21）
 
-- `js/domain/state.mjs`: storage envelope (schema v4) + strict plan→field
-  resolution. Plans reference fields by stable `fieldId`; `fieldName` stays as
-  a display snapshot. Unresolved or ambiguous references stay `fieldId: null`
-  and surface as 「散布ほ場参照切れ」 (go/no-go verdict `stop`, red admin
-  reason, risk item placeholder) instead of silently falling back to another
-  field. Sample plan `plan-drone-2` (`笠間デモほ場F`) is intentionally
-  unresolved — the field does not exist in the demo field set.
-- `js/domain/geometry.mjs`: canonical WGS84 Polygon/MultiPolygon
-  normalization (holes preserved), boundary-to-boundary distance in metres,
-  WGS84 range validation for imports, and content-hash based stable IDs
-  (`imported-<type>-<hash>`); re-importing the same parcel yields the same ID.
-- Fields carry `geometry` (canonical GeoJSON), `geometryRevision`
-  (content hash), `externalRefs` (provider/externalId, filled from parcel
-  properties like `筆ID`), and `provenance` (source, importedAt, originalCrs,
-  stableKey). The legacy `geo` outer ring is still written for
-  backward-compatible readers.
-- Surrounding-field distances are now measured boundary distances, so the
-  dashboard/notification numbers changed from the old hand-entered values
-  (e.g. ほ場B is 2m, not 60m). This is intended.
-- Known demo fields (ids in `SAMPLE_FIELD_GEOMETRY`) keep being refreshed from
-  the curated sample coordinates on load; imported fields keep their own
-  geometry.
-- Shapefile import now requires a ZIP containing `.prj` (single `.shp` is
-  rejected because its CRS cannot be verified).
-- Tests: `node --test tools/domain.test.mjs` (14 tests, node:test, no deps).
-- Browser smoke: serve the repo, start Chrome with
-  `--headless=new --remote-debugging-port=9238`, then run
-  `node tools/verify-pages.mjs http://127.0.0.1:4177 9238` and
-  `node tools/verify-app-state.mjs http://127.0.0.1:4177 9238` (the latter
-  covers envelope migration, plan resolution, the unresolved-plan UI, and a
-  per-role view sweep).
+- `js/domain/state.mjs` に保存形式schema v4と、散布計画から圃場への厳密な参照解決を
+  実装しました。計画は安定した `fieldId` で圃場を参照し、`fieldName` は表示用の
+  スナップショットとして残します。
+- 参照先がない、または同名圃場が複数あって特定できない場合は `fieldId: null` を維持し、
+  別の圃場へ暗黙に置き換えません。画面では「散布ほ場参照切れ」、追加確認、地域管理の
+  赤い理由として表示します。
+- サンプル計画 `plan-drone-2` の `笠間デモほ場F` は、参照切れの動作確認用に
+  意図的に対応圃場を持ちません。
+- `js/domain/geometry.mjs` に、WGS84の `Polygon`・`MultiPolygon` 正規化、
+  穴を保った形状処理、境界間距離、座標範囲検証、形状ハッシュによる安定ID
+  `imported-<type>-<hash>` を実装しました。同じ筆を再取込しても同じIDになります。
+- 圃場は `geometry`、`geometryRevision`、`externalRefs`、`provenance` を保持します。
+  旧読取処理との互換用に、外周だけの `geo` も維持します。
+- 周辺圃場距離は手入力値ではなく境界間距離です。そのため、以前の表示値から変わる場合が
+  あります。これは意図した変更です。
+- `SAMPLE_FIELD_GEOMETRY` にある既知のデモ圃場は読込時に指定座標へ更新し、
+  取込圃場は自身の形状を維持します。
+- Shapefileは `.prj` を含むZIPだけを受け付けます。座標参照系を検証できない単独
+  `.shp` は拒否します。
 
-## Phase 2 Import Boundary (2026-07-21)
+## 第2段階 圃場取込境界（2026-07-21）
 
-- `js/domain/import.mjs` owns pure GeoJSON parsing, polygon filtering, field
-  record construction, stable keys, provenance, external references,
-  duplicate removal, and spray-relative distance/direction assignment.
-- `main.js` keeps browser IO and orchestration: FileReader/fetch/shpjs, map
-  layers, local state mutation, parcel selection, and user-facing toasts.
-- The adapter contract accepts provider payloads only after they are converted
-  to GeoJSON Polygon/MultiPolygon features with explicit source context.
-  Generic file and municipality-parcel adapters are implemented.
-- Provider IDs `xarvio` and `wagri` remain stable across provider adapters.
-- Existing `imported-*`, curated demo, and `parcel-*` ID formats remain stable.
-  Duplicate stable keys in one import batch keep the first record and emit a
-  typed warning.
-- Tests are dependency-free `node:test` suites under `tools/*.test.mjs`.
+- `js/domain/import.mjs` が、GeoJSON解析、ポリゴン抽出、圃場記録生成、安定キー、
+  来歴、外部参照、重複排除、散布圃場からの距離・方向計算を担当します。
+- `main.js` は、FileReader、fetch、shpjs、地図レイヤー、状態更新、筆選択、
+  利用者向けメッセージなど、ブラウザ固有の処理を担当します。
+- プロバイダーデータは、出典を明示したGeoJSON `Polygon`・`MultiPolygon` へ
+  変換した後だけ、共通アダプター契約へ渡します。
+- `xarvio` と `wagri` のプロバイダーIDはアダプター間で安定させます。
+- 既存の `imported-*`、デモID、`parcel-*` は維持します。同じ安定キーが1回の
+  取込に複数ある場合は最初の記録を採用し、型付き警告を返します。
 
-## Phase 3 Provider Contracts (2026-07-21)
+## 第3段階 プロバイダー契約（2026-07-21）
 
-- `adaptWagriFieldPolygonPayload` supports the officially documented
-  FieldPolygonID v2/v3 record form, GeoJSON FeatureCollection form, and
-  AgriculturalMap3 `targetFeatures` / `LinearPolygon` form.
-- WAGRI `land_type` / `FieldType` is retained as source metadata and always
-  enters the app as a neutral `public` field. It must never be inferred as a
-  spray, organic, or no-chemical safety status.
-- `adaptXarvioBoundaryPayload` binds one parsed KML/SHP-derived GeoJSON
-  boundary to the field UUID supplied with the API request. It rejects a
-  missing UUID or multiple polygons because public docs do not guarantee a
-  feature-to-UUID attribute mapping in multi-field exports.
-- Live API OAuth/token handling is deliberately outside the static frontend.
-  Add a backend/BFF before connecting production xarvio or WAGRI accounts.
-- Mapping, security boundary, and next integration steps are documented in
-  `INTEGRATIONS.md`.
+- `adaptWagriFieldPolygonPayload` は、FieldPolygonID v2・v3、
+  GeoJSON `FeatureCollection`、AgriculturalMap3の
+  `targetFeatures`・`LinearPolygon` を扱います。
+- WAGRIの `land_type`・`FieldType` は出典情報としてだけ保持します。農薬使用状況を
+  示す項目ではないため、中立な `public` 圃場として取り込み、散布・有機・農薬不使用を
+  推測しません。
+- `adaptXarvioBoundaryPayload` は、KML・SHPから変換した単一GeoJSON境界と、
+  API要求に使った圃場UUIDを対応付けます。UUID欠落と複数ポリゴンを拒否します。
+- OAuthとトークン処理は静的フロントエンドの外側に置きます。本番xarvio・WAGRI接続には
+  バックエンドまたはBFFが必要です。
+- 詳細は `INTEGRATIONS.md` を参照してください。
 
-## Phase 4-5 Read-only integrations gateway (2026-07-21 to 2026-07-23)
+## 第4・5段階 読み取り専用連携ゲートウェイ（2026-07-21〜2026-07-23）
 
-- Provider-neutral modules under `server/integrations/` implement read-only
-  WAGRI field polygon and single-field xarvio boundary operations.
-- `worker/integrations-gateway.js` is the only deployed integration entry
-  point. Duplicate Pages Functions routes were removed before cutover.
-- All routes fail closed unless `INTEGRATIONS_ENABLED=true`, an encrypted
-  `BFF_ACCESS_TOKEN` exists, and the request supplies the matching
-  `X-Tonari-BFF-Token` header. The static frontend does not contain this token.
-- WAGRI client credentials are exchanged server-side using the official token
-  API and the short-lived access token is cached in the Worker isolate.
-- xarvio currently accepts a pre-issued OAuth2 access token and returns the
-  official single-field SHP export as a ZIP. Token lifecycle automation is a
-  later backend task after partner onboarding confirms the authorization flow.
-- Provider response bodies are not reflected on upstream errors. All BFF
-  responses use `no-store`; UUID and coordinate inputs are validated before a
-  provider call.
-- xarvio ZIP responses stream through the Worker instead of being buffered in
-  memory. `XARVIO_MAX_BOUNDARY_BYTES` defaults to 10 MiB; `Content-Length` is
-  checked before streaming, truncated declared responses fail, and chunked
-  bodies are terminated at the same cap.
-- The gateway applies Cloudflare's native rate limiter plus per-isolate WAGRI
-  and xarvio concurrency guards. Binding failure, saturation, cancellation,
-  malformed JSON, and stream failure all fail closed.
-- `wrangler.integrations.toml` contains only non-secret Worker configuration.
-- Tests: `node --test tools/bff.test.mjs tools/domain.test.mjs tools/gateway.test.mjs tools/import.test.mjs`.
+- `server/integrations/` に、WAGRI圃場ポリゴンと単一xarvio圃場境界の
+  プロバイダー非依存・読み取り専用処理を実装しました。
+- 外部連携のデプロイ入口は `worker/integrations-gateway.js` だけです。
+  重複していたPages FunctionsのAPIは削除しました。
+- `INTEGRATIONS_ENABLED=true`、暗号化済み `BFF_ACCESS_TOKEN`、
+  一致する `X-Tonari-BFF-Token` が揃わない場合は安全側に停止します。
+  静的フロントエンドはこのトークンを持ちません。
+- WAGRIのクライアント認証情報はサーバー側で公式トークンAPIと交換し、短時間トークンを
+  Worker分離環境内でキャッシュします。
+- xarvioは現在、事前発行済みOAuth2アクセストークンで単一圃場SHPのZIPを取得します。
+  トークン更新は、提携開始後に認可フローを確認して実装します。
+- プロバイダーのエラー本文は利用者へ転送しません。BFFレスポンスは `no-store` とし、
+  UUID・座標を外部通信前に検証します。
+- xarvio ZIPはメモリへ一括読込せずストリーム中継します。
+  `XARVIO_MAX_BOUNDARY_BYTES` の既定値は10 MiBです。
+- Cloudflare Rate Limitingと、Worker分離環境ごとのWAGRI・xarvio同時実行制限を
+  適用します。バインディング障害、上限到達、中止、不正JSON、ストリーム障害は
+  安全側に停止します。
+- 秘密情報は `wrangler.integrations.toml` に含めません。
+- 運用手順は `INTEGRATIONS_RUNBOOK.md` を参照してください。
 
-## Phase 6 UI Core Split (started 2026-07-23)
+## 第6段階 UI中核分離（2026-07-23開始）
 
-- `js/domain/spray.mjs` owns rate/area to total-amount calculation and display
-  unit conversion. It has no DOM, storage, or provider dependency.
-- `js/domain/geometry.mjs` also owns the local metric projection, inverse
-  projection, point/ring helpers, and Polygon/MultiPolygon area calculation
-  used by coverage and prescription maps.
-- `js/domain/prescription.mjs` owns provider-neutral GeoJSON prescription
-  parsing, rate-field detection, area/rate statistics, map classes, and
-  editable zone generation. Browser file IO and MapLibre updates remain in
-  `js/main.js`.
-- `js/domain/coverage.mjs` owns 5 m coverage-grid rasterization, flight-track
-  projection, spray ON/OFF coverage, playback snapshots, summary metrics, and
-  map GeoJSON. `main.js` only resolves the plan field and converts legacy
-  percentage-based demo log points into longitude/latitude coordinates.
-- `js/domain/dashboard.mjs` owns role-specific KPI ViewModels and the regional
-  admin day/region summary. It now also owns role timelines, sprayer next
-  actions and workflow steps, neighbor notice ordering, and risk-based plan
-  ordering. `main.js` converts plans into provider-neutral facts; HTML
-  rendering and interactions remain in the browser layer.
-- `js/services/weather.mjs` owns Open-Meteo request construction, coordinate
-  validation, Japan-time forecast-hour selection, response normalization, and
-  typed network/upstream/response errors. Forecast retrieval remains separate
-  from the sprayer's confirmation and onsite wind measurement.
-- `js/services/boundary-io.mjs` owns the municipality catalog, local and remote
-  GeoJSON/Shapefile ZIP reads, ZIP central-directory inspection, required PRJ
-  checks, and typed file/network/parser errors. Domain field construction and
-  map/state mutation remain outside the service.
-- `js/services/export-io.mjs` owns CSV escaping/BOM generation, GeoJSON
-  serialization, temporary browser download links, object-URL cleanup, and the
-  print-sheet lifecycle. Report/CSV row composition remains in `main.js`
-  because it is still view-specific.
-- Admin altitude counts now inspect only each plan's own imported flight log.
-  Missing logs stay in the separate `droneMissing` queue and cannot inherit
-  altitude warnings from whichever plan happens to be active.
-- `js/main.js` was reduced from about 276 KB to about 253 KB without changing
-  the role UI, map rendering, localStorage schema, or user-facing workflows.
-- Domain/integration/service coverage is now 91 dependency-free `node:test`
-  tests.
-- Browser regression checks cover desktop/mobile layout, all three role
-  navigation modes, the role-specific dashboard workflow meaning, work
-  history navigation, stored-state migration, and the real 5 MB Kasama
-  municipality Shapefile ZIP path through PRJ validation and shpjs. They also
-  exercise plan/history CSV, prescription GeoJSON, and print-sheet output.
+- `js/domain/spray.mjs`: 10aあたり使用量、面積、総量、表示単位の計算
+- `js/domain/geometry.mjs`: ローカル距離座標、逆変換、点・リング補助、
+  `Polygon`・`MultiPolygon` 面積計算
+- `js/domain/prescription.mjs`: プロバイダー非依存の処方GeoJSON解析、
+  施用量項目検出、面積・統計、地図クラス、編集可能ゾーン
+- `js/domain/coverage.mjs`: 5mカバレッジグリッド、飛行軌跡投影、
+  散布ON・OFF、再生状態、集計、地図GeoJSON
+- `js/domain/dashboard.mjs`: ロール別KPI、地域の日別集計、タイムライン、
+  散布者の次アクション、周辺農家通知順、リスク順の計画並べ替え
+- `js/services/weather.mjs`: Open-Meteo要求、座標検証、日本時間の対象時刻選択、
+  共通気象記録への変換、型付き通信エラー
+- `js/services/boundary-io.mjs`: 市町村カタログ、GeoJSON・Shapefile ZIP読込、
+  ZIP目録検査、`.prj` 必須確認、型付きファイル・通信・解析エラー
+- `js/services/export-io.mjs`: CSVのエスケープとBOM、GeoJSON出力、
+  一時ダウンロード、Object URL解放、印刷シートのライフサイクル
+- 地域管理の高度要確認件数は、各計画自身の飛行ログだけを参照します。
+  ログ未取込は別の `droneMissing` キューとして扱います。
+- ロールUI、地図、保存形式、操作フローを変えずに `js/main.js` の責務を分割しました。
+- PC・スマホ、3ロール、履歴、保存移行、笠間市の約5MB Shapefile ZIP、
+  CSV・GeoJSON・印刷を実ブラウザで確認しています。
 
-Next safe extraction order:
+## 第7段階 保存境界（2026-07-23）
 
-1. Move notification responses and work records out of embedded plan updates
-   behind their declared ports.
-2. Route the notification inbox, admin queue, and history output through those
-   repositories.
-3. Introduce authenticated persistence behind the same interfaces, then connect
-   real notification delivery and provider accounts.
+- `js/repositories/app-state.mjs` に、計画、圃場、通知、作業記録のリポジトリ契約を
+  宣言しました。
+- schema v4の `localStorage` 読み書きは
+  `createLocalStorageAppStateRepository` を通します。`main.js` は保存APIや
+  更新番号管理を直接持ちません。
+- 旧形式とschema v4のデータ形状を維持します。旧データは通常保存が発生するまで
+  自動書換えしません。
+- 楽観的更新番号を検査し、古い別タブが新しい状態を無言で上書きすることを防ぎます。
+- 保存障害は型付きエラーとし、失敗時はメモリ上の更新番号を進めません。
 
-## Phase 7 Persistence Boundary (2026-07-23)
+## 第8段階 計画・圃場リポジトリ（2026-07-23）
 
-- `js/repositories/app-state.mjs` declares the future repository ports for
-  plans, fields, notifications, and work records.
-- The current schema-v4 localStorage envelope is now read and written through
-  `createLocalStorageAppStateRepository`; `main.js` no longer owns browser
-  storage access or revision bookkeeping.
-- Existing bare-v3 and schema-v4 data remain byte-shape compatible. Loading a
-  legacy value does not rewrite it until the app performs its normal save.
-- Save revisions are checked optimistically. A stale second tab cannot silently
-  replace a newer tab's state and instead asks the user to reload.
-- Repository failures are typed and failed writes do not advance the in-memory
-  revision.
-- Domain/integration/service/repository coverage is now 99 dependency-free
-  `node:test` tests. Browser regression confirms that repository and stored
-  envelope revisions match after startup and migration.
+- 計画と圃場について `list/get/save/remove/replaceAll` を実装しました。
+- 一覧、選択、新規作成、フォーム保存、筆採用、市町村境界入替、地図、地域管理、履歴、
+  出力をリポジトリ経由へ移しました。
+- `replaceAll` は、状態変更前に重複IDを拒否します。一覧は浅いコピーを返し、
+  呼出側がリポジトリ外から配列へ追加・削除することを防ぎます。
+- 実ブラウザで計画と周辺圃場を作成・編集し、リポジトリと保存データを確認しています。
+- この回帰確認で、新規圃場の割合座標が地図範囲計算を再帰的に呼ぶ既存不具合を発見し、
+  確定済みGeoJSONまたは経緯度だけで範囲を求めるよう修正しました。
 
-## Phase 8 Plan And Field Repositories (2026-07-23)
+Claude Opusの最大思考レビューを試しましたが、当時のClaude組織設定では
+Claude Codeからサブスクリプションを利用できず、APIキーを要求されました。
+追加・自動課金を禁止しているためAPIへの代替接続は行っていません。
 
-- Concrete aggregate-backed repositories now implement
-  `list/get/save/remove/replaceAll` for plans and fields while preserving the
-  schema-v4 envelope as the compatibility format.
-- Runtime plan/field list, selection, insertion, form update, parcel adoption,
-  municipality boundary replacement, maps, admin views, history, and exports
-  now read or write through the repositories. Only the pre-repository startup
-  check and pure legacy normalization inspect the raw arrays directly.
-- `replaceAll` rejects duplicate IDs before changing the aggregate. Collection
-  lists are shallow copies so callers cannot accidentally insert or remove
-  records without the repository.
-- Browser regression creates and edits a plan and a neighbor field through the
-  real forms, then verifies both repository and persisted-envelope values.
-- That regression exposed and fixed an older new-field map bug: percentage
-  geometry used to recursively ask for map bounds. Bounds now use only
-  canonical GeoJSON or legacy longitude/latitude geometry.
-- Coverage is now 102 dependency-free `node:test` tests plus desktop/mobile
-  browser checks.
+## 第9段階 通知リポジトリ（2026-07-23）
 
-Claude Opus review was attempted with `--effort max`, but the current Claude
-organization rejects subscription access from Claude Code and requests an API
-key. No API fallback was used because automatic/additional billing is disabled.
+- 計画内データとの互換性を維持する通知リポジトリに
+  `listByPlan`、`saveDelivery`、`saveResponse` を実装しました。
+- 散布者の通知済み更新、周辺農家の返信・受信箱、通知完了表示、返信集計、
+  地域管理の確認キューを通知リポジトリ経由へ移しました。
+- 未回答以外の返信は通知受領済みとして扱う既存フローを維持します。
+- 旧形式読込、通知・返信保存、計画なし、不正IDを単体テストしています。
+- 実際の通知画面から通知済み・時間変更希望を入力し、保存データと更新番号を確認しています。
 
-Recommended local launch:
+## 第10段階 作業記録リポジトリ（2026-07-23）
+
+- schema v4の `plan.report` 形式と互換性を保つ作業記録リポジトリに
+  `list`、`get`、`save` を実装しました。
+- 報告フォーム、計画・飛行ログからの自動入力、写真追加・削除、作業履歴集計、
+  地域管理の完了状態、ダッシュボード、印刷、CSVを作業記録リポジトリ経由へ移しました。
+- 保存時に `checks.report` と実施日の有無を同期し、散布者と地域管理で同じ完了判定を
+  使用します。
+- 実際の報告フォームから保存し、作業履歴、地域管理集計、保存データ、更新番号への反映を
+  確認しています。
+
+## 第11段階 同期境界とリポジトリ契約（2026-07-23）
+
+- `js/domain/sync.mjs` で、アカウント所有データ、権限付き地域ワークスペース、
+  ブラウザだけの選択状態を分離しました。
+- プロフィールの境界読込状況、デモ用ロール、選択中の計画・圃場、市町村地図状態は
+  端末内に残します。プロフィールのロールと公開範囲はアカウントデータです。
+- 圃場形状、プロバイダー外部参照、来歴は地域ワークスペースの圃場記録に含めます。
+  実際の開示には、サーバー側で地域所属、ロール、記録公開範囲の認可が必要です。
+- 報告写真のBase64本体と飛行軌跡点列は通常JSONから除外し、
+  `upload-required` 資産として扱います。オブジェクト保存実装までは端末キャッシュを
+  維持します。
+- 4種類のリポジトリを検証済みの一括構成として生成します。
+  `tools/repository-contract.mjs` は、将来の遠隔アダプターにも同じ契約確認を適用できます。
+- 詳細は `SYNC_BOUNDARY.md` を参照してください。
+- 現在の単体テストは114件で、保存状態とPC・スマホ相当の実ブラウザ確認も成功しています。
+
+## ローカル起動
+
+推奨コマンド:
 
 ```powershell
 node tools/static-server.mjs . 4177
 ```
 
-Open:
+開くURL:
 
 ```text
 http://127.0.0.1:4177/
 ```
 
-Windows 11 note: after the OS upgrade, `python` resolves to the Microsoft Store
-execution alias and exits immediately on this machine. Edge remote debugging,
-GitHub, Cloudflare deployment, and the Node-based local server are working.
+Windows 11への更新後、この端末では `python` がMicrosoft Storeの実行エイリアスを
+参照してすぐ終了する場合があります。Node製ローカルサーバー、Edgeリモートデバッグ、
+GitHub、Cloudflareデプロイは利用できます。
 
-## Current Feature Map
+## 現在の機能
 
-- Dashboard:
-  - pre-spray confirmation status card
-  - readiness workflow
-  - KPI cards
-  - aerial-photo map preview
+### ダッシュボード
 
-- Spray plan:
-  - material type
-  - aircraft/operator/default equipment template
-  - total amount calculation from rate and area
+- 散布前確認状況
+- ロール別の次アクションと進捗
+- KPI
+- 航空写真地図
 
-- Field map:
-  - MapLibre + GSI aerial photo tiles
-  - surrounding/downwind view
-  - flight log view
-  - spray coverage playback
-  - VRA prescription map
-  - GeoJSON / Shapefile boundary import
-  - municipality boundary catalog
-  - parcel backdrop for large datasets
-  - tap parcel to adopt as spray/neighbor field
+### 散布計画
 
-- Weather:
-  - Open-Meteo forecast fetch
-  - actual wind memo remains manual
+- 農薬・液体肥料などの資材種別
+- 機体、操縦者、装置の既定値
+- 10aあたり使用量と面積から総量を計算
 
-- Drone:
-  - sample drone log
-  - spray ON/OFF
-  - altitude warning
-  - outside planned range flag
+### 圃場マップ
 
-- History:
-  - field/material/status filters
-  - pesticide/fertilizer work history
-  - CSV/PDF output
+- MapLibreと国土地理院航空写真
+- 周辺圃場・風下表示
+- 飛行ログ、散布カバレッジ再生、VRA処方マップ
+- GeoJSON・Shapefile圃場境界取込
+- 市町村境界カタログと大量筆ポリゴン背景
+- 地図上の筆を散布圃場・周辺圃場として採用
 
-- Admin:
-  - Role navigation is intentionally reduced to `トップ` and `散布予定・実績`
-  - municipality-oriented list
-  - planned/done filter
-  - district filter
-  - click row to show aerial map, detail, and confirmation status
+### 気象
 
-## Known Risks
+- Open-Meteo予報の自動取得
+- 現地の風向・風速は散布者が別に記録
 
-- `js/main.js` is large and monolithic. Additions should prefer existing helpers and avoid duplicating state/render logic.
-- `localStorage` schema changes can leave old browser data inconsistent. If display looks strange, use the app's sample reload or clear localStorage.
-- `file://` local opening no longer fully works because boundary catalog and zip data are fetched.
-- Boundary zip files are large. More municipalities may increase Git size and initial network load.
-- Shapefile projection depends on `.prj` data and `shpjs`; test imported files carefully.
-- Public demo URL is public even though GitHub repo is private.
-- Admin page is role-gated. `#admin` direct navigation can redirect unless the active role is `admin`.
+### ドローン
 
-## Verification Commands
+- サンプル飛行ログ
+- 散布ON・OFF、高度要確認、予定範囲外表示
+
+### 作業履歴
+
+- 圃場、資材、状態による絞り込み
+- 農薬・肥料の作業履歴
+- CSV・印刷出力
+
+### 地域管理
+
+- ナビゲーションは意図的に `トップ` と `散布予定・実績` を中心に制限
+- 市町村別一覧、予定・実績、地区絞り込み
+- 行を選択して航空写真、作業詳細、確認状況を表示
+
+## 既知のリスク
+
+- `js/main.js` は依然として大きいファイルです。追加時は既存ヘルパーを優先し、
+  状態更新・描画ロジックを重複させないでください。
+- 保存形式を変更すると、古いブラウザデータと不整合になる可能性があります。
+  表示がおかしい場合は、アプリのサンプル再読込または `localStorage` 消去を試します。
+- `file://` では境界カタログ、ZIP、動的importを利用できません。
+- 境界ZIPは大きいため、市町村追加はGit容量と初回通信量へ影響します。
+- Shapefileの座標変換は `.prj` とshpjsに依存します。取込ファイルを慎重に検証します。
+- GitHubがprivateでも、公開デモURLは公開です。
+- 地域管理画面はロール制限されています。地域管理以外で `#admin` を直接開くと
+  リダイレクトされる場合があります。
+
+## 検証コマンド
 
 ```powershell
 git status --branch --short
 node --check js\main.js
+node --test tools\*.test.mjs
 npx.cmd --yes wrangler@latest pages deployment list --project-name tonari-hatake-safety
 Invoke-WebRequest -UseBasicParsing -Uri "https://tonari-hatake-safety.pages.dev/" | Select-Object -ExpandProperty StatusCode
 ```
 
-Browser smoke targets:
+実ブラウザで確認する主な画面:
 
 - `/`
-- `/#map`
-- `/#history`
-- `/#admin` after switching role to `地域管理`
+- `/app.html#dashboard`
+- `/app.html#map`
+- `/app.html#history`
+- 地域管理へ切り替えた後の `/app.html#admin`
 
-## Handoff Rules For Another AI
+## 別のAI・担当者への引継ぎルール
 
-- Read `README.md` and this file before editing.
-- Run `git status` before touching files.
-- Do not overwrite uncommitted user changes.
-- Keep UI edits consistent with the existing dense operational tool style.
-- Do not add a landing page.
-- Use MapLibre/Turf/shpjs already present in `vendor/`.
-- Keep the app static unless the user explicitly asks for backend/auth.
-- When adding data-heavy features, consider Git size and Cloudflare Pages upload size.
-- After changes, run `node --check js\main.js`, commit, push, and deploy if the public demo should change.
+- 編集前に `README.md`、`FEATURE_MAP.md`、この文書を読む。
+- 外部連携は `INTEGRATIONS.md`、同期は `SYNC_BOUNDARY.md`、
+  ドローンは `DRONE_INTEGRATION.md` を読む。
+- ファイル編集前に `git status` を確認する。
+- 未コミットの利用者変更を上書きしない。
+- UIは、現在の密度を保った業務ツールのデザインに合わせる。
+- 紹介ページをアプリ本体の先頭画面に置き換えない。
+- `vendor/` にあるMapLibre、Turf、shpjsを優先して使用する。
+- ユーザーが明示的に要求するまで、本番バックエンド・認証を有効化しない。
+- データ量の大きい機能は、Git容量とCloudflare Pagesへのアップロード量を確認する。
+- 変更後は対象テストと関連する全テストを実行する。
+- 公開デモを変更する場合は、テスト済みコミットをpushしてからデプロイする。
 
-## Suggested Next Work
+## 次の推奨作業
 
-- Implement notification and work-record repositories without changing the
-  current role workflows.
-- Route notification inbox/admin queues and history/export through those ports.
-- Add an authenticated remote repository adapter only after all four local
-  repositories are exercised by the UI.
-- Add a visible "clear demo data / reset localStorage" control.
-- Add import validation messages for unsupported Shapefile/GeoJSON geometries.
-- Decide whether large public parcel datasets should stay in Git or move to external object storage.
+1. 遠隔データを読めるようにする前に、アプリ認証と地域ワークスペースへの所属を決める。
+2. ローカルファースト遠隔リポジトリアダプターを実装し、共通契約テストを適用する。
+3. 大容量の報告写真と飛行軌跡に、オブジェクト保存の参照を追加する。
+4. 遠隔更新より先に、読み取り専用同期を有効化する。
+5. デモデータを初期化する画面上の操作を追加する。
+6. 非対応Shapefile・GeoJSONに対する取込エラー表示を改善する。
+7. 大量の公開筆ポリゴンをGitに置くか、外部オブジェクト保存へ移すかを決める。

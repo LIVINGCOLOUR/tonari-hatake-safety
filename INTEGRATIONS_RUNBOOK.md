@@ -1,22 +1,18 @@
-# Integrations Gateway Runbook
+# 外部連携ゲートウェイ運用手順
 
-This runbook covers the disabled-by-default `tonari-hatake-integrations`
-Worker. It does not authorize production end-user access. The current shared
-token guard is for controlled operator testing only.
+この運用手順は、既定で無効化されている `tonari-hatake-integrations` Workerを
+対象とします。本番の一般利用者によるアクセスを許可するものではありません。現在の
+共通トークンによる保護は、管理された担当者試験にだけ使用します。
 
-## Safety Rules
+## 安全上のルール
 
-- Never put a credential in Git, `wrangler.toml`, browser code, command
-  arguments, screenshots, or chat messages.
-- Keep `INTEGRATIONS_ENABLED` absent or set to `false` until every preflight
-  check passes.
-- Store provider credentials only with `wrangler secret put`.
-- Do not keep provider credentials in the Pages project. The static site is
-  not an integration runtime.
-- Stop first and investigate later: disabling integrations is the first
-  incident action.
+- 認証情報をGit、`wrangler.toml`、ブラウザコード、コマンド引数、スクリーンショット、チャットメッセージへ記載しない。
+- すべての事前確認が成功するまで、`INTEGRATIONS_ENABLED` を設定しないか、`false` にする。
+- プロバイダー認証情報は `wrangler secret put` だけで保存する。
+- プロバイダー認証情報をPagesプロジェクトに置かない。静的サイトは外部連携の実行環境ではない。
+- 障害時は先に停止し、その後に調査する。最初の対応は外部連携の無効化とする。
 
-## Preflight
+## 事前確認
 
 ```powershell
 git status --short --branch
@@ -24,18 +20,18 @@ node --test tools\bff.test.mjs tools\domain.test.mjs tools\gateway.test.mjs tool
 npx.cmd --yes wrangler@latest deploy --config wrangler.integrations.toml --dry-run
 ```
 
-Confirm that the deployed gateway is still disabled:
+デプロイ済みゲートウェイが引き続き無効であることを確認します。
 
 ```powershell
 curl.exe -i https://tonari-hatake-integrations.makoto-monda.workers.dev/api/integrations/status
 ```
 
-Expected result: `503 integration-disabled`.
+期待する結果は `503 integration-disabled` です。
 
-## Secret Staging
+## シークレットの準備
 
-Run each command interactively. Wrangler prompts for the value so it does not
-appear in the command line.
+各コマンドは対話形式で実行します。Wranglerが値の入力を求めるため、認証情報は
+コマンドラインに表示されません。
 
 ```powershell
 npx.cmd --yes wrangler@latest secret put BFF_ACCESS_TOKEN --config wrangler.integrations.toml
@@ -44,51 +40,50 @@ npx.cmd --yes wrangler@latest secret put WAGRI_CLIENT_SECRET --config wrangler.i
 npx.cmd --yes wrangler@latest secret put XARVIO_ACCESS_TOKEN --config wrangler.integrations.toml
 ```
 
-Stage only the credentials for providers included in the approved test. Leave
-`INTEGRATIONS_ENABLED` disabled. A `BFF_ACCESS_TOKEN` must contain at least 32
-random characters.
+承認された試験で使用するプロバイダーの認証情報だけを準備します。
+`INTEGRATIONS_ENABLED` は無効のままにします。`BFF_ACCESS_TOKEN` は、
+32文字以上のランダムな値にする必要があります。
 
-## Controlled Operator Test
+## 管理された担当者試験
 
-1. Record the current Worker version from the deployment output or dashboard.
-2. Confirm the Cloudflare Rate Limiting binding is present.
-3. Restrict the test audience and distribute the operator token out of band.
-4. Enable the flag interactively:
-
-```powershell
-npx.cmd --yes wrangler@latest secret put INTEGRATIONS_ENABLED --config wrangler.integrations.toml
-```
-
-Enter `true` only for the approved test window. Call the status route with the
-`X-Tonari-BFF-Token` header, then exercise one provider at a time. Never embed
-that header value in the frontend.
-
-## Stop And Roll Back
-
-Disable new provider calls first:
+1. デプロイ結果またはダッシュボードから、現在のWorkerバージョンを記録する。
+2. Cloudflare Rate Limitingのバインディングが存在することを確認する。
+3. 試験対象者を限定し、担当者トークンは別経路で配布する。
+4. 次のコマンドを対話形式で実行してフラグを有効化する。
 
 ```powershell
 npx.cmd --yes wrangler@latest secret put INTEGRATIONS_ENABLED --config wrangler.integrations.toml
 ```
 
-Enter `false`, then confirm the status route returns
-`503 integration-disabled`. If code rollback is also required, use the
-Cloudflare dashboard to select the last known-good Worker version. Check the
-installed Wrangler rollback syntax with `wrangler rollback --help` before
-using the CLI because deployment commands can change between releases.
+承認された試験時間中だけ `true` を入力します。`X-Tonari-BFF-Token` ヘッダーを付けて
+状態確認APIを呼び出し、その後、プロバイダーを1つずつ検証します。このヘッダーの値を
+フロントエンドへ埋め込んではなりません。
 
-After an incident, record the Worker version, time window, provider, response
-class, and whether any request reached the provider. Do not put tokens or raw
-provider diagnostics in the incident record.
+## 停止とロールバック
 
-## Production Gate
+最初に、新しいプロバイダー通信を停止します。
 
-Do not enable this gateway for end users until all of the following exist:
+```powershell
+npx.cmd --yes wrangler@latest secret put INTEGRATIONS_ENABLED --config wrangler.integrations.toml
+```
 
-- application login or verified Cloudflare Access JWT;
-- organization and role authorization;
-- per-user or per-tenant limiter keys;
-- consent, provenance, and audit records;
-- licensed redacted contract fixtures;
-- provider token lifecycle and revocation handling;
-- an approved data retention and deletion policy.
+`false` を入力し、状態確認APIが `503 integration-disabled` を返すことを確認します。
+コードのロールバックも必要な場合は、Cloudflareダッシュボードから最後に正常だった
+Workerバージョンを選択します。デプロイ用コマンドは変更される可能性があるため、
+CLIを使う前に `wrangler rollback --help` で現在の構文を確認します。
+
+障害後は、Workerバージョン、発生時間帯、対象プロバイダー、レスポンス分類、
+プロバイダーまでリクエストが到達したかを記録します。トークンや外部サービスの
+生の診断情報を障害記録へ含めてはいけません。
+
+## 本番利用の開始条件
+
+以下がすべて揃うまで、このゲートウェイを一般利用者向けに有効化しません。
+
+- アプリへのログイン、または検証済みCloudflare Access JWT
+- 組織への所属確認とロール認可
+- 利用者単位または地域単位のレート制限キー
+- 同意、来歴、監査記録
+- 利用許諾を得て機密情報を除いた契約テスト用データ
+- プロバイダートークンの更新・失効処理
+- 承認済みのデータ保持・削除方針

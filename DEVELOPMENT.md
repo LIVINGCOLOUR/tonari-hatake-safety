@@ -1,64 +1,44 @@
-# Development Principles
+# 開発原則
 
-This project follows the engineering guidance collected in the
-[Singularity Society development handbook](https://github.com/SingularitySociety/societys_statement/blob/main/development/README.md).
-When this document and the upstream handbook differ, confirm the reason and record the
-project-specific decision before changing the architecture.
+このプロジェクトは、[Singularity Society 開発ハンドブック](https://github.com/SingularitySociety/societys_statement/blob/main/development/README.md)
+にまとめられた開発指針を基本とします。この文書と上位のハンドブックに相違がある場合は、
+アーキテクチャを変更する前に理由を確認し、このプロジェクト固有の判断として記録します。
 
-## Product Boundary
+## 製品の境界
 
-- Help people verify and share spray or fertilizer work before, during, and after the job.
-- Do not present the service as approving a spray, making a legal judgment, or identifying
-  the cause of damage.
-- Keep each role focused: applicators see execution tasks, neighboring farmers see relevant
-  notices and privacy controls, and regional managers see aggregate status and review queues.
-- Prefer improvements demonstrated by user workflows and measurable outcomes over adding
-  speculative features.
+- 農薬・肥料の散布作業について、作業前・作業中・作業後の確認と共有を支援する。
+- 散布を承認するサービス、法的判断を行うサービス、被害原因を特定するサービスとして見せない。
+- 各利用者の目的を明確にする。散布者には作業上の対応、周辺農家には自分に関係する通知と公開範囲、地域管理者には集計状況と確認キューを表示する。
+- 仮説だけの機能追加より、利用者の操作フローと測定可能な成果で必要性を説明できる改善を優先する。
 
-## Architecture
+## アーキテクチャ
 
-- Keep domain rules in small, testable modules with explicit inputs and outputs.
-- Keep browser rendering, storage, maps, network access, and provider SDKs at the edges.
-- Integrate xarvio, WAGRI, weather services, and drone vendors through provider adapters and
-  canonical application contracts. Provider payloads must not leak into core UI logic.
-- Put credentials and paid-provider calls behind the Cloudflare BFF. Never expose secrets in
-  browser code or committed files.
-- Keep the current vanilla frontend while its state and ownership remain understandable.
-  Introduce a framework or backend database only when their operational value exceeds their
-  migration cost.
-- Avoid premature abstraction. Extract shared code when it removes demonstrated duplication
-  or isolates a real source of change.
+- ドメインルールは、入出力が明確で単体テスト可能な小さなモジュールに置く。
+- ブラウザ描画、保存、地図、通信、外部SDKはシステムの外縁に置く。
+- xarvio、WAGRI、気象サービス、ドローンメーカーは、プロバイダー別アダプターとアプリ共通の正規化契約を介して連携する。外部レスポンスの形式をUIの中核ロジックへ持ち込まない。
+- 認証情報と有料プロバイダーへの通信はCloudflare BFFの内側に置く。ブラウザコードやGit管理ファイルへ秘密情報を含めない。
+- 状態と責務を把握できる間は、現在のVanilla JavaScriptフロントエンドを維持する。フレームワークやバックエンドDBは、運用上の価値が移行コストを上回る段階で導入する。
+- 早すぎる抽象化を避ける。実際の重複を減らす場合、または変更要因を分離できる場合に共通化する。
 
-## Data And Security
+## データとセキュリティ
 
-- Treat field locations, cultivation status, contact details, replies, and work history as
-  access-controlled data with an explicit owner and sharing scope.
-- Fail closed when authentication, configuration, validation, or provider responses are
-  incomplete.
-- Require application authentication and role authorization before enabling production BFF
-  integrations. A shared integration token is only a disabled-by-default prototype control.
-- Bound request size, response size, duration, and concurrency for external services. Add
-  rate limits and audit records before handling production traffic.
-- Separate forecasts, operator confirmation, and on-site measurements in both data and UI.
+- 圃場位置、栽培状況、連絡先、通知への返信、作業履歴は、所有者と公開範囲が明確なアクセス制御対象データとして扱う。
+- 認証、設定、検証、外部レスポンスが不完全な場合は、安全側に停止する。
+- 本番BFF連携を有効にする前に、アプリ認証とロール認可を必須とする。共通連携トークンは、既定で無効な試験用制御に限定する。
+- 外部サービスへのリクエスト量、レスポンス量、処理時間、同時実行数に上限を設ける。本番通信の前にレート制限と監査記録を追加する。
+- 気象予報、散布者による確認、現地実測は、データ上も画面上も区別する。
 
-## Delivery Workflow
+## 開発・リリース手順
 
-- Make small commits with one clear purpose. Separate behavior changes from refactoring when
-  practical, and preserve the reason for architectural decisions in Git.
-- Run focused tests after each change and the full relevant suite before pushing or deploying.
-- Inspect diffs mechanically; AI-generated code is not accepted on confidence alone.
-- Deploy only a tested commit. The published artifact must contain only required public assets
-  and server functions, never local agent files, notes, credentials, or source-only documents.
-- Add CI for tests, static checks, dependency review, and deployment as the project moves from
-  demonstration to shared development.
+- 1つの明確な目的ごとに小さくコミットする。可能な限り挙動変更とリファクタリングを分け、アーキテクチャ判断の理由をGitに残す。
+- 各変更後に対象テストを実行し、push・デプロイ前に関連する全テストを実行する。
+- 差分を機械的に確認する。AI生成コードも、確信だけを理由に採用しない。
+- テスト済みコミットだけをデプロイする。公開成果物には必要な公開ファイルとサーバー処理だけを含め、AI作業ファイル、メモ、認証情報、開発専用文書を含めない。
+- デモから共同開発へ移る段階で、テスト、静的検査、依存関係確認、デプロイをCIへ追加する。
 
-## AI Collaboration
+## AIとの共同開発
 
-- Git-tracked documentation is the handoff source of truth across Codex, Claude Code, and
-  human contributors. Read `HANDOFF.md`, this file, and relevant integration docs first.
-- Prefer mature libraries, official specifications, and primary documentation; verify APIs
-  and changing external facts before implementation.
-- Do not send private repository code to an external model or service without explicit user
-  approval. Share generalized architecture questions when source disclosure is unnecessary.
-- Record unfinished work, assumptions, and verification results before changing agents or
-  ending a development session.
+- Codex、Claude Code、人間の開発者間では、Git管理された文書を引継ぎの正本とする。最初に `HANDOFF.md`、この文書、関連する連携設計書を読む。
+- 成熟したライブラリ、公式仕様、一次資料を優先する。APIや変化し得る外部情報は実装前に確認する。
+- ユーザーの明示的な許可なく、非公開リポジトリのコードを外部モデルや外部サービスへ送信しない。ソース開示が不要な場合は、一般化したアーキテクチャ上の質問だけを共有する。
+- AIや担当者を切り替える前、または開発セッションを終了する前に、未完了作業、前提、検証結果を記録する。

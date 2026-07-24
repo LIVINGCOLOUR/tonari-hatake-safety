@@ -1,0 +1,118 @@
+# ドローン連携調査・実装方針
+
+最終確認日: 2026-07-23
+
+## 目的
+
+「となり畑セーフティ」が農業用ドローンから飛行位置、高度、速度、
+散布 ON/OFF、散布量などを取得する際の調査結果と実装判断を記録する。
+
+この文書はメーカーの販売順位を断定するものではない。国内販売台数の
+上位5社を比較できる無料の公的統計は確認できず、農林水産省の資料も
+主要メーカーを列挙するに留まる。そのため、国内で流通・導入実績がある
+主要ブランドを優先調査対象としている。
+
+- [農林水産省: 農業用ドローン](https://www.maff.go.jp/j/kanbo/smart/forum/R2smaforum/mattingu/drone.html)
+
+## 調査結果
+
+| ブランド・基盤 | 公開連携手段 | 現時点で可能と判断する範囲 | 確度・制約 |
+| --- | --- | --- | --- |
+| DJI AGRAS | SmartFarm / Agras Management Platform Webのログ・飛行ルート出力 | 実施後ログのファイル取込、軌跡・作業パラメーターの表示 | AGRAS対応の一般公開SDKは確認できない。ライブ取得はDJI Agricultureとの個別協議が必要 |
+| XAG | XFISの監督機関・認定第三者向けAPI提供実績 | 機体番号、時刻、位置、速度、高度、航向等のクラウド連携候補 | 公表は2017年。現在の日本向け提供条件と契約要件をXAG JAPANへ確認する |
+| NTT e-Drone Technology | Auterion系基盤、MAVLinkテレメトリー | メーカー共同実証によるライブ位置・高度等の取得候補 | AC101 connect / AC102で第三者アプリを利用できることは公開保証されていない |
+| マゼックス | 専用Androidアプリ、独自フライトコントローラー | ログファイルが提供される場合の実施後取込 | 一般開発者向けSDK/APIは確認できない。メーカーへログ出力仕様を確認する |
+| ヤマハ発動機 | YSAPと法人向けサービス連携の実績 | 散布・施肥作業データの事後連携候補 | 一般開発者向けSDK/APIは確認できない。法人間のデータ連携協議が前提 |
+| クボタ KSAS | OAuth 2.0のKSAS API | 圃場、機械、農薬、肥料、作業指示・日誌の双方向連携 | ライブ飛行テレメトリーではなく、営農情報と実施後記録の連携先として扱う |
+
+### 公式情報
+
+- [DJI SmartFarm App](https://ag.dji.com/ag-platform?from=mobile_nav&site=ag)
+  - AGRASシリーズの作業データ、飛行軌跡、作業パラメーターを管理できる。
+  - Agras Management Platform Webでは飛行ログと飛行ルートの一括出力が案内されている。
+- [DJI Mobile SDK 対応製品](https://developer.dji.com/doc/mobile-sdk-tutorial/en/)
+  - 公開されている対応製品一覧では、AGRASシリーズの対応を確認できない。
+- [XAG XFIS APIの公表](https://www.xa.com/news/media/177)
+  - 政府機関や認定された第三者監督プラットフォーム向けに、リアルタイム飛行情報を
+    提供する方針と取得項目が公表されている。
+- [NTT e-Drone Technology: ドローン実証・技術開発](https://www.nttedt.co.jp/tech)
+  - Auterionを基礎とした制御装置、運用基盤、遠隔操作・自律航行の開発方針が示されている。
+- [Auterion: Application Development](https://docs.auterion.com/app-development/app-development/application-development-1)
+  - MAVLinkからテレメトリーを取得する公式サンプルが用意されている。
+- [マゼックス: 飛助15](https://mazex.jp/product/tobisuke15/)
+  - Androidスマート送信機、専用アプリ、独自制御装置を採用している。
+- [ヤマハ発動機: YSAP連携事例](https://news.yamaha-motor.co.jp/2020/019802.html)
+  - YSAPに蓄積した散布・施肥作業データと外部サービスの連携実績がある。
+- [KSAS API](https://marketplace.ksas.kubota.co.jp/as-sales/ksas-api/)
+  - 圃場、機械、農薬、肥料、作付、作業指示・日誌をOAuth 2.0で取得・登録できる。
+- [KSAS ドローン連携](https://agriculture.kubota.co.jp/ksas/function/10.html)
+  - クボタ販売ドローンの散布実績、作業軌跡、自動日誌作成に対応している。
+
+## 製品判断
+
+5社のSDKを同時に直接実装しない。連携方式を以下の3段階に分け、
+メーカー固有処理をプロバイダーアダプターへ閉じ込める。
+
+1. ファイル取込
+   - 最初の対象はDJI SmartFarmの出力ログとする。
+   - CSV、JSON、KML、GeoJSON等を正規化して、実施後の軌跡・高度・散布範囲を表示する。
+2. クラウドAPI
+   - XAG XFIS、KSAS等はCloudflare BFFを経由する。
+   - 認証情報、契約条件、利用者同意、監査記録を本番接続の前提とする。
+3. ライブテレメトリー
+   - 最初の共同実証候補はNTT e-Drone / Auterion、次点をXAGとする。
+   - ブラウザから機体SDKへ直接接続せず、送信機アプリまたは中継サービスから
+     BFFへ送信する。
+
+市場カバー、実証、営農記録を一社で解決しようとせず、次の役割で考える。
+
+| 目的 | 第一候補 |
+| --- | --- |
+| 広い市場への実施後ログ対応 | DJI AGRAS |
+| 自治体向けクラウド連携 | XAG XFIS |
+| 国内機によるライブ実証 | NTT e-Drone / Auterion |
+| 圃場・農薬・肥料・作業日誌 | クボタ KSAS |
+| その他国内機 | 共通ファイル取込または個別協議 |
+
+## 正規化するデータ
+
+メーカー形式をUIやドメイン処理へ直接渡さず、最低限次の共通契約へ変換する。
+
+| 項目 | 説明 |
+| --- | --- |
+| `provider` / `aircraftId` | 取得元と機体識別子 |
+| `missionId` / `timestamp` | 作業・時刻 |
+| `latitude` / `longitude` | 飛行位置 |
+| `altitudeM` / `altitudeReference` | 高度値と基準種別 |
+| `horizontalAccuracyM` / `verticalAccuracyM` | 測位精度。取得できない場合は欠損とする |
+| `groundSpeedMps` / `headingDeg` | 対地速度と進行方向 |
+| `sprayOn` | 散布装置のON/OFF |
+| `flowRate` / `appliedAmount` / `amountUnit` | 流量・散布量。推定値と実測値を区別する |
+| `sourceMode` | `file`、`cloud`、`live`、`simulation` |
+| `rawReference` | 元データを追跡するための参照情報 |
+
+高度はGPS高度、標高、離陸地点からの相対高度、地表高、作物上高度を混同しない。
+散布量が位置と設定値からの計算である場合は、実測値ではなく「推定」と明示する。
+
+## メーカーへの確認項目
+
+- 対応機種、送信機、ファームウェア、提供地域
+- SDK、クラウドAPI、ファイル出力の提供範囲
+- 位置、高度、速度、航向、散布ON/OFF、流量、残量の取得可否
+- 高度の基準と測位精度
+- リアルタイム更新頻度と通信断時の再送
+- 作業計画・飛行ルートの取込形式
+- データ所有者、第三者提供同意、保存地域、保存期間
+- 商用利用条件、審査、初期費用、従量料金
+- 自治体・JA・散布事業者を含む実証契約の可否
+
+## 実装順
+
+1. 共通テレメトリー契約とファイル取込アダプターを実装する。
+2. DJI SmartFarmの実データを入手し、ログ取込と地図再生を検証する。
+3. XAG JAPANへXFIS APIの現行提供条件を問い合わせる。
+4. NTT e-DroneへAC102を使った読み取り専用テレメトリー実証を相談する。
+5. KSAS APIの審査・費用・作業軌跡データ範囲を確認する。
+6. 実機から読み取る連携を完成してから、ルート出力や自律実行を別フェーズで検討する。
+
+実機制御、自動飛行、散布可否判定は、この調査で有効化しない。

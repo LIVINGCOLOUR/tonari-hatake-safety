@@ -318,6 +318,123 @@ assert(entityRepositories.fieldName === "Repository確認用圃場"
 assert(entityRepositories.repositoryRevision === entityRepositories.envelopeRevision,
   `entity repository save revision mismatch: ${JSON.stringify(entityRepositories)}`);
 
+// --- scenario 1e: notification UI writes use the notification repository ---
+const notificationRepositories = await evaluate(`(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const plan = planRepository.get("plan-drone-1");
+  state.activePlanId = plan.id;
+  plan.notificationTargets = {};
+  plan.notificationResponses = {};
+  planRepository.save(plan);
+  saveState();
+  renderAll();
+  switchView("notify");
+  await wait(100);
+
+  const target = document.querySelector("[data-notify-target]");
+  if (!target) return { missingTarget: true };
+  const fieldId = target.dataset.notifyTarget;
+  target.checked = true;
+  document.querySelector("#markNotifiedButton").click();
+  await wait(100);
+
+  const response = [...document.querySelectorAll("[data-notify-response]")]
+    .find((select) => select.dataset.notifyResponse === fieldId);
+  if (!response) return { missingResponse: true, fieldId };
+  response.value = "時間変更希望";
+  response.dispatchEvent(new Event("change", { bubbles: true }));
+  await wait(100);
+
+  const record = notificationRepository.listByPlan(plan.id)
+    .find((item) => item.fieldId === fieldId);
+  const envelope = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  const persistedPlan = envelope.data.plans.find((item) => item.id === plan.id);
+  return {
+    fieldId,
+    record,
+    persistedDelivered: persistedPlan.notificationTargets[fieldId],
+    persistedResponse: persistedPlan.notificationResponses[fieldId],
+    repositoryRevision: stateRepository.currentRevision(),
+    envelopeRevision: envelope.revision,
+  };
+})()`);
+assert(!notificationRepositories.missingTarget && !notificationRepositories.missingResponse,
+  `notification UI target missing: ${JSON.stringify(notificationRepositories)}`);
+assert(notificationRepositories.record?.delivered
+  && notificationRepositories.record?.response === "時間変更希望",
+  `notification repository was not updated from UI: ${JSON.stringify(notificationRepositories)}`);
+assert(notificationRepositories.persistedDelivered === true
+  && notificationRepositories.persistedResponse === "時間変更希望",
+  `notification UI update was not persisted: ${JSON.stringify(notificationRepositories)}`);
+assert(notificationRepositories.repositoryRevision === notificationRepositories.envelopeRevision,
+  `notification repository revision mismatch: ${JSON.stringify(notificationRepositories)}`);
+
+// --- scenario 1f: report UI writes feed work history and admin state ---
+const workRecordRepositories = await evaluate(`(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const plan = planRepository.get("plan-drone-1");
+  state.activePlanId = plan.id;
+  workRecordRepository.save({
+    ...workRecordRepository.get(plan.id),
+    doneDate: "",
+    doneTime: "",
+    actualAmount: "",
+    inquiry: "なし",
+  });
+  saveState();
+  renderAll();
+  switchView("report");
+  await wait(100);
+
+  const form = document.querySelector("#reportForm");
+  if (!form) return { missingForm: true };
+  form.elements.doneDate.value = "2026-07-23";
+  form.elements.doneTime.value = "06:45";
+  form.elements.doneField.value = "作業記録Repository確認ほ場";
+  form.elements.donePesticide.value = "作業記録Repository確認資材";
+  form.elements.doneArea.value = "1.25ha";
+  form.elements.doneWeather.value = "北西 1.8m/s";
+  form.elements.incident.value = "なし";
+  form.elements.inquiry.value = "なし";
+  form.elements.reportType.value = "通常報告";
+  form.elements.actualAmount.value = "725mL/10a";
+  form.elements.altitudeNotes.value = "高度差なし";
+  form.elements.outsideFlight.value = "なし";
+  form.elements.reportNotes.value = "Repository経由の保存確認";
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  await wait(100);
+
+  const record = workRecordRepository.get(plan.id);
+  const history = historyRecords().find((item) => item.id === plan.id);
+  const fact = dashboardPlanFact(plan);
+  const envelope = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  const persistedPlan = envelope.data.plans.find((item) => item.id === plan.id);
+  return {
+    record,
+    history,
+    reportDone: fact.reportDone,
+    persistedReport: persistedPlan.report,
+    persistedCheck: persistedPlan.checks.report,
+    repositoryRevision: stateRepository.currentRevision(),
+    envelopeRevision: envelope.revision,
+  };
+})()`);
+assert(!workRecordRepositories.missingForm,
+  `report form missing: ${JSON.stringify(workRecordRepositories)}`);
+assert(workRecordRepositories.record?.doneDate === "2026-07-23"
+  && workRecordRepositories.record?.actualAmount === "725mL/10a",
+  `work-record repository was not updated from UI: ${JSON.stringify(workRecordRepositories)}`);
+assert(workRecordRepositories.history?.done
+  && workRecordRepositories.history?.field === "作業記録Repository確認ほ場"
+  && workRecordRepositories.history?.rate.startsWith("725mL/10a"),
+  `work history did not use the repository record: ${JSON.stringify(workRecordRepositories)}`);
+assert(workRecordRepositories.reportDone && workRecordRepositories.persistedCheck,
+  `admin/report completion state was not updated: ${JSON.stringify(workRecordRepositories)}`);
+assert(workRecordRepositories.persistedReport?.reportNotes === "Repository経由の保存確認",
+  `work record was not persisted: ${JSON.stringify(workRecordRepositories)}`);
+assert(workRecordRepositories.repositoryRevision === workRecordRepositories.envelopeRevision,
+  `work-record repository revision mismatch: ${JSON.stringify(workRecordRepositories)}`);
+
 // --- scenario 2: legacy bare v3 blob migrates in place -------------------
 await evaluate(`(() => {
   const legacy = {

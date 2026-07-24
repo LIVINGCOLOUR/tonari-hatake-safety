@@ -445,6 +445,8 @@ let repositoryService;
 let stateRepository;
 let planRepository;
 let fieldRepository;
+let notificationRepository;
+let workRecordRepository;
 let state = null;
 let activeRole = "sprayer";
 let activeView = "dashboard";
@@ -506,7 +508,7 @@ async function init() {
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
-    import("./repositories/app-state.mjs?v=20260723-entity-repositories"),
+    import("./repositories/app-state.mjs?v=20260723-repository-bundle"),
   ]);
   stateRepository = repositoryService.createLocalStorageAppStateRepository({
     storage: localStorage,
@@ -519,14 +521,13 @@ async function init() {
     state = createSampleState();
   }
   state = normalizeState(state);
-  planRepository = repositoryService.createAggregateEntityRepository({
+  const repositories = repositoryService.createAggregateRepositoryBundle({
     getAggregate: () => state,
-    collectionName: "plans",
   });
-  fieldRepository = repositoryService.createAggregateEntityRepository({
-    getAggregate: () => state,
-    collectionName: "fields",
-  });
+  planRepository = repositories.plans;
+  fieldRepository = repositories.fields;
+  notificationRepository = repositories.notifications;
+  workRecordRepository = repositories.workRecords;
   const requestedRole = new URLSearchParams(location.search).get("role");
   if (!profileRole(state) && ROLE_META[requestedRole]) {
     state.role = requestedRole;
@@ -727,8 +728,10 @@ function bindEvents() {
 
   $("#clearReportPhotoButton").addEventListener("click", () => {
     const plan = activePlan();
-    plan.report.photoData = "";
-    plan.report.photoName = "";
+    saveWorkRecord(plan, {
+      photoData: "",
+      photoName: "",
+    });
     $("#photoInput").value = "";
     saveState();
     renderReport();
@@ -1014,15 +1017,16 @@ function renderPlanSelect() {
 function renderRuleBanner() {
   const rules = activeSettings();
   const plan = activePlan();
+  const report = workRecordForPlan(plan);
   const score = readinessScore(plan);
   const progress = checkProgress(plan);
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
-  const notified = targets.filter((item) => plan.notificationTargets[item.id]).length;
+  const notified = targets.filter((item) => item.notified).length;
   $("#ruleBanner").innerHTML = `
     <div>
       <span class="tag tag-green">確認進捗</span>
       <strong>${score.value} / 100</strong>
-      <span>チェック ${progress.done}/${progress.total} / 通知 ${notified}/${targets.length} / 気象 ${weatherCheckSummary(plan)} / ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"} / 報告 ${plan.report.doneDate ? "提出済み" : "未提出"}</span>
+      <span>チェック ${progress.done}/${progress.total} / 通知 ${notified}/${targets.length} / 気象 ${weatherCheckSummary(plan)} / ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"} / 報告 ${report.doneDate ? "提出済み" : "未提出"}</span>
     </div>
     <div class="rule-compact-note">
       <span>実証ルール案</span>
@@ -1060,7 +1064,7 @@ function renderSprayerWorkflow(plan) {
   const progress = checkProgress(plan);
   const actions = nextActionsForSprayer(plan);
   const workflow = domainDashboard.buildSprayerWorkflowModel({
-    plan,
+    plan: { ...plan, report: workRecordForPlan(plan) },
     progress,
     riskCount: riskItemsForPlan(plan).length,
     notificationSummary: notificationLabel(plan),
@@ -1246,12 +1250,13 @@ function noticeWindSummary(notice) {
 }
 
 function nextActionsForSprayer(plan) {
+  const report = workRecordForPlan(plan);
   return domainDashboard.buildSprayerNextActions({
     unnotifiedRisks: riskItemsForPlan(plan).filter((item) => item.notifyTarget && !item.notified),
     checks: plan.checks,
     actualSpeed: plan.weather.actualSpeed,
     droneImported: Boolean(plan.droneLog?.imported),
-    reportDone: Boolean(plan.report.doneDate),
+    reportDone: Boolean(report.doneDate),
     planDate: plan.date,
     today: dateOffset(0),
   });
@@ -1454,6 +1459,7 @@ function adminQueueItems(summary) {
 
 function adminAttentionReasons(plan) {
   const reasons = [];
+  const report = workRecordForPlan(plan);
   if (!planFieldResolution(plan).resolved) {
     reasons.push({
       level: "red",
@@ -1462,13 +1468,13 @@ function adminAttentionReasons(plan) {
     });
   }
   const risks = riskItemsForPlan(plan);
-  const unnotified = risks.filter((risk) => risk.notifyTarget && !plan.notificationTargets[risk.id]);
+  const unnotified = risks.filter((risk) => risk.notifyTarget && !risk.notified);
   const organicNear = risks.filter((risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high");
-  const consulting = Object.entries(plan.notificationResponses || {})
-    .filter(([, response]) => response && response !== "未回答" && response !== "確認しました")
-    .map(([fieldId, response]) => {
-      const field = fieldRepository.get(fieldId);
-      return `${field?.name || fieldId}：${response}`;
+  const consulting = notificationRepository.listByPlan(plan.id)
+    .filter((record) => record.response !== "未回答" && record.response !== "確認しました")
+    .map((record) => {
+      const field = fieldRepository.get(record.fieldId);
+      return `${field?.name || record.fieldId}：${record.response}`;
     });
   if (organicNear.length) {
     reasons.push({
@@ -1501,14 +1507,14 @@ function adminAttentionReasons(plan) {
       detail: altitudeIssues > 0 ? `${altitudeIssues}区間で予定高度との差を確認` : "飛行高度予定の確認が未完了です。",
     });
   }
-  if (plan.date <= dateOffset(0) && !plan.report.doneDate) {
+  if (plan.date <= dateOffset(0) && !report.doneDate) {
     reasons.push({ level: "amber", title: "実施後報告未提出", detail: "対象日を過ぎた散布の報告が未提出です。" });
   }
   if (consulting.length) {
     reasons.push({ level: "blue", title: "近隣返信要確認", detail: consulting.slice(0, 2).join("、") });
   }
-  if (plan.report?.inquiry && plan.report.inquiry !== "なし") {
-    reasons.push({ level: "blue", title: "問い合わせあり", detail: plan.report.inquiry });
+  if (report.inquiry && report.inquiry !== "なし") {
+    reasons.push({ level: "blue", title: "問い合わせあり", detail: report.inquiry });
   }
   return reasons.length ? reasons : [{ level: "green", title: "追加確認なし", detail: "通知・気象・報告の記録に大きな未完了はありません。" }];
 }
@@ -1948,7 +1954,7 @@ function renderAdminDashboardContent() {
               <td>${escapeHtml(row.date)}<br><span class="small-note">${escapeHtml(row.timeWindow)}</span></td>
               <td>${escapeHtml(row.fieldName)}<br><span class="small-note">${escapeHtml(row.district)}</span></td>
               <td>${escapeHtml(row.method)}<br><span class="small-note">${escapeHtml(row.materialType || "農薬")}</span></td>
-              <td>${row.report.doneDate ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
+              <td>${workRecordForPlan(row).doneDate ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
               <td>${notificationPill(row)}</td>
             </tr>
           `,
@@ -2624,7 +2630,7 @@ function adminDashboardFieldStatus(plans) {
   if (plans.some((plan) => riskLevel(plan) === "high")) {
     return { label: "要確認", color: ADMIN_DASHBOARD_COLORS.attention, level: "high", notify: 1 };
   }
-  if (plans.some((plan) => Boolean(plan.report.doneDate))) {
+  if (plans.some((plan) => Boolean(workRecordForPlan(plan).doneDate))) {
     return { label: "実施済み", color: ADMIN_DASHBOARD_COLORS.done, level: "high", notify: 1 };
   }
   return { label: "散布予定", color: ADMIN_DASHBOARD_COLORS.planned, level: "high", notify: 1 };
@@ -3314,41 +3320,42 @@ function renderWeatherApiStatus(plan) {
 
 function renderReport() {
   const plan = activePlan();
+  const report = workRecordForPlan(plan);
   const form = $("#reportForm");
   Object.entries({
-    doneDate: plan.report.doneDate,
-    doneTime: plan.report.doneTime,
-    doneField: plan.report.doneField || plan.fieldName,
-    donePesticide: plan.report.donePesticide || plan.pesticide,
-    doneArea: plan.report.doneArea || plan.sprayArea,
-    doneWeather: plan.report.doneWeather || weatherLabel(plan),
-    incident: plan.report.incident,
-    inquiry: plan.report.inquiry,
-    reportType: plan.report.reportType,
-    actualAmount: plan.report.actualAmount,
-    altitudeNotes: plan.report.altitudeNotes,
-    outsideFlight: plan.report.outsideFlight,
-    reportNotes: plan.report.reportNotes,
+    doneDate: report.doneDate,
+    doneTime: report.doneTime,
+    doneField: report.doneField || plan.fieldName,
+    donePesticide: report.donePesticide || plan.pesticide,
+    doneArea: report.doneArea || plan.sprayArea,
+    doneWeather: report.doneWeather || weatherLabel(plan),
+    incident: report.incident,
+    inquiry: report.inquiry,
+    reportType: report.reportType,
+    actualAmount: report.actualAmount,
+    altitudeNotes: report.altitudeNotes,
+    outsideFlight: report.outsideFlight,
+    reportNotes: report.reportNotes,
   }).forEach(([name, value]) => {
     const input = form.elements[name];
     if (input) input.value = value || "";
   });
 
-  const photo = plan.report.photoData
-    ? `<img src="${escapeAttr(plan.report.photoData)}" alt="実施後報告の写真メモ">`
+  const photo = report.photoData
+    ? `<img src="${escapeAttr(report.photoData)}" alt="実施後報告の写真メモ">`
     : `<div class="empty-state">写真メモは未登録です。</div>`;
   $("#reportPreview").innerHTML = `
     <div class="risk-row">
-      <strong>${escapeHtml(plan.report.doneDate || "実施日未入力")} ${escapeHtml(plan.report.doneTime || "")}</strong>
+      <strong>${escapeHtml(report.doneDate || "実施日未入力")} ${escapeHtml(report.doneTime || "")}</strong>
       <span>${escapeHtml(plan.fieldName)} / ${escapeHtml(plan.pesticide)}</span>
     </div>
     <div class="risk-row">
-      <strong>異常の有無：${escapeHtml(plan.report.incident || "未入力")}</strong>
-      <span>分類：${escapeHtml(plan.report.reportType || "通常報告")} / 問い合わせ：${escapeHtml(plan.report.inquiry || "未入力")}</span>
+      <strong>異常の有無：${escapeHtml(report.incident || "未入力")}</strong>
+      <span>分類：${escapeHtml(report.reportType || "通常報告")} / 問い合わせ：${escapeHtml(report.inquiry || "未入力")}</span>
     </div>
     <div class="risk-row">
       <strong>ドローンログ概要</strong>
-      <span>${escapeHtml(droneLogLabel())} / 高度要確認：${escapeHtml(plan.report.altitudeNotes || altitudeCheckLabel())}</span>
+      <span>${escapeHtml(droneLogLabel())} / 高度要確認：${escapeHtml(report.altitudeNotes || altitudeCheckLabel())}</span>
     </div>
     ${photo}
   `;
@@ -3756,9 +3763,10 @@ function exportPrescriptionGeoJSON() {
 }
 
 function historyRecords() {
+  const reportsByPlan = new Map(workRecordRepository.list().map((record) => [record.planId, record]));
   return allPlans()
     .map((plan) => {
-      const report = plan.report || {};
+      const report = reportsByPlan.get(String(plan.id)) || {};
       const done = Boolean(report.doneDate);
       const dilution = plan.dilution ? `／${plan.dilution}` : "";
       const cov = estimateCoverage(plan);
@@ -3883,7 +3891,7 @@ function adminFilteredPlans() {
   return allPlans()
     .slice()
     .filter((plan) => {
-      const done = Boolean(plan.report.doneDate);
+      const done = Boolean(workRecordForPlan(plan).doneDate);
       if (adminFilters.status === "planned" && done) return false;
       if (adminFilters.status === "done" && !done) return false;
       if (adminFilters.district !== "all" && plan.district !== adminFilters.district) return false;
@@ -3910,7 +3918,7 @@ function renderAdmin() {
   tbody.innerHTML = rows.length
     ? rows
         .map((plan) => {
-          const done = Boolean(plan.report.doneDate);
+          const done = Boolean(workRecordForPlan(plan).doneDate);
           return `
             <tr class="admin-row ${plan.id === adminSelectedId ? "selected" : ""}" data-admin-plan="${escapeAttr(plan.id)}">
               <td>${escapeHtml(plan.date)}<br><span class="muted-cell">${escapeHtml(plan.timeWindow)}</span></td>
@@ -3938,7 +3946,8 @@ function renderAdminDetail() {
   const g = sprayGoNoGo(plan);
   const cov = estimateCoverage(plan);
   const total = domainSpray.formatTotalAmount(plan);
-  const done = Boolean(plan.report.doneDate);
+  const report = workRecordForPlan(plan);
+  const done = Boolean(report.doneDate);
   const rows = [
     ["資材", `${plan.materialType || "農薬"} / ${plan.pesticide}`],
     ["使用量・総量", `${plan.amount || (plan.ratePer10a ? plan.ratePer10a + plan.rateUnit + "/10a" : "未記録")}${total !== "—" ? `（総量 ${total}）` : ""}`],
@@ -3946,7 +3955,7 @@ function renderAdminDetail() {
     ["機体・操縦者", `${plan.droneModel || "-"}（${plan.aircraftRegistration || "登録記号-"}）/ ${plan.pilot || "-"}`],
     ["近隣通知", notificationLabel(plan)],
     ["散布前チェック", `${checkProgress(plan).done}/${checkProgress(plan).total} 項目`],
-    ["実施後報告", done ? `${plan.report.doneDate} 提出済み` : "未提出"],
+    ["実施後報告", done ? `${report.doneDate} 提出済み` : "未提出"],
   ];
   info.innerHTML = `
     <div class="gonogo-card gonogo-${g.verdict} admin-gonogo">${goNoGoInner(g, plan, false)}</div>
@@ -4545,8 +4554,7 @@ function setWeatherStatus(label, message) {
 function updateReportFromForm() {
   const plan = activePlan();
   const form = $("#reportForm");
-  plan.report = {
-    ...plan.report,
+  saveWorkRecord(plan, {
     doneDate: form.elements.doneDate.value,
     doneTime: form.elements.doneTime.value.trim(),
     doneField: form.elements.doneField.value.trim(),
@@ -4560,8 +4568,7 @@ function updateReportFromForm() {
     altitudeNotes: form.elements.altitudeNotes.value.trim(),
     outsideFlight: form.elements.outsideFlight.value,
     reportNotes: form.elements.reportNotes.value.trim(),
-  };
-  plan.checks.report = Boolean(plan.report.doneDate);
+  });
   saveState();
   renderAll();
   showToast("実施後報告を保存しました。");
@@ -4570,22 +4577,21 @@ function updateReportFromForm() {
 function autoFillReportFromPlan() {
   const plan = activePlan();
   const log = activeDroneLog();
-  plan.report = {
-    ...plan.report,
-    doneDate: plan.report.doneDate || plan.date,
-    doneTime: plan.report.doneTime || (log.imported ? `${log.startedAt}-${log.endedAt}` : plan.timeWindow),
-    doneField: plan.report.doneField || plan.fieldName,
-    donePesticide: plan.report.donePesticide || plan.pesticide,
-    doneArea: plan.report.doneArea || plan.sprayArea,
-    doneWeather: plan.report.doneWeather || weatherLabel(plan),
-    incident: plan.report.incident || "なし",
-    inquiry: plan.report.inquiry || "なし",
+  const report = workRecordForPlan(plan);
+  saveWorkRecord(plan, {
+    doneDate: report.doneDate || plan.date,
+    doneTime: report.doneTime || (log.imported ? `${log.startedAt}-${log.endedAt}` : plan.timeWindow),
+    doneField: report.doneField || plan.fieldName,
+    donePesticide: report.donePesticide || plan.pesticide,
+    doneArea: report.doneArea || plan.sprayArea,
+    doneWeather: report.doneWeather || weatherLabel(plan),
+    incident: report.incident || "なし",
+    inquiry: report.inquiry || "なし",
     reportType: log.outsideFlight || altitudeCheckCount(log) ? "追加確認あり" : "通常報告",
-    actualAmount: plan.report.actualAmount || plan.amount,
+    actualAmount: report.actualAmount || plan.amount,
     altitudeNotes: altitudeCheckCount(log) ? `${altitudeCheckCount(log)}点 要確認 / 最大 ${maxAltitude(log)}m` : "高度要確認区間なし",
     outsideFlight: log.outsideFlight ? "要確認" : "なし",
-  };
-  plan.checks.report = Boolean(plan.report.doneDate);
+  });
 }
 
 function handlePhotoInput(event) {
@@ -4594,8 +4600,10 @@ function handlePhotoInput(event) {
   const reader = new FileReader();
   reader.onload = () => {
     const plan = activePlan();
-    plan.report.photoData = reader.result;
-    plan.report.photoName = file.name;
+    saveWorkRecord(plan, {
+      photoData: reader.result,
+      photoName: file.name,
+    });
     saveState();
     renderReport();
     showToast("写真メモを読み込みました。");
@@ -4622,9 +4630,10 @@ function markSelectedTargetsNotified() {
     return;
   }
   selected.forEach((id) => {
-    plan.notificationTargets[id] = true;
+    notificationRepository.saveDelivery(plan.id, id, true);
   });
   plan.checks.notice = notificationIsComplete(plan);
+  planRepository.save(plan);
   saveState();
   renderAll();
   showToast("通知履歴を更新しました。");
@@ -4632,12 +4641,9 @@ function markSelectedTargetsNotified() {
 
 function setNotificationResponse(fieldId, response, planId = "") {
   const plan = planRepository.get(planId) || activePlan();
-  plan.notificationResponses = plan.notificationResponses || {};
-  plan.notificationResponses[fieldId] = response || "未回答";
-  if (response && response !== "未回答") {
-    plan.notificationTargets[fieldId] = true;
-  }
+  notificationRepository.saveResponse(plan.id, fieldId, response || "未回答");
   plan.checks.notice = notificationIsComplete(plan);
+  planRepository.save(plan);
   state.activePlanId = plan.id;
   saveState();
   renderAll();
@@ -4645,13 +4651,39 @@ function setNotificationResponse(fieldId, response, planId = "") {
 }
 
 function notificationResponse(plan, fieldId) {
-  return plan.notificationResponses?.[fieldId] || "未回答";
+  return notificationRecord(plan, fieldId).response;
+}
+
+function notificationRecord(plan, fieldId) {
+  return notificationRepository.listByPlan(plan.id)
+    .find((record) => record.fieldId === fieldId) || {
+      planId: plan.id,
+      fieldId,
+      delivered: false,
+      response: "未回答",
+    };
+}
+
+function workRecordForPlan(plan) {
+  return workRecordRepository.get(plan?.id) || {
+    id: String(plan?.id || ""),
+    planId: String(plan?.id || ""),
+  };
+}
+
+function saveWorkRecord(plan, changes) {
+  return workRecordRepository.save({
+    ...workRecordForPlan(plan),
+    ...changes,
+    id: String(plan.id),
+    planId: String(plan.id),
+  });
 }
 
 function countNotificationResponses(response) {
   return allPlans().reduce((total, plan) => {
-    const values = Object.values(plan.notificationResponses || {});
-    return total + values.filter((value) => value === response).length;
+    const records = notificationRepository.listByPlan(plan.id);
+    return total + records.filter((record) => record.response === response).length;
   }, 0);
 }
 
@@ -4721,19 +4753,20 @@ function buildPrecheckPrint(plan) {
 }
 
 function buildReportPrint(plan) {
-  const photo = plan.report.photoData ? `<h2>写真メモ</h2><img src="${escapeAttr(plan.report.photoData)}" alt="写真メモ" style="max-width:280px">` : "";
+  const report = workRecordForPlan(plan);
+  const photo = report.photoData ? `<h2>写真メモ</h2><img src="${escapeAttr(report.photoData)}" alt="写真メモ" style="max-width:280px">` : "";
   return `
     <article class="print-doc">
       <h1>農薬散布 実施後報告</h1>
       ${printTable([
-        ["実施日時", `${plan.report.doneDate || ""} ${plan.report.doneTime || ""}`],
-        ["実施ほ場", plan.report.doneField || plan.fieldName],
-        ["使用農薬", plan.report.donePesticide || plan.pesticide],
-        ["実施範囲", plan.report.doneArea || plan.sprayArea],
-        ["気象条件", plan.report.doneWeather || weatherLabel(plan)],
-        ["異常の有無", plan.report.incident || "未入力"],
-        ["問い合わせ", plan.report.inquiry || "未入力"],
-        ["備考", plan.report.reportNotes || ""],
+        ["実施日時", `${report.doneDate || ""} ${report.doneTime || ""}`],
+        ["実施ほ場", report.doneField || plan.fieldName],
+        ["使用農薬", report.donePesticide || plan.pesticide],
+        ["実施範囲", report.doneArea || plan.sprayArea],
+        ["気象条件", report.doneWeather || weatherLabel(plan)],
+        ["異常の有無", report.incident || "未入力"],
+        ["問い合わせ", report.inquiry || "未入力"],
+        ["備考", report.reportNotes || ""],
       ])}
       ${photo}
     </article>
@@ -4763,7 +4796,7 @@ function buildAdminPrint() {
                 <td>${escapeHtml(notificationLabel(plan))}</td>
                 <td>${progress.done}/${progress.total}</td>
                 <td>${readinessScore(plan).value}</td>
-                <td>${plan.report.doneDate ? "提出済み" : "未提出"}</td>
+                <td>${workRecordForPlan(plan).doneDate ? "提出済み" : "未提出"}</td>
               </tr>`;
             })
             .join("")}
@@ -4836,7 +4869,7 @@ function exportCsv() {
         notificationLabel(plan),
         `${progress.done}/${progress.total}`,
         readinessScore(plan).value,
-        plan.report.doneDate ? "提出済み" : "未提出",
+        workRecordForPlan(plan).doneDate ? "提出済み" : "未提出",
       ];
     }),
   ];
@@ -4912,10 +4945,11 @@ function getAdminDashboardMetrics() {
 
 function dashboardPlanFact(plan) {
   const risks = riskItemsForPlan(plan);
-  const responses = Object.values(plan.notificationResponses || {});
+  const responses = notificationRepository.listByPlan(plan.id).map((record) => record.response);
+  const report = workRecordForPlan(plan);
   return {
     date: plan.date,
-    reportDone: Boolean(plan.report?.doneDate),
+    reportDone: Boolean(report.doneDate),
     highRisk: riskLevel(plan) === "high",
     notificationComplete: notificationIsComplete(plan),
     organicNear: risks.some(
@@ -4925,7 +4959,7 @@ function dashboardPlanFact(plan) {
     droneImported: Boolean(plan.droneLog?.imported),
     altitudeNeedsAttention: !plan.checks.altitude
       || Boolean(plan.droneLog?.imported && altitudeCheckCount(plan.droneLog) > 0),
-    hasInquiry: Boolean(plan.report?.inquiry && plan.report.inquiry !== "なし"),
+    hasInquiry: Boolean(report.inquiry && report.inquiry !== "なし"),
     unregisteredNear: risks.some((risk) => risk.unregistered || risk.type === "public"),
     replyNeed: responses.filter(
       (value) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(value),
@@ -4987,7 +5021,7 @@ function riskItemsForPlan(plan) {
         level = "medium";
         message = `実証ルール案上の通知候補です。通知対象距離 ${rules.notifyRadius}m 圏内にあります。`;
       }
-      const notified = Boolean(plan.notificationTargets[field.id]);
+      const notified = notificationRecord(plan, field.id).delivered;
       return {
         ...field,
         distance,
@@ -5018,19 +5052,19 @@ function priorityScore(plan) {
     if (!risk.notified) score += 2;
   });
   if (windNeedsAttention(plan)) score += 3;
-  if (!plan.report.doneDate && plan.date <= dateOffset(0)) score += 1;
+  if (!workRecordForPlan(plan).doneDate && plan.date <= dateOffset(0)) score += 1;
   return score;
 }
 
 function notificationIsComplete(plan) {
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
   if (!targets.length) return true;
-  return targets.every((target) => plan.notificationTargets[target.id]);
+  return targets.every((target) => target.notified);
 }
 
 function notificationLabel(plan) {
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
-  const done = targets.filter((target) => plan.notificationTargets[target.id]).length;
+  const done = targets.filter((target) => target.notified).length;
   return `${done}/${targets.length}件 通知済み`;
 }
 
@@ -5311,7 +5345,7 @@ ${risks || "・通知対象は登録されていません。"}
 
 function buildTimeline(plan) {
   return domainDashboard.buildSprayerTimeline({
-    plan,
+    plan: { ...plan, report: workRecordForPlan(plan) },
     riskCount: riskItemsForPlan(plan).length,
     notificationSummary: notificationLabel(plan),
     weatherSummary: weatherLabel(plan),
