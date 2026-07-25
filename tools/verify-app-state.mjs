@@ -845,6 +845,242 @@ assert(
   "Late workspace A response overwrote workspace B state",
 );
 
+// --- scenario 10: a failed context save rolls back in-memory state --------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=context-save-rollback#profile");
+const failedContextSave = await evaluate(`(async () => {
+  const userId = "user-save-rollback";
+  const workspaceId = "workspace-save-rollback";
+  const target = deviceStateContextModule.deviceStateContext({ userId, workspaceId });
+  const previousContextId = activeDeviceStateContext.id;
+  state.fields[0].name = "before failed switch";
+  stateRepository.save(state);
+
+  let releaseProfile;
+  let profileStarted = false;
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceId }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+  supabaseAuthService = {
+    loadProfile: async () => {
+      profileStarted = true;
+      await new Promise((resolve) => {
+        releaseProfile = resolve;
+      });
+      return { profile: state.profile, equipmentTemplate: state.equipmentTemplate };
+    },
+  };
+
+  const switching = switchDeviceStateContext();
+  while (!profileStarted) await new Promise((resolve) => setTimeout(resolve, 0));
+  const competingRepository = createDeviceStateRepository(target);
+  competingRepository.load();
+  const competingState = normalizeState(createSampleState());
+  competingState.fields[0].name = "saved by another tab";
+  competingRepository.save(competingState);
+  releaseProfile();
+
+  let errorCode = "";
+  try {
+    await switching;
+  } catch (error) {
+    errorCode = error?.code || "";
+  }
+  return {
+    errorCode,
+    contextId: activeDeviceStateContext.id,
+    previousContextId,
+    fieldName: state.fields[0].name,
+  };
+})()`);
+assert(failedContextSave.errorCode === "conflict", "Context save conflict was not surfaced");
+assert(
+  failedContextSave.contextId === failedContextSave.previousContextId,
+  "Failed context save changed the active context",
+);
+assert(
+  failedContextSave.fieldName === "before failed switch",
+  "Failed context save did not restore the previous in-memory state",
+);
+
+// --- scenario 11: blocked localStorage falls back to session memory -------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=volatile-state#profile");
+const volatileFallback = await evaluate(`(async () => {
+  const userId = "user-volatile";
+  const workspaceId = "workspace-volatile";
+  const target = deviceStateContextModule.deviceStateContext({ userId, workspaceId });
+  const originalSetItem = Storage.prototype.setItem;
+
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceId }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+  supabaseAuthService = {
+    loadProfile: async () => ({
+      profile: state.profile,
+      equipmentTemplate: state.equipmentTemplate,
+    }),
+  };
+
+  Storage.prototype.setItem = function setItem(key, value) {
+    if (String(key).startsWith(STORAGE_KEY)) throw new DOMException("blocked", "SecurityError");
+    return originalSetItem.call(this, key, value);
+  };
+
+  try {
+    await switchDeviceStateContext();
+    state.fields[0].name = "volatile session state";
+    stateRepository.save(state);
+    Storage.prototype.setItem = originalSetItem;
+    const secondRepository = createDeviceStateRepository(target);
+    const stored = secondRepository.load();
+    return {
+      contextId: activeDeviceStateContext.id,
+      expectedContextId: target.id,
+      storedName: stored?.data?.fields?.[0]?.name || "",
+    };
+  } finally {
+    Storage.prototype.setItem = originalSetItem;
+  }
+})()`);
+assert(
+  volatileFallback.contextId === volatileFallback.expectedContextId,
+  "Blocked localStorage prevented the context switch",
+);
+assert(
+  volatileFallback.storedName === "volatile session state",
+  "Volatile fallback did not retain the current session state",
+);
+
+// --- scenario 12: sync enablement stops after a workspace switch ----------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=stale-enable-sync#profile");
+const staleEnableSync = await evaluate(`(async () => {
+  const userId = "user-stale-enable";
+  const workspaceA = "workspace-enable-a";
+  const workspaceB = "workspace-enable-b";
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceA }, { workspace_id: workspaceB }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceA);
+  supabaseAuthService = {
+    loadProfile: async () => ({
+      profile: state.profile,
+      equipmentTemplate: state.equipmentTemplate,
+    }),
+  };
+  await switchDeviceStateContext();
+
+  let releaseProfile;
+  let profileStarted = false;
+  let profileLoads = 0;
+  let remoteLoads = 0;
+  supabaseAuthService = {
+    loadProfile: async () => {
+      profileLoads += 1;
+      if (profileLoads === 1) {
+        profileStarted = true;
+        await new Promise((resolve) => {
+          releaseProfile = resolve;
+        });
+      }
+      return { profile: state.profile, equipmentTemplate: state.equipmentTemplate };
+    },
+    saveProfile: async () => {},
+  };
+  supabaseDataRepository = {
+    load: async () => {
+      remoteLoads += 1;
+      return { workspace: { fields: state.fields, plans: state.plans } };
+    },
+  };
+  supabaseSyncCoordinator = { flush: async () => ({}) };
+
+  const enabling = enableSupabaseSync();
+  while (!profileStarted) await new Promise((resolve) => setTimeout(resolve, 0));
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceB);
+  await switchDeviceStateContext();
+  state.fields[0].name = "workspace B after switch";
+  stateRepository.save(state);
+  releaseProfile();
+  await enabling;
+
+  return {
+    remoteLoads,
+    contextId: activeDeviceStateContext.id,
+    expectedContextId: deviceStateContextModule.deviceStateContext({
+      userId,
+      workspaceId: workspaceB,
+    }).id,
+    fieldName: state.fields[0].name,
+  };
+})()`);
+assert(staleEnableSync.remoteLoads === 0, "Stale sync enablement reached the old workspace cloud");
+assert(
+  staleEnableSync.contextId === staleEnableSync.expectedContextId,
+  "Stale sync enablement changed the active context",
+);
+assert(
+  staleEnableSync.fieldName === "workspace B after switch",
+  "Stale sync enablement overwrote workspace B state",
+);
+
+// --- scenario 13: remote adoption conflict restores local in-memory state --
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=remote-save-rollback#profile");
+const remoteSaveRollback = await evaluate(`(async () => {
+  const userId = "user-remote-rollback";
+  const workspaceId = "workspace-remote-rollback";
+  const target = deviceStateContextModule.deviceStateContext({ userId, workspaceId });
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceId }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+  supabaseAuthService = {
+    loadProfile: async () => ({
+      profile: state.profile,
+      equipmentTemplate: state.equipmentTemplate,
+    }),
+    saveProfile: async () => {},
+  };
+  await switchDeviceStateContext();
+  state.fields[0].name = "local state before remote adoption";
+  stateRepository.save(state);
+
+  const remoteFields = state.fields.map((field, index) => (
+    index === 0 ? { ...field, name: "remote state" } : field
+  ));
+  supabaseDataRepository = {
+    load: async () => {
+      const competingRepository = createDeviceStateRepository(target);
+      const competingStored = competingRepository.load();
+      competingRepository.save(competingStored.data);
+      return domainSync.buildRemoteSyncPayload({
+        ...state,
+        fields: remoteFields,
+      });
+    },
+  };
+  supabaseSyncCoordinator = { flush: async () => ({}) };
+  const originalConfirm = window.confirm;
+  window.confirm = () => true;
+  try {
+    await enableSupabaseSync();
+  } finally {
+    window.confirm = originalConfirm;
+  }
+  return {
+    fieldName: state.fields[0].name,
+    syncStatus: supabaseSyncState.status,
+  };
+})()`);
+assert(
+  remoteSaveRollback.fieldName === "local state before remote adoption",
+  "Failed remote adoption did not restore the previous in-memory state",
+);
+assert(
+  remoteSaveRollback.syncStatus === "conflict",
+  `Remote save conflict was not reported: ${remoteSaveRollback.syncStatus}`,
+);
+
 await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
 socket.close();
 

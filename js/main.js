@@ -462,6 +462,8 @@ let supabaseSyncCoordinator = null;
 let pendingSyncStore = null;
 let activeDeviceStateContext = { id: "demo", userId: "", workspaceId: "" };
 let deviceStateContextQueue = Promise.resolve();
+const volatileDeviceState = new Map();
+const volatileDeviceStateContexts = new Set();
 let supabaseSyncState = { status: "local", message: "端末だけに保存しています。" };
 let supabaseConflictData = null;
 let suppressRemoteSync = false;
@@ -4105,12 +4107,53 @@ function deviceStateContextIsActive(userId, workspaceId) {
   return activeDeviceStateContext.id === expected.id;
 }
 
-function createDeviceStateRepository(context) {
+function createRawDeviceStateRepository(context, storage) {
   return repositoryService.createLocalStorageAppStateRepository({
-    storage: localStorage,
+    storage,
     key: deviceStateContextModule.contextStateStorageKey(STORAGE_KEY, context),
     parseStoredState: domainState.parseStoredState,
     nextEnvelope: domainState.nextEnvelope,
+  });
+}
+
+function createDeviceStateRepository(context) {
+  const volatileStorage = {
+    getItem: (key) => volatileDeviceState.get(key) ?? null,
+    setItem: (key, value) => volatileDeviceState.set(key, value),
+  };
+  let repository = createRawDeviceStateRepository(
+    context,
+    volatileDeviceStateContexts.has(context.id) ? volatileStorage : localStorage,
+  );
+
+  function useVolatileRepository() {
+    volatileDeviceStateContexts.add(context.id);
+    repository = createRawDeviceStateRepository(context, volatileStorage);
+    repository.load();
+  }
+
+  return Object.freeze({
+    load() {
+      try {
+        return repository.load();
+      } catch (error) {
+        if (!["read-failed", "write-failed"].includes(error?.code)) throw error;
+        useVolatileRepository();
+        return repository.load();
+      }
+    },
+    save(data) {
+      try {
+        return repository.save(data);
+      } catch (error) {
+        if (!["read-failed", "write-failed"].includes(error?.code)) throw error;
+        useVolatileRepository();
+        return repository.save(data);
+      }
+    },
+    currentRevision() {
+      return repository.currentRevision();
+    },
   });
 }
 
@@ -4168,7 +4211,12 @@ async function performDeviceStateContextSwitch(
   }
 
   state = normalizeState(nextState);
-  repository.save(state);
+  try {
+    repository.save(state);
+  } catch (error) {
+    state = previousState;
+    throw error;
+  }
   stateRepository = repository;
   activeDeviceStateContext = target;
 
@@ -4319,8 +4367,14 @@ async function loadRemoteStateWhenEnabled({ render = false } = {}) {
       return;
     }
     suppressRemoteSync = true;
-    state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
-    stateRepository.save(state);
+    const previousState = state;
+    try {
+      state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
+      stateRepository.save(state);
+    } catch (error) {
+      state = previousState;
+      throw error;
+    }
     if (render) renderAll();
     setSupabaseSyncState("synced", "クラウドの最新データを読み込みました。");
   } catch (error) {
@@ -4675,10 +4729,14 @@ async function resolveSupabaseConflict() {
     button.disabled = true;
     const merged = domainSync.resolveSyncConflicts(state, supabaseConflictData.payload, selections);
     suppressRemoteSync = true;
+    const previousState = state;
     try {
       state = normalizeState(merged);
       stateRepository.save(state);
       renderAll();
+    } catch (error) {
+      state = previousState;
+      throw error;
     } finally {
       suppressRemoteSync = false;
     }
@@ -4704,25 +4762,41 @@ async function resolveSupabaseConflict() {
 
 async function enableSupabaseSync() {
   const membership = activeSupabaseMembership();
-  if (!supabaseDataRepository || !membership || !supabaseSession?.user?.id) return;
+  const userId = supabaseSession?.user?.id;
+  const workspaceId = membership?.workspace_id;
+  const dataRepository = supabaseDataRepository;
+  const syncCoordinator = supabaseSyncCoordinator;
+  const authService = supabaseAuthService;
+  if (!dataRepository || !syncCoordinator || !authService || !workspaceId || !userId) return;
+  const contextIsActive = () => (
+    deviceStateContextIsActive(userId, workspaceId)
+    && supabaseSession?.user?.id === userId
+    && activeSupabaseMembership()?.workspace_id === workspaceId
+    && supabaseDataRepository === dataRepository
+    && supabaseSyncCoordinator === syncCoordinator
+    && supabaseAuthService === authService
+  );
   const button = $("#enableCloudSyncButton");
   try {
     button.disabled = true;
-    const alreadyEnabled = cloudSyncEnabled(membership.workspace_id);
+    const alreadyEnabled = cloudSyncEnabled(workspaceId);
     if (!alreadyEnabled) {
-      const account = await supabaseAuthService.loadProfile();
-      const cloudPayload = await supabaseDataRepository.load({
-        workspaceId: membership.workspace_id,
+      const account = await authService.loadProfile();
+      if (!contextIsActive()) return;
+      const cloudPayload = await dataRepository.load({
+        workspaceId,
         localState: {
           ...state,
           profile: account.profile,
           equipmentTemplate: account.equipmentTemplate,
         },
       });
+      if (!contextIsActive()) return;
       if (cloudPayload.workspace.fields.length || cloudPayload.workspace.plans.length) {
         const accepted = confirm(
           "この地域にはすでにクラウドデータがあります。端末データで上書きせず、クラウドの最新内容を読み込みます。続けますか？",
         );
+        if (!contextIsActive()) return;
         if (!accepted) {
           setSupabaseSyncState(
             "conflict",
@@ -4732,11 +4806,15 @@ async function enableSupabaseSync() {
           return;
         }
         suppressRemoteSync = true;
+        const previousState = state;
         try {
           state = normalizeState(domainSync.applyRemoteSyncPayload(state, cloudPayload));
           stateRepository.save(state);
-          localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+          localStorage.setItem(cloudSyncKey(workspaceId), "enabled");
           renderAll();
+        } catch (error) {
+          state = previousState;
+          throw error;
         } finally {
           suppressRemoteSync = false;
         }
@@ -4747,12 +4825,15 @@ async function enableSupabaseSync() {
       const accepted = confirm(
         "この端末のプロフィール、圃場、計画、通知状況、実施報告を選択中の地域へ保存します。続けますか？",
       );
+      if (!contextIsActive()) return;
       if (!accepted) return;
     }
     setSupabaseSyncState("syncing", "端末データをクラウドへ保存しています。");
-    await supabaseAuthService.saveProfile(state.profile, state.equipmentTemplate);
-    localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
-    const result = await supabaseSyncCoordinator.flush(structuredClone(state));
+    await authService.saveProfile(state.profile, state.equipmentTemplate);
+    if (!contextIsActive()) return;
+    localStorage.setItem(cloudSyncKey(workspaceId), "enabled");
+    const result = await syncCoordinator.flush(structuredClone(state));
+    if (!contextIsActive()) return;
     setSupabaseSyncState(
       "synced",
       result?.assetsPending
@@ -4761,6 +4842,7 @@ async function enableSupabaseSync() {
     );
     showToast("クラウド同期を開始しました。");
   } catch (error) {
+    if (!contextIsActive()) return;
     setSupabaseSyncState(
       error?.code === "conflict" ? "conflict" : "error",
       error?.code === "conflict"
@@ -4813,8 +4895,14 @@ async function reloadSupabaseState() {
       return;
     }
     suppressRemoteSync = true;
-    state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
-    stateRepository.save(state);
+    const previousState = state;
+    try {
+      state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
+      stateRepository.save(state);
+    } catch (error) {
+      state = previousState;
+      throw error;
+    }
     localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
     supabaseConflictData = null;
     renderAll();
