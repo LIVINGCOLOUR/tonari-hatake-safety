@@ -32,6 +32,18 @@ function normalizedEmail(value) {
   return email;
 }
 
+export function magicLinkRedirectUrl(currentUrl) {
+  try {
+    return new URL("./app.html?auth=magic-link", String(currentUrl || "")).href;
+  } catch (error) {
+    throw new SupabaseAuthError(
+      "invalid-redirect",
+      "ログイン後の戻り先を設定できません。",
+      { cause: error },
+    );
+  }
+}
+
 export function createSupabaseAuthService({ client, redirectUrl } = {}) {
   const supabaseClient = requiredClient(client);
 

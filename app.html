@@ -939,6 +939,9 @@
                 <input id="supabaseLoginEmail" type="email" autocomplete="email">
               </label>
               <button class="primary-button" id="sendMagicLinkButton" type="button">ログイン用メールを送る</button>
+              <p class="small-note" id="magicLinkStatus" role="status" aria-live="polite">
+                メール内のリンクを開くと、このプロフィール画面へ戻ります。
+              </p>
             </div>
 
             <div class="cloud-account-actions" id="supabaseSignedInPanel" hidden>
@@ -1247,6 +1250,6 @@
     <script src="vendor/shpjs/shp.min.js" defer></script>
     <script src="vendor/supabase/supabase.min.js" defer></script>
     <script src="js/config/supabase-runtime.js" defer></script>
-    <script src="js/main.js?v=20260725-context-state" defer></script>
+    <script src="js/main.js?v=20260725-magic-link" defer></script>
   </body>
 </html>

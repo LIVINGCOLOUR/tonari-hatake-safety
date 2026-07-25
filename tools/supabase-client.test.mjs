@@ -9,6 +9,7 @@ import {
 import {
   SupabaseAuthError,
   createSupabaseAuthService,
+  magicLinkRedirectUrl,
 } from "../js/services/supabase-auth.mjs";
 
 test("runtime remains local until both public values are configured", () => {
@@ -147,6 +148,21 @@ test("magic link validates email before transmitting it", async () => {
   const call = client.calls.find(([name]) => name === "otp");
   assert.equal(call[1].email, "user@example.test");
   assert.equal(call[1].options.emailRedirectTo, "https://example.test/app.html");
+});
+
+test("magic link returns to the canonical profile page after pretty URL redirects", () => {
+  assert.equal(
+    magicLinkRedirectUrl("https://tonari-hatake-safety.pages.dev/app#profile"),
+    "https://tonari-hatake-safety.pages.dev/app.html?auth=magic-link",
+  );
+  assert.equal(
+    magicLinkRedirectUrl("http://127.0.0.1:4178/app.html#dashboard"),
+    "http://127.0.0.1:4178/app.html?auth=magic-link",
+  );
+  assert.throws(
+    () => magicLinkRedirectUrl("not-a-url"),
+    (error) => error instanceof SupabaseAuthError && error.code === "invalid-redirect",
+  );
 });
 
 test("profile save requires a session and maps private data explicitly", async () => {

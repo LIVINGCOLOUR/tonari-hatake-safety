@@ -1081,6 +1081,65 @@ assert(
   `Remote save conflict was not reported: ${remoteSaveRollback.syncStatus}`,
 );
 
+// --- scenario 14: magic-link feedback persists and prevents rapid resend ---
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=magic-link-feedback#profile");
+const magicLinkFeedback = await evaluate(`(async () => {
+  let sentEmail = "";
+  supabaseAuthService = {
+    sendMagicLink: async (email) => {
+      sentEmail = email;
+    },
+  };
+  document.querySelector("#supabaseLoginEmail").value = " USER@example.test ";
+  await sendSupabaseMagicLink();
+  const result = {
+    sentEmail,
+    status: document.querySelector("#magicLinkStatus").textContent,
+    buttonText: document.querySelector("#sendMagicLinkButton").textContent,
+    buttonDisabled: document.querySelector("#sendMagicLinkButton").disabled,
+    cooldownStored: Number(localStorage.getItem(MAGIC_LINK_COOLDOWN_KEY)) > Date.now(),
+  };
+  clearTimeout(magicLinkCooldownTimer);
+  magicLinkCooldownTimer = null;
+  document.querySelector("#sendMagicLinkButton").disabled = false;
+  document.querySelector("#sendMagicLinkButton").textContent = "ログイン用メールを送る";
+  restoreMagicLinkCooldown();
+  result.restoredDisabled = document.querySelector("#sendMagicLinkButton").disabled;
+  result.restoredText = document.querySelector("#sendMagicLinkButton").textContent;
+  clearTimeout(magicLinkCooldownTimer);
+  magicLinkCooldownTimer = null;
+  return result;
+})()`);
+assert(magicLinkFeedback.sentEmail === "user@example.test", "Magic Link email was not normalized");
+assert(
+  magicLinkFeedback.status.includes("user@example.test"),
+  "Magic Link destination was not kept on screen",
+);
+assert(magicLinkFeedback.buttonDisabled, "Magic Link resend cooldown was not enabled");
+assert(
+  magicLinkFeedback.buttonText.includes("送信済み"),
+  "Magic Link resend cooldown did not keep a stable button label",
+);
+assert(magicLinkFeedback.cooldownStored, "Magic Link resend cooldown was not persisted");
+assert(magicLinkFeedback.restoredDisabled, "Magic Link cooldown was not restored after reload");
+assert(
+  magicLinkFeedback.restoredText.includes("送信済み"),
+  "Restored Magic Link cooldown did not disable resend",
+);
+
+// --- scenario 15: magic-link return opens profile after auth URL cleanup ---
+await evaluate("localStorage.clear()");
+await open("/app.html?auth=magic-link&test=magic-link-return#dashboard");
+const magicLinkReturn = await evaluate(`({
+  activeView: document.querySelector(".view.active")?.dataset.view || "",
+  hash: location.hash,
+  search: location.search,
+})`);
+assert(magicLinkReturn.activeView === "profile", "Magic Link return did not open the profile view");
+assert(magicLinkReturn.hash === "#profile", "Magic Link return did not keep the profile hash");
+assert(magicLinkReturn.search === "", "Magic Link return marker remained in the address bar");
+
 await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
 socket.close();
 

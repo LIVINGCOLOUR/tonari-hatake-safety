@@ -1,4 +1,6 @@
 const STORAGE_KEY = "tonariHatakeSafetyMvp.v3.coverage";
+const MAGIC_LINK_COOLDOWN_KEY = "tonariHatakeSafety.magicLinkCooldownUntil";
+const MAGIC_LINK_COOLDOWN_MS = 60_000;
 const ACTIVE_WORKSPACE_KEY = "tonariHatakeSafety.activeWorkspaceId";
 const CLOUD_SYNC_KEY_PREFIX = "tonariHatakeSafety.cloudSync.";
 
@@ -483,6 +485,7 @@ let coveragePlayIndex = null;
 let coveragePlaying = false;
 let coverageTimer = null;
 let toastTimer;
+let magicLinkCooldownTimer;
 let mapLibreMap;
 let dashboardMapLibreMap;
 let mapLibreReady = false;
@@ -521,6 +524,7 @@ function allowedViewsForCurrentMode() {
 }
 
 async function init() {
+  const magicLinkReturn = new URLSearchParams(location.search).get("auth") === "magic-link";
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
   [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
@@ -541,7 +545,7 @@ async function init() {
     import("./domain/sync.mjs?v=20260724-supabase-data"),
     import("./services/supabase-storage.mjs?v=20260724-supabase-data"),
     import("./services/supabase-client.mjs?v=20260724-supabase-auth"),
-    import("./services/supabase-auth.mjs?v=20260724-supabase-auth"),
+    import("./services/supabase-auth.mjs?v=20260725-magic-link"),
   ]);
   supabaseRuntime = supabaseClientService.createSupabaseRuntime({
     config: window.__TONARI_SUPABASE__ || {},
@@ -552,7 +556,7 @@ async function init() {
   if (supabaseRuntime.enabled) {
     supabaseAuthService = supabaseAuthModule.createSupabaseAuthService({
       client: supabaseRuntime.client,
-      redirectUrl: `${location.origin}${location.pathname}#profile`,
+      redirectUrl: supabaseAuthModule.magicLinkRedirectUrl(location.href),
     });
     await refreshSupabaseSession({ render: false });
     supabaseAuthUnsubscribe = supabaseAuthService.onAuthStateChange(({ session }) => {
@@ -584,7 +588,11 @@ async function init() {
   bindEvents();
   renderAll();
   const initialView = location.hash.replace("#", "");
-  switchView(VIEW_META[initialView] ? initialView : "dashboard");
+  switchView(magicLinkReturn ? "profile" : (VIEW_META[initialView] ? initialView : "dashboard"));
+  if (magicLinkReturn) {
+    history.replaceState(null, "", `${location.pathname}#profile`);
+  }
+  restoreMagicLinkCooldown();
   document.documentElement.dataset.appReady = "true";
   initBoundaries();
 }
@@ -4919,15 +4927,67 @@ async function reloadSupabaseState() {
 async function sendSupabaseMagicLink() {
   if (!supabaseAuthService) return;
   const button = $("#sendMagicLinkButton");
+  const status = $("#magicLinkStatus");
+  const email = String($("#supabaseLoginEmail").value || "").trim().toLowerCase();
   try {
     button.disabled = true;
-    await supabaseAuthService.sendMagicLink($("#supabaseLoginEmail").value);
+    if (status) status.textContent = "ログイン用メールを送信しています。";
+    await supabaseAuthService.sendMagicLink(email);
+    if (status) {
+      status.textContent = `${email} へ送信しました。メール内のリンクを開いてください。60秒後に再送できます。届かない場合は迷惑メールも確認してください。`;
+    }
+    const cooldownUntil = Date.now() + MAGIC_LINK_COOLDOWN_MS;
+    try {
+      localStorage.setItem(MAGIC_LINK_COOLDOWN_KEY, String(cooldownUntil));
+    } catch {
+      // ブラウザ保存が使えない場合も、このページを開いている間はタイマーで再送を抑止する。
+    }
+    startMagicLinkCooldown(cooldownUntil);
     showToast("ログイン用メールを送りました。メール内のリンクを開いてください。");
   } catch (error) {
+    if (status) status.textContent = error?.message || "ログイン用メールを送れませんでした。";
     showToast(error?.message || "ログイン用メールを送れませんでした。");
   } finally {
-    button.disabled = false;
+    if (!magicLinkCooldownTimer) button.disabled = false;
   }
+}
+
+function startMagicLinkCooldown(cooldownUntil) {
+  const button = $("#sendMagicLinkButton");
+  const status = $("#magicLinkStatus");
+  if (!button) return;
+  const remaining = Number(cooldownUntil) - Date.now();
+  clearTimeout(magicLinkCooldownTimer);
+  if (!Number.isFinite(remaining) || remaining <= 0) {
+    magicLinkCooldownTimer = null;
+    try {
+      localStorage.removeItem(MAGIC_LINK_COOLDOWN_KEY);
+    } catch {
+      // 保存領域を利用できなくても、再送ボタンの復帰は継続する。
+    }
+    button.disabled = false;
+    button.textContent = "ログイン用メールを再送";
+    if (status && status.textContent.includes("60秒後")) {
+      status.textContent = "ログイン用メールを再送できます。";
+    }
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "ログイン用メールを送信済み";
+  magicLinkCooldownTimer = setTimeout(
+    () => startMagicLinkCooldown(cooldownUntil),
+    Math.min(remaining, MAGIC_LINK_COOLDOWN_MS),
+  );
+}
+
+function restoreMagicLinkCooldown() {
+  let cooldownUntil = 0;
+  try {
+    cooldownUntil = Number(localStorage.getItem(MAGIC_LINK_COOLDOWN_KEY) || 0);
+  } catch {
+    return;
+  }
+  if (cooldownUntil > Date.now()) startMagicLinkCooldown(cooldownUntil);
 }
 
 async function signOutSupabase() {
