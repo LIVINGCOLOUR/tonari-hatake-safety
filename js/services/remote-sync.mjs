@@ -19,6 +19,9 @@ export function createRemoteSyncCoordinator({
   saveRemote,
   debounceMs = 800,
   onStatus = () => {},
+  onQueued = () => {},
+  createQueueId = () => globalThis.crypto?.randomUUID?.()
+    || `sync-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
 } = {}) {
@@ -36,22 +39,29 @@ export function createRemoteSyncCoordinator({
     onStatus({ status, ...detail });
   }
 
+  function queue(payload) {
+    const item = { payload, queueId: createQueueId() };
+    queued = item;
+    onQueued(item);
+    return item;
+  }
+
   async function drain() {
     if (inFlight) return inFlight;
     if (!queued) return null;
     const current = queued;
     queued = null;
-    publish(SYNC_STATUS.SYNCING);
+    publish(SYNC_STATUS.SYNCING, { queueId: current.queueId });
     inFlight = Promise.resolve()
-      .then(() => saveRemote(current))
+      .then(() => saveRemote(current.payload))
       .then((result) => {
-        publish(SYNC_STATUS.SYNCED, { result });
+        publish(SYNC_STATUS.SYNCED, { result, queueId: current.queueId });
         return result;
       })
       .catch((error) => {
         publish(
           error?.code === "conflict" ? SYNC_STATUS.CONFLICT : SYNC_STATUS.ERROR,
-          { error },
+          { error, queueId: current.queueId },
         );
         throw error;
       })
@@ -69,7 +79,7 @@ export function createRemoteSyncCoordinator({
 
   return Object.freeze({
     schedule(payload) {
-      queued = payload;
+      queue(payload);
       if (timer) clearTimer(timer);
       timer = setTimer(() => {
         timer = null;
@@ -78,7 +88,7 @@ export function createRemoteSyncCoordinator({
     },
 
     async flush(payload) {
-      if (payload !== undefined) queued = payload;
+      if (payload !== undefined) queue(payload);
       if (timer) {
         clearTimer(timer);
         timer = null;

@@ -446,6 +446,7 @@ let exportIOService;
 let repositoryService;
 let supabaseRepositoryModule;
 let remoteSyncModule;
+let pendingSyncModule;
 let domainSync;
 let supabaseStorageModule;
 let supabaseClientService;
@@ -457,6 +458,7 @@ let supabaseMemberships = [];
 let supabaseAuthUnsubscribe = null;
 let supabaseDataRepository = null;
 let supabaseSyncCoordinator = null;
+let pendingSyncStore = null;
 let supabaseSyncState = { status: "local", message: "端末だけに保存しています。" };
 let supabaseConflictData = null;
 let suppressRemoteSync = false;
@@ -515,7 +517,7 @@ function allowedViewsForCurrentMode() {
 
 async function init() {
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -528,7 +530,8 @@ async function init() {
     import("./services/export-io.mjs?v=20260723-export-service"),
     import("./repositories/app-state.mjs?v=20260723-repository-bundle"),
     import("./repositories/supabase-app-state.mjs?v=20260724-supabase-data"),
-    import("./services/remote-sync.mjs?v=20260724-supabase-data"),
+    import("./services/remote-sync.mjs?v=20260725-offline-retry"),
+    import("./services/pending-sync.mjs?v=20260725-offline-retry"),
     import("./domain/sync.mjs?v=20260724-supabase-data"),
     import("./services/supabase-storage.mjs?v=20260724-supabase-data"),
     import("./services/supabase-client.mjs?v=20260724-supabase-auth"),
@@ -539,6 +542,7 @@ async function init() {
     library: window.supabase,
     storage: localStorage,
   });
+  pendingSyncStore = pendingSyncModule.createPendingSyncStore({ storage: localStorage });
   if (supabaseRuntime.enabled) {
     supabaseAuthService = supabaseAuthModule.createSupabaseAuthService({
       client: supabaseRuntime.client,
@@ -768,6 +772,10 @@ function bindEvents() {
   $("#createWorkspaceButton")?.addEventListener("click", createSupabaseWorkspace);
   $("#acceptWorkspaceInviteButton")?.addEventListener("click", acceptSupabaseWorkspaceInvite);
   $("#enableCloudSyncButton")?.addEventListener("click", enableSupabaseSync);
+  $("#retryCloudSyncButton")?.addEventListener("click", () => retryPendingCloudSync({
+    notify: true,
+    refreshAfter: true,
+  }));
   $("#reloadCloudDataButton")?.addEventListener("click", reloadSupabaseState);
   $("#refreshConflictButton")?.addEventListener("click", () => prepareSupabaseConflict());
   $("#resolveConflictButton")?.addEventListener("click", resolveSupabaseConflict);
@@ -776,6 +784,9 @@ function bindEvents() {
     if (workspaceId) localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
     configureRemoteSync();
     renderSupabaseAccount();
+  });
+  window.addEventListener("online", () => {
+    retryPendingCloudSync({ refreshAfter: true }).catch(() => {});
   });
 
   $("#reportForm").addEventListener("submit", (event) => {
@@ -4129,7 +4140,15 @@ function configureRemoteSync() {
       userId,
       state: snapshot,
     }),
-    onStatus: ({ status, result }) => {
+    onQueued: ({ queueId }) => {
+      pendingSyncStore.write({
+        workspaceId: membership.workspace_id,
+        userId,
+        queueId,
+      });
+      renderSupabaseSyncControls();
+    },
+    onStatus: ({ status, result, error, queueId }) => {
       if (status === "synced" && result?.remoteVersions) {
         supabaseConflictData = null;
         suppressRemoteSync = true;
@@ -4139,6 +4158,11 @@ function configureRemoteSync() {
         } finally {
           suppressRemoteSync = false;
         }
+      }
+      if (status === "synced") {
+        pendingSyncStore.clearIfMatches(membership.workspace_id, userId, queueId);
+      } else if (status === "error" || status === "conflict") {
+        pendingSyncStore.markAttempt(membership.workspace_id, userId, queueId, error);
       }
       const messages = {
         idle: "クラウド同期を待機しています。",
@@ -4163,9 +4187,13 @@ function configureRemoteSync() {
   );
 }
 
-async function loadRemoteStateWhenEnabled() {
+async function loadRemoteStateWhenEnabled({ render = false } = {}) {
   const membership = activeSupabaseMembership();
   if (!supabaseDataRepository || !cloudSyncEnabled(membership?.workspace_id)) return;
+  if (activePendingSync()) {
+    const result = await retryPendingCloudSync();
+    if (!result || activePendingSync()) return;
+  }
   try {
     setSupabaseSyncState("syncing", "クラウドから地域データを読み込んでいます。");
     const account = await supabaseAuthService.loadProfile();
@@ -4184,11 +4212,40 @@ async function loadRemoteStateWhenEnabled() {
     suppressRemoteSync = true;
     state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
     stateRepository.save(state);
+    if (render) renderAll();
     setSupabaseSyncState("synced", "クラウドの最新データを読み込みました。");
   } catch (error) {
     setSupabaseSyncState("error", "クラウドを読めないため、端末保存データを表示しています。");
   } finally {
     suppressRemoteSync = false;
+  }
+}
+
+function activePendingSync() {
+  const membership = activeSupabaseMembership();
+  const userId = supabaseSession?.user?.id;
+  if (!membership?.workspace_id || !userId || !pendingSyncStore) return null;
+  return pendingSyncStore.read(membership.workspace_id, userId);
+}
+
+async function retryPendingCloudSync({ notify = false, refreshAfter = false } = {}) {
+  const pending = activePendingSync();
+  if (!pending || !supabaseSyncCoordinator || !cloudSyncEnabled(pending.workspaceId)) return null;
+  try {
+    setSupabaseSyncState("syncing", "端末に残っている未送信データをクラウドへ再送しています。");
+    const result = await supabaseSyncCoordinator.flush(structuredClone(state));
+    if (refreshAfter) await loadRemoteStateWhenEnabled({ render: true });
+    if (notify) showToast("未送信データをクラウドへ同期しました。");
+    return result;
+  } catch (error) {
+    if (notify) {
+      showToast(
+        error?.code === "conflict"
+          ? "別端末の更新と差があります。比較画面で確認してください。"
+          : "まだクラウドへ接続できません。端末データは保持しています。",
+      );
+    }
+    return null;
   }
 }
 
@@ -4270,14 +4327,34 @@ function renderSupabaseSyncControls() {
   const status = $("#supabaseSyncStatus");
   const enableButton = $("#enableCloudSyncButton");
   const reloadButton = $("#reloadCloudDataButton");
+  const retryButton = $("#retryCloudSyncButton");
+  const pendingNote = $("#supabasePendingSyncNote");
   const conflictNotice = $("#supabaseConflictNotice");
+  const pending = activePendingSync();
   status.textContent = supabaseSyncState.message;
   status.dataset.status = supabaseSyncState.status;
   conflictNotice.hidden = supabaseSyncState.status !== "conflict";
   enableButton.textContent = enabled ? "現在の端末データを同期" : "端末データをクラウドへ移行";
   enableButton.disabled = supabaseSyncState.status === "syncing";
   reloadButton.disabled = supabaseSyncState.status === "syncing";
+  retryButton.hidden = !pending || supabaseSyncState.status === "conflict";
+  retryButton.disabled = supabaseSyncState.status === "syncing";
+  pendingNote.hidden = !pending;
+  pendingNote.textContent = pending
+    ? `未送信の変更があります（${formatPendingSyncTime(pending.queuedAt)}、再試行 ${pending.attempts}回）。端末を閉じても保持されます。`
+    : "";
   renderSupabaseConflictDetails();
+}
+
+function formatPendingSyncTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "保存時刻不明";
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 const CONFLICT_KEY_LABELS = Object.freeze({
@@ -4515,8 +4592,8 @@ async function enableSupabaseSync() {
     }
     setSupabaseSyncState("syncing", "端末データをクラウドへ保存しています。");
     await supabaseAuthService.saveProfile(state.profile, state.equipmentTemplate);
-    const result = await supabaseSyncCoordinator.flush(structuredClone(state));
     localStorage.setItem(cloudSyncKey(membership.workspace_id), "enabled");
+    const result = await supabaseSyncCoordinator.flush(structuredClone(state));
     setSupabaseSyncState(
       "synced",
       result?.assetsPending

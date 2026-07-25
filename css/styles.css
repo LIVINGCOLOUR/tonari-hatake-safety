@@ -2303,6 +2303,15 @@ label {
   gap: 10px;
 }
 
+.cloud-pending-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 4px solid var(--amber);
+  background: #fff7df;
+  color: #5f4500;
+  font-weight: 700;
+}
+
 .cloud-conflict-notice {
   margin: 4px 0 0;
   padding: 10px 12px;

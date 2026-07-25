@@ -3,7 +3,7 @@ const port = process.argv[3] || "9238";
 
 async function inspectPage(path, expression, viewport = { width: 1440, height: 960 }, waitMs = 1800) {
   const url = `${baseUrl}${path}`;
-  const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: "PUT" });
+  const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
   if (!targetResponse.ok) throw new Error(`Could not create target for ${url}`);
   const target = await targetResponse.json();
   const socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -244,6 +244,46 @@ for (const viewport of [
     `Conflict notice causes ${conflictPanel.value.overflow}px overflow at ${viewport.width}px`,
   );
   assert(conflictPanel.errors.length === 0, `Conflict UI runtime errors: ${conflictPanel.errors.join(", ")}`);
+}
+
+for (const viewport of [
+  { width: 1440, height: 960 },
+  { width: 390, height: 844 },
+]) {
+  const pendingPanel = await inspectPage("/app.html?role=sprayer#profile", `() => {
+    const account = document.querySelector('#supabaseAccountPanel');
+    const sync = document.querySelector('#supabaseSyncPanel');
+    const retry = document.querySelector('#retryCloudSyncButton');
+    const note = document.querySelector('#supabasePendingSyncNote');
+    account.hidden = false;
+    sync.hidden = false;
+    retry.hidden = false;
+    note.hidden = false;
+    note.textContent = '未送信の変更があります（7月25日 10:02、再試行 1回）。端末を閉じても保持されます。';
+    return {
+      retryText: retry.textContent.trim(),
+      noteText: note.textContent.trim(),
+      retryWidth: retry.getBoundingClientRect().width,
+      noteWidth: note.getBoundingClientRect().width,
+      viewportWidth: innerWidth,
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  }`, viewport, 3500);
+  assert(pendingPanel.value.retryText === "未送信を再試行", "Pending retry action is unclear");
+  assert(pendingPanel.value.noteText.includes("端末を閉じても保持"), "Pending note does not explain persistence");
+  assert(
+    pendingPanel.value.retryWidth <= pendingPanel.value.viewportWidth,
+    `Pending retry is wider than the ${viewport.width}px viewport`,
+  );
+  assert(
+    pendingPanel.value.noteWidth <= pendingPanel.value.viewportWidth,
+    `Pending note is wider than the ${viewport.width}px viewport`,
+  );
+  assert(
+    pendingPanel.value.overflow <= 0,
+    `Pending sync UI causes ${pendingPanel.value.overflow}px overflow at ${viewport.width}px`,
+  );
+  assert(pendingPanel.errors.length === 0, `Pending sync UI runtime errors: ${pendingPanel.errors.join(", ")}`);
 }
 
 const legacyRedirect = await inspectPage("/#dashboard", `() => location.pathname`);

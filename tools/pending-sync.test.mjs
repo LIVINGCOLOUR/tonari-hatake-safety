@@ -1,0 +1,67 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createPendingSyncStore } from "../js/services/pending-sync.mjs";
+
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+    raw: values,
+  };
+}
+
+test("未送信状態を地域と利用者の組み合わせごとに保持する", () => {
+  const storage = memoryStorage();
+  const store = createPendingSyncStore({
+    storage,
+    now: () => "2026-07-25T01:02:03.000Z",
+  });
+
+  store.write({ workspaceId: "area-a", userId: "user-a", queueId: "queue-a" });
+
+  assert.deepEqual(store.read("area-a", "user-a"), {
+    version: 1,
+    queueId: "queue-a",
+    workspaceId: "area-a",
+    userId: "user-a",
+    queuedAt: "2026-07-25T01:02:03.000Z",
+    updatedAt: "2026-07-25T01:02:03.000Z",
+    attempts: 0,
+    lastError: "",
+  });
+  assert.equal(store.read("area-a", "user-b"), null);
+});
+
+test("新しい未送信を古い送信完了で消さない", () => {
+  const storage = memoryStorage();
+  let timestamp = 0;
+  const store = createPendingSyncStore({
+    storage,
+    now: () => `2026-07-25T01:02:0${timestamp++}.000Z`,
+  });
+
+  store.write({ workspaceId: "area-a", userId: "user-a", queueId: "queue-old" });
+  store.write({ workspaceId: "area-a", userId: "user-a", queueId: "queue-new" });
+
+  assert.equal(store.clearIfMatches("area-a", "user-a", "queue-old"), false);
+  assert.equal(store.read("area-a", "user-a").queueId, "queue-new");
+  assert.equal(store.clearIfMatches("area-a", "user-a", "queue-new"), true);
+  assert.equal(store.read("area-a", "user-a"), null);
+});
+
+test("失敗回数を記録し、壊れた保存値は未送信として扱わない", () => {
+  const storage = memoryStorage();
+  const store = createPendingSyncStore({ storage, now: () => "2026-07-25T02:00:00.000Z" });
+  store.write({ workspaceId: "area-a", userId: "user-a", queueId: "queue-a" });
+  store.markAttempt("area-a", "user-a", "queue-a", new Error("offline"));
+
+  assert.equal(store.read("area-a", "user-a").attempts, 1);
+  assert.equal(store.read("area-a", "user-a").lastError, "offline");
+
+  const [key] = storage.raw.keys();
+  storage.setItem(key, "{broken");
+  assert.equal(store.read("area-a", "user-a"), null);
+});

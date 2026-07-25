@@ -9,7 +9,7 @@
 const baseUrl = process.argv[2] || "http://127.0.0.1:4177";
 const port = process.argv[3] || "9238";
 
-const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`${baseUrl}/app.html`)}`, { method: "PUT" });
+const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
 if (!targetResponse.ok) throw new Error("Could not create browser target");
 const target = await targetResponse.json();
 const socket = new WebSocket(target.webSocketDebuggerUrl);

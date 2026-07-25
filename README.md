@@ -63,6 +63,7 @@ http://localhost:8080/
 - PDF印刷用ビュー
 - Magic Linkログイン、地域ワークスペース、3ロール所属
 - Supabaseへの圃場・計画・通知・報告の同期
+- 通信切断中の変更を端末へ保持し、起動時・再接続時に再送
 - 非公開Storageへの報告写真・飛行ログ保存
 
 ## データ構成
@@ -81,6 +82,7 @@ http://localhost:8080/
 - `js/repositories/supabase-app-state.mjs`: Supabase正規化テーブルとの同期アダプター
 - `js/services/supabase-auth.mjs`: Magic Link、プロフィール、地域所属
 - `js/services/supabase-storage.mjs`: 非公開写真・飛行ログ保存
+- `js/services/pending-sync.mjs`: 地域・利用者別のクラウド未送信状態
 - `supabase/migrations/`: Postgres / PostGIS、RLS、監査、Storage
 - `SUPABASE_RUNBOOK.md`: Supabaseの反映、検証、FreeからProへの移行手順
 - `SYNC_CONFLICTS.md`: 複数端末で同時編集した場合の上書き防止と利用者の操作

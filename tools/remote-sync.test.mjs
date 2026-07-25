@@ -54,3 +54,30 @@ test("別端末による更新競合は通常の通信失敗と区別する", as
   assert.equal(coordinator.status(), SYNC_STATUS.CONFLICT);
   assert.deepEqual(statuses, [SYNC_STATUS.SYNCING, SYNC_STATUS.CONFLICT]);
 });
+
+test("送信単位のIDを待機・完了状態へ引き継ぐ", async () => {
+  const queued = [];
+  const statuses = [];
+  const ids = ["queue-a", "queue-b"];
+  const coordinator = createRemoteSyncCoordinator({
+    saveRemote: async (payload) => ({ revision: payload.revision }),
+    debounceMs: 0,
+    createQueueId: () => ids.shift(),
+    onQueued: ({ queueId, payload }) => queued.push({ queueId, payload }),
+    onStatus: ({ status, queueId }) => statuses.push({ status, queueId }),
+  });
+
+  await coordinator.flush({ revision: 1 });
+  await coordinator.flush({ revision: 2 });
+
+  assert.deepEqual(queued, [
+    { queueId: "queue-a", payload: { revision: 1 } },
+    { queueId: "queue-b", payload: { revision: 2 } },
+  ]);
+  assert.deepEqual(statuses, [
+    { status: SYNC_STATUS.SYNCING, queueId: "queue-a" },
+    { status: SYNC_STATUS.SYNCED, queueId: "queue-a" },
+    { status: SYNC_STATUS.SYNCING, queueId: "queue-b" },
+    { status: SYNC_STATUS.SYNCED, queueId: "queue-b" },
+  ]);
+});
