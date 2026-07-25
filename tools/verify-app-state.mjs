@@ -547,6 +547,80 @@ const neighborSweep = await evaluate(`(async () => {
 })()`);
 assert(!neighborSweep.visited.some((v) => v.endsWith("!MISSING")), `neighbor sweep failed: ${neighborSweep.visited.join(", ")}`);
 
+// --- scenario 6: cloud reload never overwrites a pending device edit -----
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer#profile");
+const pendingReload = await evaluate(`(async () => {
+  const workspaceId = "workspace-browser-test";
+  const userId = "user-browser-test";
+  const originalName = state.fields[0].name;
+  let remoteLoads = 0;
+
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceId }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+  localStorage.setItem(cloudSyncKey(workspaceId), "enabled");
+  supabaseDataRepository = {
+    load: async () => {
+      remoteLoads += 1;
+      return { workspace: { fields: state.fields, plans: state.plans } };
+    },
+  };
+  supabaseSyncCoordinator = {
+    flush: async () => {
+      throw new Error("offline");
+    },
+  };
+  pendingSyncStore.write({ workspaceId, userId, queueId: "queue-pending" });
+
+  await reloadSupabaseState();
+  const afterManualReload = {
+    remoteLoads,
+    name: state.fields[0].name,
+    pending: Boolean(activePendingSync()),
+  };
+
+  const pending = activePendingSync();
+  pendingSyncStore.clearIfMatches(workspaceId, userId, pending.queueId);
+  state.fields[0].name = "端末で読込中に変更";
+  supabaseAuthService = {
+    loadProfile: async () => ({
+      profile: state.profile,
+      equipmentTemplate: state.equipmentTemplate,
+    }),
+  };
+  supabaseDataRepository = {
+    load: async () => {
+      pendingSyncStore.write({ workspaceId, userId, queueId: "queue-during-load" });
+      return {
+        workspace: {
+          fields: [{ ...state.fields[0], name: "クラウド側の名称" }],
+          plans: state.plans,
+        },
+      };
+    },
+  };
+
+  await loadRemoteStateWhenEnabled();
+  return {
+    originalName,
+    afterManualReload,
+    afterConcurrentLoadName: state.fields[0].name,
+    concurrentPending: Boolean(activePendingSync()),
+  };
+})()`);
+assert(pendingReload.afterManualReload.remoteLoads === 0, "Manual reload reached cloud while a device edit was pending");
+assert(
+  pendingReload.afterManualReload.name === pendingReload.originalName,
+  "Manual reload changed local state while retry failed",
+);
+assert(pendingReload.afterManualReload.pending, "Failed retry cleared the pending marker");
+assert(
+  pendingReload.afterConcurrentLoadName === "端末で読込中に変更",
+  "Cloud response overwrote an edit created during the request",
+);
+assert(pendingReload.concurrentPending, "Concurrent device edit lost its pending marker");
+
 await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
 socket.close();
 

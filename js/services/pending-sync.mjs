@@ -37,18 +37,23 @@ export function createPendingSyncStore({
 
   function write({ workspaceId, userId, queueId }) {
     const timestamp = now();
+    const current = read(workspaceId, userId);
     const marker = {
       version: 1,
       queueId: String(queueId),
       workspaceId: String(workspaceId),
       userId: String(userId),
-      queuedAt: timestamp,
+      queuedAt: current?.queuedAt || timestamp,
       updatedAt: timestamp,
-      attempts: 0,
-      lastError: "",
+      attempts: current?.attempts || 0,
+      lastError: current?.lastError || "",
     };
-    storage.setItem(key(workspaceId, userId), JSON.stringify(marker));
-    return marker;
+    try {
+      storage.setItem(key(workspaceId, userId), JSON.stringify(marker));
+      return marker;
+    } catch {
+      return current;
+    }
   }
 
   function markAttempt(workspaceId, userId, queueId, error = "") {
@@ -60,15 +65,23 @@ export function createPendingSyncStore({
       attempts: current.attempts + 1,
       lastError: String(error?.message || error || ""),
     };
-    storage.setItem(key(workspaceId, userId), JSON.stringify(marker));
-    return marker;
+    try {
+      storage.setItem(key(workspaceId, userId), JSON.stringify(marker));
+      return marker;
+    } catch {
+      return current;
+    }
   }
 
   function clearIfMatches(workspaceId, userId, queueId) {
     const current = read(workspaceId, userId);
     if (!current || current.queueId !== String(queueId)) return false;
-    storage.removeItem(key(workspaceId, userId));
-    return true;
+    try {
+      storage.removeItem(key(workspaceId, userId));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   return Object.freeze({ read, write, markAttempt, clearIfMatches });

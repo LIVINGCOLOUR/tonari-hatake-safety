@@ -65,3 +65,44 @@ test("失敗回数を記録し、壊れた保存値は未送信として扱わ�
   storage.setItem(key, "{broken");
   assert.equal(store.read("area-a", "user-a"), null);
 });
+
+test("新しい編集でも初回未送信時刻と再試行回数を引き継ぐ", () => {
+  const storage = memoryStorage();
+  const timestamps = [
+    "2026-07-25T01:00:00.000Z",
+    "2026-07-25T01:05:00.000Z",
+    "2026-07-25T01:10:00.000Z",
+  ];
+  const store = createPendingSyncStore({ storage, now: () => timestamps.shift() });
+
+  store.write({ workspaceId: "area-a", userId: "user-a", queueId: "queue-a" });
+  store.markAttempt("area-a", "user-a", "queue-a", "offline");
+  store.write({ workspaceId: "area-a", userId: "user-a", queueId: "queue-b" });
+
+  const marker = store.read("area-a", "user-a");
+  assert.equal(marker.queueId, "queue-b");
+  assert.equal(marker.queuedAt, "2026-07-25T01:00:00.000Z");
+  assert.equal(marker.updatedAt, "2026-07-25T01:10:00.000Z");
+  assert.equal(marker.attempts, 1);
+  assert.equal(marker.lastError, "offline");
+});
+
+test("未送信マーカーの保存失敗は同期処理へ例外を漏らさない", () => {
+  const storage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("quota");
+    },
+    removeItem: () => {
+      throw new Error("locked");
+    },
+  };
+  const store = createPendingSyncStore({ storage });
+
+  assert.doesNotThrow(() => store.write({
+    workspaceId: "area-a",
+    userId: "user-a",
+    queueId: "queue-a",
+  }));
+  assert.equal(store.clearIfMatches("area-a", "user-a", "queue-a"), false);
+});

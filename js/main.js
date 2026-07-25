@@ -531,7 +531,7 @@ async function init() {
     import("./repositories/app-state.mjs?v=20260723-repository-bundle"),
     import("./repositories/supabase-app-state.mjs?v=20260724-supabase-data"),
     import("./services/remote-sync.mjs?v=20260725-offline-retry"),
-    import("./services/pending-sync.mjs?v=20260725-offline-retry"),
+    import("./services/pending-sync.mjs?v=20260725-offline-guard"),
     import("./domain/sync.mjs?v=20260724-supabase-data"),
     import("./services/supabase-storage.mjs?v=20260724-supabase-data"),
     import("./services/supabase-client.mjs?v=20260724-supabase-auth"),
@@ -4209,6 +4209,13 @@ async function loadRemoteStateWhenEnabled({ render = false } = {}) {
       setSupabaseSyncState("idle", "クラウドは空です。端末データの移行を実行してください。");
       return;
     }
+    if (activePendingSync()) {
+      setSupabaseSyncState(
+        "idle",
+        "読込中に端末で変更がありました。未送信データを先に同期してください。",
+      );
+      return;
+    }
     suppressRemoteSync = true;
     state = normalizeState(domainSync.applyRemoteSyncPayload(state, payload));
     stateRepository.save(state);
@@ -4617,6 +4624,10 @@ async function enableSupabaseSync() {
 async function reloadSupabaseState() {
   const membership = activeSupabaseMembership();
   if (!supabaseDataRepository || !membership) return;
+  if (activePendingSync()) {
+    await retryPendingCloudSync({ notify: true, refreshAfter: true });
+    return;
+  }
   const accepted = confirm("クラウドの地域データで、この端末の表示内容を更新します。続けますか？");
   if (!accepted) return;
   try {
@@ -4633,6 +4644,14 @@ async function reloadSupabaseState() {
     if (!payload.workspace.fields.length && !payload.workspace.plans.length) {
       showToast("クラウドに地域データがありません。");
       setSupabaseSyncState("idle", "クラウドは空です。");
+      return;
+    }
+    if (activePendingSync()) {
+      setSupabaseSyncState(
+        "idle",
+        "読込中に端末で変更がありました。未送信データを先に同期してください。",
+      );
+      showToast("端末の新しい変更を守るため、クラウド再読込を中止しました。");
       return;
     }
     suppressRemoteSync = true;
