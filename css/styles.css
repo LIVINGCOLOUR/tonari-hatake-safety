@@ -2230,7 +2230,10 @@ label {
 .cloud-auth-form[hidden],
 .cloud-account-actions[hidden],
 .cloud-workspace-grid[hidden],
-.cloud-sync-panel[hidden] {
+.cloud-sync-panel[hidden],
+.account-data-operations[hidden],
+.account-deletion-confirmation[hidden],
+.account-data-actions [hidden] {
   display: none !important;
 }
 
@@ -2290,6 +2293,52 @@ label {
   gap: 10px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.account-data-operations {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.account-data-operations > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.account-data-operations p {
+  margin: 0;
+}
+
+.account-data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.account-deletion-confirmation {
+  display: grid;
+  max-width: 520px;
+  gap: 10px;
+  padding: 12px;
+  border-left: 4px solid var(--red);
+  background: #fff5f3;
+}
+
+.danger-button {
+  border: 1px solid #b93b31;
+  color: #8b2119;
+  background: #fff;
+}
+
+.danger-button:hover:not(:disabled) {
+  color: #fff;
+  background: #a82f26;
+}
+
+.account-operation-status {
+  min-height: 1.4em;
 }
 
 .cloud-sync-panel > div:first-child {

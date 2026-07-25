@@ -9,12 +9,21 @@ const migrationFiles = [
   "supabase/migrations/202607240004_sync_keys.sql",
   "supabase/migrations/202607240005_fix_invite_conflict.sql",
   "supabase/migrations/202607240006_fix_insert_returning_rls.sql",
+  "supabase/migrations/202607250001_account_deletion_requests.sql",
 ];
 
 const migrations = await Promise.all(
   migrationFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), "utf8")),
 );
-const [schemaSql, rlsSql, storageSql, syncKeysSql, inviteFixSql, returningRlsSql] = migrations;
+const [
+  schemaSql,
+  rlsSql,
+  storageSql,
+  syncKeysSql,
+  inviteFixSql,
+  returningRlsSql,
+  accountDeletionSql,
+] = migrations;
 const allSql = migrations.join("\n").toLowerCase();
 
 const sharedTables = [
@@ -138,5 +147,22 @@ test("insert returning can read newly owned fields and plans", () => {
   assert.doesNotMatch(
     returningRlsSql,
     /create\s+policy\s+fields_select_allowed[\s\S]+using\s*\(\s*public\.can_read_field/i,
+  );
+});
+
+test("account deletion is a cancellable request, not a browser-side user deletion", () => {
+  assert.match(accountDeletionSql, /create\s+table\s+public\.account_deletion_requests/i);
+  assert.match(accountDeletionSql, /enable\s+row\s+level\s+security/i);
+  assert.match(
+    accountDeletionSql,
+    /account_deletion_requests_select_own[\s\S]+user_id\s*=\s*auth\.uid\(\)/i,
+  );
+  assert.match(accountDeletionSql, /request_account_deletion[\s\S]+security\s+definer/i);
+  assert.match(accountDeletionSql, /cancel_account_deletion[\s\S]+security\s+definer/i);
+  assert.match(accountDeletionSql, /p_confirmation[\s\S]+退会を申請/i);
+  assert.doesNotMatch(accountDeletionSql, /delete\s+from\s+auth\.users/i);
+  assert.doesNotMatch(
+    accountDeletionSql,
+    /grant\s+(?:insert|update|delete)[\s\S]+account_deletion_requests\s+to\s+authenticated/i,
   );
 });

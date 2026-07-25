@@ -286,6 +286,60 @@ for (const viewport of [
   assert(pendingPanel.errors.length === 0, `Pending sync UI runtime errors: ${pendingPanel.errors.join(", ")}`);
 }
 
+for (const viewport of [
+  { width: 1440, height: 960 },
+  { width: 390, height: 844 },
+]) {
+  const accountOperations = await inspectPage("/app.html?role=sprayer#profile", `() => {
+    const account = document.querySelector('#supabaseAccountPanel');
+    const operations = document.querySelector('#accountDataOperations');
+    const confirmation = document.querySelector('#accountDeletionConfirmation');
+    const cancel = document.querySelector('#cancelAccountDeletionButton');
+    const open = document.querySelector('#openAccountDeletionButton');
+    account.hidden = false;
+    operations.hidden = false;
+    confirmation.hidden = false;
+    open.hidden = true;
+    cancel.hidden = false;
+    document.querySelector('#accountOperationStatus').textContent =
+      '退会申請を受け付けています（7月25日 21:00）。共有記録を確認してから処理します。';
+    return {
+      title: document.querySelector('#accountDataOperationsTitle').textContent.trim(),
+      exportText: document.querySelector('#exportAccountDataButton').textContent.trim(),
+      confirmationText: confirmation.textContent.trim(),
+      operationWidth: operations.getBoundingClientRect().width,
+      confirmationWidth: confirmation.getBoundingClientRect().width,
+      viewportWidth: innerWidth,
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  }`, viewport, 3500);
+  assert(accountOperations.value.title === "データの控えと退会", "Account operation title is unclear");
+  assert(
+    accountOperations.value.exportText === "本人用データを書き出す",
+    "Account export action is unclear",
+  );
+  assert(
+    accountOperations.value.confirmationText.includes("退会を申請"),
+    "Account deletion confirmation phrase is missing",
+  );
+  assert(
+    accountOperations.value.operationWidth <= accountOperations.value.viewportWidth,
+    `Account operations are wider than the ${viewport.width}px viewport`,
+  );
+  assert(
+    accountOperations.value.confirmationWidth <= accountOperations.value.viewportWidth,
+    `Account confirmation is wider than the ${viewport.width}px viewport`,
+  );
+  assert(
+    accountOperations.value.overflow <= 0,
+    `Account operations cause ${accountOperations.value.overflow}px overflow at ${viewport.width}px`,
+  );
+  assert(
+    accountOperations.errors.length === 0,
+    `Account operations runtime errors: ${accountOperations.errors.join(", ")}`,
+  );
+}
+
 const legacyRedirect = await inspectPage("/#dashboard", `() => location.pathname`);
 assert(
   legacyRedirect.value.endsWith("/app.html") || legacyRedirect.value.endsWith("/app"),

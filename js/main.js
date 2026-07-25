@@ -454,10 +454,13 @@ let domainSync;
 let supabaseStorageModule;
 let supabaseClientService;
 let supabaseAuthModule;
+let accountOperationsService;
 let supabaseRuntime;
 let supabaseAuthService;
 let supabaseSession = null;
 let supabaseMemberships = [];
+let supabaseAccountDeletionRequest = null;
+let supabaseAccountDeletionStatusError = "";
 let supabaseAuthUnsubscribe = null;
 let supabaseDataRepository = null;
 let supabaseSyncCoordinator = null;
@@ -526,7 +529,7 @@ function allowedViewsForCurrentMode() {
 async function init() {
   const magicLinkReturn = new URLSearchParams(location.search).get("auth") === "magic-link";
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule, accountOperationsService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -546,6 +549,7 @@ async function init() {
     import("./services/supabase-storage.mjs?v=20260724-supabase-data"),
     import("./services/supabase-client.mjs?v=20260724-supabase-auth"),
     import("./services/supabase-auth.mjs?v=20260725-magic-link"),
+    import("./services/account-operations.mjs?v=20260725-account-operations"),
   ]);
   supabaseRuntime = supabaseClientService.createSupabaseRuntime({
     config: window.__TONARI_SUPABASE__ || {},
@@ -773,6 +777,12 @@ function bindEvents() {
   $("#resetProfileButton")?.addEventListener("click", resetProfileToDemoMode);
   $("#sendMagicLinkButton")?.addEventListener("click", sendSupabaseMagicLink);
   $("#supabaseSignOutButton")?.addEventListener("click", signOutSupabase);
+  $("#exportAccountDataButton")?.addEventListener("click", exportAccountData);
+  $("#openAccountDeletionButton")?.addEventListener("click", openAccountDeletionConfirmation);
+  $("#closeAccountDeletionButton")?.addEventListener("click", closeAccountDeletionConfirmation);
+  $("#submitAccountDeletionButton")?.addEventListener("click", requestAccountDeletion);
+  $("#cancelAccountDeletionButton")?.addEventListener("click", cancelAccountDeletion);
+  $("#accountDeletionConfirmationInput")?.addEventListener("input", updateAccountDeletionConfirmation);
   $("#createWorkspaceButton")?.addEventListener("click", createSupabaseWorkspace);
   $("#acceptWorkspaceInviteButton")?.addEventListener("click", acceptSupabaseWorkspaceInvite);
   $("#enableCloudSyncButton")?.addEventListener("click", enableSupabaseSync);
@@ -4431,6 +4441,15 @@ async function refreshSupabaseSession({ render = true } = {}) {
   supabaseMemberships = supabaseSession
     ? await supabaseAuthService.memberships()
     : [];
+  supabaseAccountDeletionRequest = null;
+  supabaseAccountDeletionStatusError = "";
+  if (supabaseSession) {
+    try {
+      supabaseAccountDeletionRequest = await supabaseAuthService.accountDeletionRequest();
+    } catch {
+      supabaseAccountDeletionStatusError = "退会申請の状況を確認できません。通信状態を確認して再読込してください。";
+    }
+  }
   activeSupabaseMembership();
   const contextChanged = stateRepository
     ? await switchDeviceStateContext({
@@ -4500,6 +4519,7 @@ function renderSupabaseAccount() {
   const signedInPanel = $("#supabaseSignedInPanel");
   const workspacePanel = $("#supabaseWorkspacePanel");
   const syncPanel = $("#supabaseSyncPanel");
+  const dataOperations = $("#accountDataOperations");
   const workspaceSelect = $("#supabaseWorkspaceSelect");
   const membership = activeSupabaseMembership();
 
@@ -4512,6 +4532,7 @@ function renderSupabaseAccount() {
   signedInPanel.hidden = !signedIn;
   workspacePanel.hidden = !signedIn;
   syncPanel.hidden = !signedIn || !membership;
+  dataOperations.hidden = !signedIn;
   if (!signedIn) return;
 
   $("#supabaseSignedInEmail").textContent = supabaseSession.user.email || "ログイン済み";
@@ -4535,7 +4556,114 @@ function renderSupabaseAccount() {
       `).join("")
     : '<option value="">地域を作成または招待参加してください</option>';
   workspaceSelect.value = membership?.workspace_id || "";
+  renderAccountDataOperations();
   renderSupabaseSyncControls();
+}
+
+function renderAccountDataOperations() {
+  const status = $("#accountOperationStatus");
+  const openButton = $("#openAccountDeletionButton");
+  const cancelButton = $("#cancelAccountDeletionButton");
+  const pending = supabaseAccountDeletionRequest?.status === "pending";
+  openButton.hidden = pending;
+  cancelButton.hidden = !pending;
+  closeAccountDeletionConfirmation();
+  status.textContent = pending
+    ? `退会申請を受け付けています（${formatPendingSyncTime(supabaseAccountDeletionRequest.requested_at)}）。共有記録を確認してから処理します。`
+    : supabaseAccountDeletionStatusError;
+}
+
+function exportAccountData() {
+  if (!supabaseSession?.user?.id) {
+    showToast("ログインしてからデータを書き出してください。");
+    return;
+  }
+  try {
+    const exportedAt = new Date();
+    const payload = accountOperationsService.buildAccountExport({
+      user: supabaseSession.user,
+      profile: activeProfile(),
+      memberships: supabaseMemberships,
+      activeWorkspaceId: activeSupabaseMembership()?.workspace_id || "",
+      deviceState: state,
+      exportedAt: exportedAt.toISOString(),
+    });
+    exportIOService.downloadText({
+      text: JSON.stringify(payload, null, 2),
+      filename: accountOperationsService.accountExportFilename(exportedAt),
+      mimeType: "application/json;charset=utf-8",
+    });
+    $("#accountOperationStatus").textContent = "本人用データを書き出しました。認証トークンなどの秘密情報は含みません。";
+    showToast("本人用データを書き出しました。");
+  } catch (error) {
+    const message = error?.message || "本人用データを書き出せませんでした。";
+    $("#accountOperationStatus").textContent = message;
+    showToast(message);
+  }
+}
+
+function openAccountDeletionConfirmation() {
+  $("#accountDeletionConfirmation").hidden = false;
+  $("#accountDeletionConfirmationInput").value = "";
+  updateAccountDeletionConfirmation();
+  $("#accountDeletionConfirmationInput").focus();
+}
+
+function closeAccountDeletionConfirmation() {
+  const panel = $("#accountDeletionConfirmation");
+  if (!panel) return;
+  panel.hidden = true;
+  $("#accountDeletionConfirmationInput").value = "";
+  updateAccountDeletionConfirmation();
+}
+
+function updateAccountDeletionConfirmation() {
+  const button = $("#submitAccountDeletionButton");
+  if (!button) return;
+  button.disabled = !accountOperationsService?.validDeletionConfirmation(
+    $("#accountDeletionConfirmationInput")?.value,
+  );
+}
+
+async function requestAccountDeletion() {
+  const confirmation = $("#accountDeletionConfirmationInput").value;
+  if (!accountOperationsService.validDeletionConfirmation(confirmation)) return;
+  const button = $("#submitAccountDeletionButton");
+  try {
+    button.disabled = true;
+    supabaseAccountDeletionRequest = await supabaseAuthService.requestAccountDeletion(confirmation);
+    renderAccountDataOperations();
+    showToast("退会申請を受け付けました。");
+  } catch (error) {
+    const message = error?.message || "退会申請を受け付けられませんでした。";
+    $("#accountOperationStatus").textContent = message;
+    showToast(message);
+    updateAccountDeletionConfirmation();
+  }
+}
+
+async function cancelAccountDeletion() {
+  const button = $("#cancelAccountDeletionButton");
+  try {
+    button.disabled = true;
+    supabaseAccountDeletionRequest = await supabaseAuthService.cancelAccountDeletion();
+    renderAccountDataOperations();
+    $("#accountOperationStatus").textContent = "退会申請を取り消しました。";
+    showToast("退会申請を取り消しました。");
+  } catch (error) {
+    const message = error?.message || "退会申請を取り消せませんでした。";
+    try {
+      supabaseAccountDeletionRequest = await supabaseAuthService.accountDeletionRequest();
+      supabaseAccountDeletionStatusError = "";
+      renderAccountDataOperations();
+    } catch {
+      supabaseAccountDeletionStatusError = message;
+      $("#accountOperationStatus").textContent = message;
+    }
+    showToast(message);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function renderSupabaseSyncControls() {
@@ -4996,6 +5124,8 @@ async function signOutSupabase() {
     await supabaseAuthService.signOut();
     supabaseSession = null;
     supabaseMemberships = [];
+    supabaseAccountDeletionRequest = null;
+    supabaseAccountDeletionStatusError = "";
     supabaseSyncCoordinator?.cancel();
     supabaseSyncCoordinator = null;
     supabaseDataRepository = null;

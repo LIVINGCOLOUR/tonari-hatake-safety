@@ -99,6 +99,9 @@ function authClient({ session = null, authError = null, profileRow = null } = {}
     single() {
       return Promise.resolve({ data: profileRow || { id: session?.user?.id }, error: null });
     },
+    maybeSingle() {
+      return Promise.resolve({ data: null, error: null });
+    },
     eq(key, value) {
       calls.push(["eq", key, value]);
       return this;
@@ -216,4 +219,37 @@ test("profile load restores role details and equipment without device state", as
   assert.deepEqual(account.profile.visibility, { phone: "private" });
   assert.deepEqual(account.equipmentTemplate, { droneModel: "機体A" });
   assert.equal("activePlanId" in account.profile, false);
+});
+
+test("account deletion uses an authenticated status query and guarded RPCs", async () => {
+  const client = authClient({
+    session: { user: { id: "user-1", email: "user@example.test" } },
+  });
+  const service = createSupabaseAuthService({ client });
+  assert.equal(await service.accountDeletionRequest(), null);
+  await service.requestAccountDeletion("退会を申請");
+  await service.cancelAccountDeletion();
+
+  assert.deepEqual(
+    client.calls.find(([name, operation]) => name === "rpc" && operation === "request_account_deletion"),
+    ["rpc", "request_account_deletion", { p_confirmation: "退会を申請" }],
+  );
+  assert.deepEqual(
+    client.calls.find(([name, operation]) => name === "rpc" && operation === "cancel_account_deletion"),
+    ["rpc", "cancel_account_deletion", undefined],
+  );
+});
+
+test("membership listing is limited to the signed-in user even for administrators", async () => {
+  const client = authClient({
+    session: { user: { id: "user-1", email: "admin@example.test" } },
+  });
+  const service = createSupabaseAuthService({ client });
+  await service.memberships();
+  assert.ok(
+    client.calls.some(([name, key, value]) => name === "eq" && key === "user_id" && value === "user-1"),
+  );
+  assert.ok(
+    client.calls.some(([name, key, value]) => name === "eq" && key === "status" && value === "active"),
+  );
 });

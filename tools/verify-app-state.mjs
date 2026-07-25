@@ -1140,6 +1140,161 @@ assert(magicLinkReturn.activeView === "profile", "Magic Link return did not open
 assert(magicLinkReturn.hash === "#profile", "Magic Link return did not keep the profile hash");
 assert(magicLinkReturn.search === "", "Magic Link return marker remained in the address bar");
 
+// --- scenario 16: account backup and deletion request remain reversible ----
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=account-operations#profile");
+const accountOperations = await evaluate(`(async () => {
+  let exportedText = "";
+  let requestedConfirmation = "";
+  let cancelCount = 0;
+  let failCancellation = false;
+  const originalExportIO = exportIOService;
+  exportIOService = {
+    ...originalExportIO,
+    downloadText: ({ text }) => {
+      exportedText = text;
+      return { filename: "backup.json" };
+    },
+  };
+  state.secret = "do-not-export";
+  supabaseSession = {
+    user: {
+      id: "account-user",
+      email: "account@example.test",
+      access_token: "do-not-export",
+    },
+  };
+  supabaseMemberships = [{
+    workspace_id: "account-workspace",
+    role: "sprayer",
+    status: "active",
+    workspaces: {
+      id: "account-workspace",
+      name: "確認地域",
+    },
+  }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, "account-workspace");
+  supabaseAccountDeletionRequest = null;
+  supabaseAuthService = {
+    requestAccountDeletion: async (confirmation) => {
+      requestedConfirmation = confirmation;
+      return {
+        status: "pending",
+        requested_at: "2026-07-25T12:00:00.000Z",
+      };
+    },
+    cancelAccountDeletion: async () => {
+      cancelCount += 1;
+      if (failCancellation) throw new Error("already cancelled");
+      return {
+        status: "cancelled",
+        cancelled_at: "2026-07-25T12:01:00.000Z",
+      };
+    },
+    accountDeletionRequest: async () => ({
+      status: "cancelled",
+      cancelled_at: "2026-07-25T12:01:00.000Z",
+    }),
+  };
+  renderSupabaseAccount();
+  exportAccountData();
+  const exported = JSON.parse(exportedText);
+
+  openAccountDeletionConfirmation();
+  const confirmationInput = document.querySelector("#accountDeletionConfirmationInput");
+  confirmationInput.value = "退会";
+  updateAccountDeletionConfirmation();
+  const partialDisabled = document.querySelector("#submitAccountDeletionButton").disabled;
+  confirmationInput.value = "退会を申請";
+  updateAccountDeletionConfirmation();
+  const exactEnabled = !document.querySelector("#submitAccountDeletionButton").disabled;
+  await requestAccountDeletion();
+  const pendingVisible = !document.querySelector("#cancelAccountDeletionButton").hidden
+    && document.querySelector("#accountOperationStatus").textContent.includes("受け付けています");
+  await cancelAccountDeletion();
+  const cancelledVisible = document.querySelector("#accountOperationStatus").textContent.includes("取り消しました");
+  supabaseAccountDeletionRequest = {
+    status: "pending",
+    requested_at: "2026-07-25T12:00:00.000Z",
+  };
+  renderAccountDataOperations();
+  failCancellation = true;
+  await cancelAccountDeletion();
+  const staleControlsCorrected = document.querySelector("#cancelAccountDeletionButton").hidden
+    && !document.querySelector("#openAccountDeletionButton").hidden;
+
+  exportIOService = originalExportIO;
+  delete state.secret;
+  return {
+    exportedFormat: exported.format,
+    exportedEmail: exported.account.email,
+    exportedToken: exported.account.access_token,
+    exportedSecret: exported.deviceState.secret,
+    partialDisabled,
+    exactEnabled,
+    requestedConfirmation,
+    pendingVisible,
+    cancelCount,
+    cancelledVisible,
+    staleControlsCorrected,
+  };
+})()`);
+assert(
+  accountOperations.exportedFormat === "tonari-hatake-safety-account-export",
+  "Account backup format was not stable",
+);
+assert(accountOperations.exportedEmail === "account@example.test", "Account email was not exported");
+assert(accountOperations.exportedToken === undefined, "Authentication token leaked into account backup");
+assert(accountOperations.exportedSecret === undefined, "Secret-like app data leaked into account backup");
+assert(accountOperations.partialDisabled, "Partial deletion confirmation enabled the request");
+assert(accountOperations.exactEnabled, "Exact deletion confirmation did not enable the request");
+assert(
+  accountOperations.requestedConfirmation === "退会を申請",
+  "Deletion confirmation was not sent to the guarded RPC",
+);
+assert(accountOperations.pendingVisible, "Pending deletion request was not shown");
+assert(accountOperations.cancelCount === 2, "Deletion cancellation scenarios were not both exercised");
+assert(accountOperations.cancelledVisible, "Deletion cancellation result was not shown");
+assert(
+  accountOperations.staleControlsCorrected,
+  "Failed cancellation left stale pending controls after the server state changed",
+);
+
+// --- scenario 17: deletion-status outage does not stop account login -------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=account-status-fallback#profile");
+const accountStatusFallback = await evaluate(`(async () => {
+  supabaseAuthService = {
+    session: async () => ({
+      user: {
+        id: "fallback-user",
+        email: "fallback@example.test",
+      },
+    }),
+    memberships: async () => [],
+    accountDeletionRequest: async () => {
+      throw new Error("temporary status outage");
+    },
+  };
+  await refreshSupabaseSession({ render: true });
+  return {
+    badge: document.querySelector("#supabaseConnectionBadge").textContent.trim(),
+    email: document.querySelector("#supabaseSignedInEmail").textContent.trim(),
+    warning: document.querySelector("#accountOperationStatus").textContent.trim(),
+    operationsVisible: !document.querySelector("#accountDataOperations").hidden,
+  };
+})()`);
+assert(accountStatusFallback.badge === "接続済み", "Deletion status outage stopped account login");
+assert(
+  accountStatusFallback.email === "fallback@example.test",
+  "Deletion status outage hid the signed-in account",
+);
+assert(accountStatusFallback.operationsVisible, "Account operations disappeared after a status outage");
+assert(
+  accountStatusFallback.warning.includes("状況を確認できません"),
+  "Deletion status outage was not explained to the user",
+);
+
 await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
 socket.close();
 

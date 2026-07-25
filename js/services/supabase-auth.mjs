@@ -152,11 +152,41 @@ export function createSupabaseAuthService({ client, redirectUrl } = {}) {
     },
 
     async memberships() {
+      const session = await this.session();
+      if (!session?.user?.id) {
+        throw new SupabaseAuthError("authentication-required", "ログインしてください。");
+      }
       const result = await supabaseClient
         .from("workspace_memberships")
         .select("workspace_id, role, status, workspaces(id, slug, name, prefecture, municipality, district, settings)")
+        .eq("user_id", session.user.id)
         .eq("status", "active");
       return resultData(result, "membership-list") || [];
+    },
+
+    async accountDeletionRequest() {
+      const session = await this.session();
+      if (!session?.user?.id) {
+        throw new SupabaseAuthError("authentication-required", "ログインしてください。");
+      }
+      const result = await supabaseClient
+        .from("account_deletion_requests")
+        .select("status, requested_at, cancelled_at, completed_at, updated_at")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      return resultData(result, "account-deletion-status");
+    },
+
+    async requestAccountDeletion(confirmation) {
+      const result = await supabaseClient.rpc("request_account_deletion", {
+        p_confirmation: String(confirmation || "").trim(),
+      });
+      return resultData(result, "account-deletion-request");
+    },
+
+    async cancelAccountDeletion() {
+      const result = await supabaseClient.rpc("cancel_account_deletion");
+      return resultData(result, "account-deletion-cancel");
     },
 
     async createWorkspace(input) {

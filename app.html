@@ -1004,6 +1004,32 @@
               <p class="cloud-pending-note small-note" id="supabasePendingSyncNote" hidden></p>
               <p class="small-note">移行を実行するまで、未登録デモや端末内のサンプルデータがクラウドへ送られることはありません。</p>
             </div>
+
+            <section class="account-data-operations" id="accountDataOperations" aria-labelledby="accountDataOperationsTitle" hidden>
+              <div>
+                <strong id="accountDataOperationsTitle">データの控えと退会</strong>
+                <p class="small-note">
+                  プロフィール、所属情報、現在表示中の地域にある圃場、計画、通知、報告をJSONで保存できます。
+                  退会申請だけでは共有済みの業務記録を直ちに削除しません。
+                </p>
+              </div>
+              <div class="account-data-actions">
+                <button class="ghost-button" id="exportAccountDataButton" type="button">本人用データを書き出す</button>
+                <button class="danger-button" id="openAccountDeletionButton" type="button">退会を申請</button>
+                <button class="ghost-button" id="cancelAccountDeletionButton" type="button" hidden>退会申請を取り消す</button>
+              </div>
+              <div class="account-deletion-confirmation" id="accountDeletionConfirmation" hidden>
+                <label>
+                  確認のため「退会を申請」と入力
+                  <input id="accountDeletionConfirmationInput" type="text" autocomplete="off">
+                </label>
+                <div class="account-data-actions">
+                  <button class="danger-button" id="submitAccountDeletionButton" type="button" disabled>申請を確定</button>
+                  <button class="ghost-button" id="closeAccountDeletionButton" type="button">戻る</button>
+                </div>
+              </div>
+              <p class="small-note account-operation-status" id="accountOperationStatus" role="status" aria-live="polite"></p>
+            </section>
           </article>
 
           <form class="profile-layout" id="profileForm">
