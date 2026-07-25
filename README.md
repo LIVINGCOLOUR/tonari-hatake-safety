@@ -32,7 +32,9 @@ http://localhost:8080/
 
 未登録デモの入力はブラウザの `localStorage` に保存されます。保存キーは
 `tonariHatakeSafetyMvp.v3.coverage` です。ログイン後に利用者が明示的に移行した地域は、
-端末保存を維持しながらSupabaseへ同期します。
+利用者IDと地域IDを含む専用キーへ分離し、端末保存を維持しながらSupabaseへ同期します。
+初回ログイン時だけデモ用端末データを選択地域へ移し、以後は地域・利用者を切り替えても
+別の端末データを表示・送信しません。
 
 ## 主な機能
 
@@ -83,6 +85,7 @@ http://localhost:8080/
 - `js/services/supabase-auth.mjs`: Magic Link、プロフィール、地域所属
 - `js/services/supabase-storage.mjs`: 非公開写真・飛行ログ保存
 - `js/services/pending-sync.mjs`: 地域・利用者別のクラウド未送信状態
+- `js/services/device-state-context.mjs`: デモ、利用者、地域ごとの端末保存キー
 - `supabase/migrations/`: Postgres / PostGIS、RLS、監査、Storage
 - `SUPABASE_RUNBOOK.md`: Supabaseの反映、検証、FreeからProへの移行手順
 - `SYNC_CONFLICTS.md`: 複数端末で同時編集した場合の上書き防止と利用者の操作

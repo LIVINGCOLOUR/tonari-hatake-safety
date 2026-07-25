@@ -549,16 +549,17 @@ assert(!neighborSweep.visited.some((v) => v.endsWith("!MISSING")), `neighbor swe
 
 // --- scenario 6: cloud reload never overwrites a pending device edit -----
 await evaluate("localStorage.clear()");
-await open("/app.html?role=sprayer#profile");
+await open("/app.html?role=sprayer&test=pending-guard#profile");
 const pendingReload = await evaluate(`(async () => {
   const workspaceId = "workspace-browser-test";
   const userId = "user-browser-test";
-  const originalName = state.fields[0].name;
   let remoteLoads = 0;
 
   supabaseSession = { user: { id: userId } };
   supabaseMemberships = [{ workspace_id: workspaceId }];
   localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+  await switchDeviceStateContext();
+  const originalName = state.fields[0].name;
   localStorage.setItem(cloudSyncKey(workspaceId), "enabled");
   supabaseDataRepository = {
     load: async () => {
@@ -620,6 +621,229 @@ assert(
   "Cloud response overwrote an edit created during the request",
 );
 assert(pendingReload.concurrentPending, "Concurrent device edit lost its pending marker");
+
+// --- scenario 7: device state is isolated by user and workspace ----------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=context-isolation#profile");
+const contextIsolation = await evaluate(`(async () => {
+  const workspaceA = "workspace-a";
+  const workspaceB = "workspace-b";
+  const userA = "user-a";
+  const userB = "user-b";
+  const profileFor = (name) => ({
+    registered: true,
+    role: "sprayer",
+    name,
+    visibility: {},
+    sprayer: {},
+    neighbor: {},
+    admin: {},
+  });
+
+  state.fields[0].name = "デモから移行する圃場";
+  saveState();
+  supabaseAuthService = {
+    loadProfile: async () => ({
+      profile: profileFor(supabaseSession.user.id),
+      equipmentTemplate: {},
+    }),
+  };
+  supabaseSession = { user: { id: userA } };
+  supabaseMemberships = [{ workspace_id: workspaceA }, { workspace_id: workspaceB }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceA);
+  await switchDeviceStateContext({ migrateDemo: true });
+  const migratedName = state.fields[0].name;
+  const keyA = deviceStateContextModule.contextStateStorageKey(
+    STORAGE_KEY,
+    activeDeviceStateContext,
+  );
+
+  state.fields[0].name = "利用者A・地域A";
+  saveState();
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceB);
+  await switchDeviceStateContext();
+  const freshWorkspaceName = state.fields[0].name;
+  const keyB = deviceStateContextModule.contextStateStorageKey(
+    STORAGE_KEY,
+    activeDeviceStateContext,
+  );
+  state.fields[0].name = "利用者A・地域B";
+  saveState();
+
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceA);
+  await switchDeviceStateContext();
+  const restoredWorkspaceA = state.fields[0].name;
+
+  supabaseSession = null;
+  supabaseMemberships = [];
+  localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+  await switchDeviceStateContext();
+  const signedOutName = state.fields[0].name;
+
+  supabaseSession = { user: { id: userB } };
+  supabaseMemberships = [{ workspace_id: workspaceA }];
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceA);
+  await switchDeviceStateContext();
+  const otherUserName = state.fields[0].name;
+  const keyOtherUser = deviceStateContextModule.contextStateStorageKey(
+    STORAGE_KEY,
+    activeDeviceStateContext,
+  );
+
+  return {
+    migratedName,
+    freshWorkspaceName,
+    restoredWorkspaceA,
+    signedOutName,
+    otherUserName,
+    distinctKeys: new Set([keyA, keyB, keyOtherUser]).size,
+  };
+})()`);
+assert(
+  contextIsolation.migratedName === "デモから移行する圃場",
+  `Initial login did not migrate device data: ${contextIsolation.migratedName}`,
+);
+assert(contextIsolation.freshWorkspaceName !== "利用者A・地域A", "Workspace B inherited workspace A data");
+assert(contextIsolation.restoredWorkspaceA === "利用者A・地域A", "Workspace A state was not restored");
+assert(contextIsolation.signedOutName !== "利用者A・地域A", "Signed-out demo exposed workspace A data");
+assert(contextIsolation.otherUserName !== "利用者A・地域A", "Another user exposed user A data");
+assert(contextIsolation.distinctKeys === 3, "User and workspace state keys are not distinct");
+
+// --- scenario 8: overlapping context switches finish in request order ----
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=context-race#profile");
+const concurrentContextSwitch = await evaluate(`(async () => {
+  const userId = "user-race";
+  const workspaceA = "workspace-race-a";
+  const workspaceB = "workspace-race-b";
+  const contextA = deviceStateContextModule.deviceStateContext({ userId, workspaceId: workspaceA });
+  const contextB = deviceStateContextModule.deviceStateContext({ userId, workspaceId: workspaceB });
+  const repositoryA = createDeviceStateRepository(contextA);
+  const repositoryB = createDeviceStateRepository(contextB);
+  repositoryA.load();
+  repositoryB.load();
+  const stateA = normalizeState(createSampleState());
+  const stateB = normalizeState(createSampleState());
+  stateA.fields[0].name = "並行切替・地域A";
+  stateB.fields[0].name = "並行切替・地域B";
+  repositoryA.save(stateA);
+  repositoryB.save(stateB);
+
+  let profileLoads = 0;
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceA }, { workspace_id: workspaceB }];
+  supabaseAuthService = {
+    loadProfile: async () => {
+      profileLoads += 1;
+      if (profileLoads === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
+      return {
+        profile: {
+          registered: true,
+          role: "sprayer",
+          name: "並行切替利用者",
+          visibility: {},
+          sprayer: {},
+          neighbor: {},
+          admin: {},
+        },
+        equipmentTemplate: {},
+      };
+    },
+  };
+
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceA);
+  const switchA = switchDeviceStateContext();
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceB);
+  const switchB = switchDeviceStateContext();
+  await Promise.all([switchA, switchB]);
+
+  return {
+    contextId: activeDeviceStateContext.id,
+    expectedContextId: contextB.id,
+    fieldName: state.fields[0].name,
+  };
+})()`);
+assert(
+  concurrentContextSwitch.contextId === concurrentContextSwitch.expectedContextId,
+  "Overlapping switches did not finish on the last requested context",
+);
+assert(
+  concurrentContextSwitch.fieldName === "並行切替・地域B",
+  "In-memory state does not match the final context repository",
+);
+
+// --- scenario 9: a late cloud response cannot cross a context boundary ---
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&test=stale-load#profile");
+const staleCloudResponse = await evaluate(`(async () => {
+  const userId = "user-stale-load";
+  const workspaceA = "workspace-stale-a";
+  const workspaceB = "workspace-stale-b";
+  supabaseSession = { user: { id: userId } };
+  supabaseMemberships = [{ workspace_id: workspaceA }, { workspace_id: workspaceB }];
+  supabaseAuthService = {
+    loadProfile: async () => ({
+      profile: {
+        registered: true,
+        role: "sprayer",
+        name: "遅延応答利用者",
+        visibility: {},
+        sprayer: {},
+        neighbor: {},
+        admin: {},
+      },
+      equipmentTemplate: {},
+    }),
+  };
+
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceA);
+  await switchDeviceStateContext();
+  localStorage.setItem(cloudSyncKey(workspaceA), "enabled");
+  let releaseLoad;
+  let loadStarted = false;
+  const delayedPayload = new Promise((resolve) => {
+    releaseLoad = resolve;
+  });
+  supabaseDataRepository = {
+    load: async () => {
+      loadStarted = true;
+      return delayedPayload;
+    },
+  };
+  const loadA = loadRemoteStateWhenEnabled();
+  while (!loadStarted) await new Promise((resolve) => setTimeout(resolve, 0));
+
+  localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceB);
+  await switchDeviceStateContext();
+  state.fields[0].name = "切替後の地域B";
+  stateRepository.save(state);
+  releaseLoad({
+    workspace: {
+      fields: [{ ...state.fields[0], name: "遅れて返った地域A" }],
+      plans: state.plans,
+    },
+  });
+  await loadA;
+
+  return {
+    contextId: activeDeviceStateContext.id,
+    expectedContextId: deviceStateContextModule.deviceStateContext({
+      userId,
+      workspaceId: workspaceB,
+    }).id,
+    fieldName: state.fields[0].name,
+  };
+})()`);
+assert(
+  staleCloudResponse.contextId === staleCloudResponse.expectedContextId,
+  "Late cloud response changed the active context",
+);
+assert(
+  staleCloudResponse.fieldName === "切替後の地域B",
+  "Late workspace A response overwrote workspace B state",
+);
 
 await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
 socket.close();
