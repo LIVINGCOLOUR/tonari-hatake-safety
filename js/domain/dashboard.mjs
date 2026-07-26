@@ -27,6 +27,7 @@ export function rankNeighborNotices(notices = [], { limit = Number.POSITIVE_INFI
 }
 
 export function buildSprayerNextActions({
+  pendingReplies = [],
   unnotifiedRisks = [],
   checks = {},
   actualSpeed,
@@ -35,11 +36,16 @@ export function buildSprayerNextActions({
   planDate = "",
   today = "",
 } = {}) {
-  const actions = unnotifiedRisks.slice(0, 2).map((risk) => ({
+  const actions = pendingReplies.map((reply) => ({
+    title: `${reply.fieldName}から${reply.response}`,
+    detail: reply.note || "内容を確認して調整してください。",
+    view: "notify",
+  }));
+  actions.push(...unnotifiedRisks.slice(0, 2).map((risk) => ({
     title: `${risk.name}へ通知`,
     detail: risk.message,
     view: "notify",
-  }));
+  })));
   if (!checks.weatherForecast) {
     actions.push({
       title: "API予報を取得",
@@ -112,7 +118,7 @@ export function buildSprayerWorkflowModel({
       },
       {
         title: "近隣通知",
-        detail: notificationSummary,
+        detail: `${notificationSummary}${Number(plan.replyNeed || 0) ? `（返信 ${Number(plan.replyNeed)}件）` : ""}`,
         done: notificationComplete,
         view: "notify",
       },
@@ -169,12 +175,13 @@ export function buildSprayerTimeline({
 }
 
 export function buildNeighborTimeline({ field = {}, notices = [] } = {}) {
+  const visibility = field.visibilityLevel === "private" ? "最小限" : field.visibilityLevel === "workspace" ? "地域管理者にも共有" : "通知対象に共有";
   return [
     {
       title: "自分の圃場",
       detail: `${field.name || ""} / ${field.cultivation || "未登録"} / ${field.notifyPreference || "通知未確認"}`,
     },
-    { title: "公開範囲", detail: field.publicScope || "概略のみ共有" },
+    { title: "公開範囲", detail: visibility },
     { title: "未返信通知", detail: `${count(notices, (notice) => notice.response === "未回答")}件` },
     { title: "次の操作", detail: "通知への返信、連絡方法、公開範囲を確認します。" },
   ];
@@ -202,17 +209,17 @@ export function summarizeAdminDashboard({
   dayPlans = [],
   regionPlans = [],
 } = {}) {
-  const planned = count(dayPlans, (plan) => !plan.reportDone);
+  const planned = count(dayPlans, (plan) => !plan.reportDone && !plan.cancelled);
   const done = count(dayPlans, (plan) => plan.reportDone);
   const attention = count(dayPlans, (plan) => plan.highRisk);
   const notifyIncomplete = count(dayPlans, (plan) => !plan.notificationComplete);
   const organicNear = count(dayPlans, (plan) => plan.organicNear);
-  const windNeed = count(dayPlans, (plan) => plan.windNeedsAttention);
-  const droneMissing = count(dayPlans, (plan) => !plan.droneImported);
-  const altitudeNeed = count(dayPlans, (plan) => plan.altitudeNeedsAttention);
+  const windNeed = count(dayPlans, (plan) => !plan.cancelled && plan.windNeedsAttention);
+  const droneMissing = count(dayPlans, (plan) => !plan.cancelled && !plan.droneImported);
+  const altitudeNeed = count(dayPlans, (plan) => !plan.cancelled && plan.altitudeNeedsAttention);
   const inquiry = count(regionPlans, (plan) => plan.hasInquiry);
   const unregisteredNear = count(dayPlans, (plan) => plan.unregisteredNear);
-  const reportMissing = count(regionPlans, (plan) => plan.date <= today && !plan.reportDone);
+  const reportMissing = count(regionPlans, (plan) => plan.date <= today && !plan.reportDone && !plan.cancelled);
   const replyNeed = regionPlans.reduce((total, plan) => total + Number(plan.replyNeed || 0), 0);
   const readiness = dayPlans.length
     ? Math.round(dayPlans.reduce((sum, plan) => sum + Number(plan.readiness || 0), 0) / dayPlans.length)
@@ -243,13 +250,14 @@ export function buildSprayerDashboardMetrics({
   organicRadius,
   activeReadiness,
 } = {}) {
-  const todayPlans = count(plans, (plan) => plan.date === today);
-  const tomorrowPlans = count(plans, (plan) => plan.date === tomorrow);
+  const todayPlans = count(plans, (plan) => plan.date === today && !plan.cancelled);
+  const tomorrowPlans = count(plans, (plan) => plan.date === tomorrow && !plan.cancelled);
   const notifyIncomplete = count(plans, (plan) => !plan.notificationComplete);
   const organicNear = count(plans, (plan) => plan.organicNear);
   const windNeed = count(plans, (plan) => plan.windNeedsAttention);
-  const reportMissing = count(plans, (plan) => plan.date <= today && !plan.reportDone);
+  const reportMissing = count(plans, (plan) => plan.date <= today && !plan.reportDone && !plan.cancelled);
   const highRisk = count(plans, (plan) => plan.highRisk);
+  const replyNeed = plans.reduce((total, plan) => total + Number(plan.replyNeed || 0), 0);
   return [
     { label: "今日の散布予定", value: `${todayPlans}件`, note: today, alert: false },
     { label: "明日の散布予定", value: `${tomorrowPlans}件`, note: tomorrow, alert: false },
@@ -258,6 +266,7 @@ export function buildSprayerDashboardMetrics({
     { label: "風向・風速要確認", value: `${windNeed}件`, note: "気象メモ", alert: windNeed > 0 },
     { label: "実施後報告未提出", value: `${reportMissing}件`, note: "散布者控え", alert: reportMissing > 0 },
     { label: "追加確認が必要な予定", value: `${highRisk}件`, note: "管理者確認", alert: highRisk > 0 },
+    { label: "近隣からの返信", value: `${replyNeed}件`, note: "要調整", alert: replyNeed > 0 },
     { label: "表示中の確認進捗", value: `${activeReadiness}`, note: "説明用指標", alert: activeReadiness < 70 },
   ];
 }
@@ -272,7 +281,7 @@ export function buildNeighborDashboardMetrics({ notices = [], field = {} } = {})
     { label: "未返信通知", value: `${pending}件`, note: "通知インボックス", alert: pending > 0 },
     { label: "近日散布予定", value: `${notices.length}件`, note: "自分に関係", alert: notices.length > 0 },
     { label: "時間変更・電話相談", value: `${consulting}件`, note: "返信履歴", alert: consulting > 0 },
-    { label: "公開範囲", value: field.publicScope || "概略のみ共有", note: "圃場情報", alert: false },
+    { label: "公開範囲", value: field.visibilityLevel === "private" ? "最小限" : field.visibilityLevel === "workspace" ? "地域管理者にも共有" : "通知対象に共有", note: "圃場情報", alert: false },
     {
       label: "通知希望",
       value: field.notifyPreference || "未確認",
@@ -298,12 +307,12 @@ export function buildAdminDashboardMetrics({ summary, organicRadius } = {}) {
 
 export function buildAdminQueueItems(summary) {
   return [
-    { label: "通知未完了", count: summary.notifyIncomplete },
-    { label: "風向風速要確認", count: summary.windNeed },
-    { label: "報告未提出", count: summary.reportMissing },
-    { label: "ドローンログ未取込", count: summary.droneMissing },
-    { label: "高度要確認", count: summary.altitudeNeed },
-    { label: "問い合わせあり", count: summary.inquiry },
-    { label: "未登録圃場近接", count: summary.unregisteredNear },
+    { key: "notifyIncomplete", label: "通知未完了", count: summary.notifyIncomplete },
+    { key: "windNeed", label: "風向風速要確認", count: summary.windNeed },
+    { key: "reportMissing", label: "報告未提出", count: summary.reportMissing },
+    { key: "droneMissing", label: "ドローンログ未取込", count: summary.droneMissing },
+    { key: "altitudeNeed", label: "高度要確認", count: summary.altitudeNeed },
+    { key: "inquiry", label: "問い合わせあり", count: summary.inquiry },
+    { key: "unregisteredNear", label: "未登録圃場近接", count: summary.unregisteredNear },
   ];
 }

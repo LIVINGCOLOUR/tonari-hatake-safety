@@ -38,12 +38,6 @@ const ROLE_META = {
   },
 };
 
-const ROLE_ALLOWED_VIEWS = {
-  sprayer: ["dashboard", "plans", "map", "drone", "notify", "checklist", "weather", "report", "history", "profile"],
-  neighbor: ["dashboard", "map", "fields", "notify", "profile"],
-  admin: ["dashboard", "admin", "profile"],
-};
-
 const PROFILE_ROLE_LABELS = {
   sprayer: "散布者",
   neighbor: "周辺農家",
@@ -275,7 +269,7 @@ function defaultProfile() {
       logImportMethod: "sample",
     },
     neighbor: {
-      notificationPreference: "nearbyAndDownwind",
+      notificationPreference: "allNearby",
       contactTimeNote: "",
       defaultFieldId: null,
       defaultCultivation: "農薬使用なし",
@@ -442,6 +436,7 @@ let domainSpray;
 let domainPrescription;
 let domainCoverage;
 let domainDashboard;
+let domainDisclosure;
 let weatherService;
 let boundaryIOService;
 let exportIOService;
@@ -523,13 +518,47 @@ function currentNavigationRole() {
 }
 
 function allowedViewsForCurrentMode() {
-  return ROLE_ALLOWED_VIEWS[currentNavigationRole()] || ROLE_ALLOWED_VIEWS.sprayer;
+  return domainDisclosure.allowedViewsForRole(currentNavigationRole());
+}
+
+function currentOwnerUserId() {
+  return state?.profile?.registered && supabaseSession?.user?.id ? supabaseSession.user.id : "local-demo-user";
+}
+
+function isSelfOwned(field) {
+  if (currentOwnerUserId() === "local-demo-user" && ["spray-field-a", "organic-field-a", "no-chemical-field-b", "seedling-house-c", "preharvest-field-d", "water-channel-d", "facility-e"].includes(field?.id)) {
+    return ["spray-field-a", "organic-field-a"].includes(field.id);
+  }
+  return domainDisclosure.isSelfOwned(field, currentOwnerUserId());
+}
+
+function disclosureFor(field, viewerRole = activeRole) {
+  return domainDisclosure.fieldDisclosure(field, viewerRole, currentOwnerUserId());
+}
+
+function visibilityLevelFromLegacy(value) {
+  return domainDisclosure.normalizeVisibilityLevel(value);
+}
+
+function visibilityLabelForField(field) {
+  const level = visibilityLevelFromLegacy(field?.visibilityLevel || field?.publicScope);
+  return level === "private" ? "最小限" : level === "workspace" ? "地域管理者にも共有" : "通知対象に共有";
+}
+
+function notifyPreferenceKeyFromLabel(value) {
+  if (["allNearby", "nearbyOnly", "downwindOnly", "agrochemicalOnly", "asNeeded"].includes(value)) return value;
+  if (["必要時のみ", "asNeeded"].includes(value)) return "asNeeded";
+  if (["近接時のみ", "nearbyOnly"].includes(value)) return "nearbyOnly";
+  if (["風下方向のみ", "downwindOnly"].includes(value)) return "downwindOnly";
+  if (["農薬散布のみ", "agrochemicalOnly"].includes(value)) return "agrochemicalOnly";
+  if (value === "未確認") return "asNeeded";
+  return "allNearby";
 }
 
 async function init() {
   const magicLinkReturn = new URLSearchParams(location.search).get("auth") === "magic-link";
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule, accountOperationsService] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, domainDisclosure, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule, accountOperationsService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -537,6 +566,7 @@ async function init() {
     import("./domain/prescription.mjs?v=20260723-phase6"),
     import("./domain/coverage.mjs?v=20260723-phase6"),
     import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
+    import("./domain/disclosure.mjs?v=20260726-role-boundary-final"),
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
@@ -627,7 +657,12 @@ function bindEvents() {
 
     const fieldEdit = event.target.closest("[data-field-edit]");
     if (fieldEdit) {
-      state.activeFieldId = fieldEdit.dataset.fieldEdit;
+      const field = fieldRepository.get(fieldEdit.dataset.fieldEdit);
+      if (!field || !isSelfOwned(field)) {
+        showToast("他の方が登録した圃場は編集できません。");
+        return;
+      }
+      state.activeFieldId = field.id;
       saveState();
       renderAll();
       switchView("fields");
@@ -636,7 +671,43 @@ function bindEvents() {
 
     const notifyAction = event.target.closest("[data-notify-action]");
     if (notifyAction) {
-      setNotificationResponse(notifyAction.dataset.notifyAction, notifyAction.dataset.response, notifyAction.dataset.notifyPlan);
+      const replyKey = `${notifyAction.dataset.notifyPlan}:${notifyAction.dataset.notifyAction}`;
+      const note = document.querySelector(`[data-reply-note="${CSS.escape(replyKey)}"]`)?.value || "";
+      setNotificationResponse(notifyAction.dataset.notifyAction, notifyAction.dataset.response, notifyAction.dataset.notifyPlan, note, { acknowledge: true });
+      return;
+    }
+
+    const noticeTarget = event.target.closest("[data-notice-target]");
+    if (noticeTarget) {
+      $("#noticeText").value = buildNoticeText(activePlan(), noticeChannel, noticeTarget.dataset.noticeTarget);
+      $$("[data-notice-target]").forEach((button) => button.classList.toggle("active", button === noticeTarget));
+      return;
+    }
+
+    const newPlan = event.target.closest("[data-action='new-plan']");
+    if (newPlan) {
+      createNewPlan();
+      return;
+    }
+
+    const cancellationSave = event.target.closest("[data-action='save-cancellation']");
+    if (cancellationSave) {
+      savePlanCancellation(cancellationSave.closest("form"));
+      return;
+    }
+
+    const cancellationClear = event.target.closest("[data-action='clear-cancellation']");
+    if (cancellationClear) {
+      clearPlanCancellation();
+      return;
+    }
+
+    const adminQueue = event.target.closest("[data-admin-queue]");
+    if (adminQueue) {
+      adminFilters.queue = adminQueue.dataset.adminQueue || null;
+      adminFilters.dateScope = ["reportMissing", "inquiry"].includes(adminFilters.queue) ? "all" : "day";
+      switchView("admin");
+      renderAdmin();
       return;
     }
 
@@ -699,16 +770,15 @@ function bindEvents() {
     renderAll();
   });
 
-  $("#loadSampleButton").addEventListener("click", () => {
-    const shouldReset = confirm("サンプルデータを読み込みます。現在の入力内容は置き換わります。");
-    if (!shouldReset) return;
-    state = createSampleState();
-    saveState();
-    renderAll();
-    showToast("サンプルデータを読み込みました。");
+  $("#loadSampleButton")?.addEventListener("click", () => {
+    loadSampleData();
   });
+  $("#loadSampleButtonProfile")?.addEventListener("click", loadSampleData);
+  $("#resetDemoDataButton")?.addEventListener("click", resetDemoData);
 
-  $("#newPlanButton").addEventListener("click", () => {
+  $("#newPlanButton")?.addEventListener("click", createNewPlan);
+
+  function createNewPlan() {
     const plan = createBlankPlan();
     planRepository.save(plan, { position: "start" });
     state.activePlanId = plan.id;
@@ -716,7 +786,7 @@ function bindEvents() {
     renderAll();
     switchView("plans");
     showToast("新しい散布計画を追加しました。");
-  });
+  }
 
   $("#duplicatePlanButton").addEventListener("click", () => {
     const current = activePlan();
@@ -895,6 +965,14 @@ function bindEvents() {
     adminFilters.district = event.target.value;
     renderAdmin();
   });
+  $("#adminDateScopeFilter")?.addEventListener("change", (event) => {
+    adminFilters.dateScope = event.target.value;
+    renderAdmin();
+  });
+  $("#clearAdminFiltersButton")?.addEventListener("click", () => {
+    adminFilters = { status: "all", district: "all", dateScope: "all", queue: null };
+    renderAdmin();
+  });
 
   $$(".segment[data-channel]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -960,6 +1038,47 @@ function bindEvents() {
       setNotificationResponse(response.dataset.notifyResponse, response.value, response.dataset.notifyPlan);
     }
   });
+}
+
+function loadSampleData() {
+  if (cloudSyncEnabled()) {
+    showToast("クラウドへ移行済みの地域ではサンプルで置き換えられません。ログアウトしてからお試しください。");
+    return;
+  }
+  if (activePendingSync()) {
+    showToast("未送信データがあります。同期を完了してからお試しください。");
+    return;
+  }
+  if (!confirm("サンプルデータを読み込みます。現在の端末入力は置き換わります。")) return;
+  state = normalizeState(createSampleState());
+  saveState();
+  renderAll();
+  showToast("サンプルデータを読み込みました。");
+}
+
+function resetDemoData() {
+  if (cloudSyncEnabled()) {
+    showToast("クラウドへ移行済みの地域では実行できません。ログアウトしてからお試しください。");
+    return;
+  }
+  if (activePendingSync()) {
+    showToast("未送信データがあります。同期を完了してから初期化してください。");
+    return;
+  }
+  if (!confirm("この端末のデモデータを消去し、初期状態に戻しますか？")) return;
+  try {
+    const context = currentDeviceStateContext();
+    const key = deviceStateContextModule.contextStateStorageKey(STORAGE_KEY, context);
+    localStorage.removeItem(key);
+    stateRepository = createDeviceStateRepository(context);
+    stateRepository.load();
+    state = normalizeState(createSampleState());
+    stateRepository.save(state);
+    renderAll();
+    showToast("この端末のデモデータを初期化しました。");
+  } catch {
+    showToast("初期化に失敗しました。ページを再読み込みしてください。");
+  }
 }
 
 function renderAll() {
@@ -1144,7 +1263,7 @@ function renderSprayerWorkflow(plan) {
   const progress = checkProgress(plan);
   const actions = nextActionsForSprayer(plan);
   const workflow = domainDashboard.buildSprayerWorkflowModel({
-    plan: { ...plan, report: workRecordForPlan(plan) },
+    plan: { ...plan, report: workRecordForPlan(plan), replyNeed: dashboardPlanFact(plan).replyNeed },
     progress,
     riskCount: riskItemsForPlan(plan).length,
     notificationSummary: notificationLabel(plan),
@@ -1190,21 +1309,76 @@ function renderSprayerWorkflow(plan) {
             : `<div class="next-action-row is-static"><span>次の記録に進めます</span><small>散布後はログ取込と実施後報告を残してください。</small></div>`
         }
       </div>
+      <div class="form-actions compact-actions">
+        <button class="ghost-button" data-action="new-plan" type="button">別の散布計画を追加</button>
+      </div>
+      <details class="plan-cancellation-panel" ${plan.cancellation ? "open" : ""}>
+        <summary>散布を中止・延期にする</summary>
+        <form class="cancellation-form">
+          <label>区分<select name="state"><option value="cancelled" ${plan.cancellation?.state === "cancelled" ? "selected" : ""}>中止</option><option value="postponed" ${plan.cancellation?.state === "postponed" ? "selected" : ""}>延期</option></select></label>
+          <label>理由<select name="reason">${["強風", "降雨", "機体不調", "その他"].map((reason) => `<option ${plan.cancellation?.reason === reason ? "selected" : ""}>${reason}</option>`).join("")}</select></label>
+          <label>補足<input name="reasonDetail" maxlength="120" value="${escapeAttr(plan.cancellation?.reasonDetail || "")}"></label>
+          <label>新しい予定日<input name="newDate" type="date" value="${escapeAttr(plan.cancellation?.newDate || "")}"></label>
+          <label>新しい時間帯<input name="newTimeWindow" value="${escapeAttr(plan.cancellation?.newTimeWindow || "")}"></label>
+          <button class="danger-button" data-action="save-cancellation" type="button">中止・延期を記録</button>
+          ${plan.cancellation ? '<button class="ghost-button" data-action="clear-cancellation" type="button">中止・延期を取り消す</button>' : ""}
+        </form>
+      </details>
     </div>
-    <div class="workflow-section">
-      <div class="workflow-section-head"><strong>散布前タスク</strong><span>周辺確認、通知、気象、チェックを先に確認します。</span></div>
+    <details class="workflow-section" open>
+      <summary class="workflow-section-head"><strong>散布前タスク</strong><span>周辺確認、通知、気象、チェックを先に確認します。</span></summary>
       <div class="workflow-grid">${renderSteps(workflow.preSteps)}</div>
-    </div>
-    <div class="workflow-section">
-      <div class="workflow-section-head"><strong>散布後タスク</strong><span>ログ、報告、作業履歴を記録として残します。</span></div>
+    </details>
+    <details class="workflow-section">
+      <summary class="workflow-section-head"><strong>散布後タスク</strong><span>ログ、報告、作業履歴を記録として残します。</span></summary>
       <div class="workflow-grid compact-workflow">${renderSteps(workflow.postSteps, workflow.preSteps.length)}</div>
-    </div>
+    </details>
   `;
 }
 
+function savePlanCancellation(form) {
+  if (!form) return;
+  const plan = activePlan();
+  const kind = form.elements.state.value === "postponed" ? "postponed" : "cancelled";
+  if (!confirm(kind === "cancelled" ? "この散布を中止として記録しますか？" : "この散布を延期として記録しますか？")) return;
+  const previous = { status: plan.status, cancellation: plan.cancellation };
+  try {
+    plan.cancellation = {
+      state: kind,
+      reason: form.elements.reason.value,
+      reasonDetail: form.elements.reasonDetail.value.trim(),
+      decidedAt: new Date().toISOString(),
+      newDate: kind === "postponed" ? form.elements.newDate.value : "",
+      newTimeWindow: kind === "postponed" ? form.elements.newTimeWindow.value.trim() : "",
+      notifiedFieldIds: [],
+    };
+    plan.status = kind;
+    planRepository.save(plan);
+    saveState();
+    renderAll();
+    showToast(kind === "cancelled" ? "中止を記録しました。周辺農家の通知にも表示します。" : "延期を記録しました。周辺農家の通知にも表示します。");
+  } catch {
+    plan.status = previous.status;
+    plan.cancellation = previous.cancellation;
+    showToast("中止・延期として記録できませんでした。電話で直接ご連絡ください。");
+  }
+}
+
+function clearPlanCancellation() {
+  const plan = activePlan();
+  if (!plan.cancellation || !confirm("中止・延期の記録を取り消し、散布予定に戻しますか？")) return;
+  plan.cancellation = null;
+  plan.status = "planned";
+  planRepository.save(plan);
+  saveState();
+  renderAll();
+  showToast("散布予定に戻しました。必要に応じて周辺へ変更を通知してください。");
+}
+
 function renderNeighborHome(plan) {
-  const notices = neighborRelevantNotices().slice(0, 4);
+  const notices = neighborRelevantNotices();
   const field = activeField();
+  const ownFields = allFields().filter((item) => item.type !== "spray" && isSelfOwned(item));
   const profile = activeProfile();
   const pending = notices.filter((notice) => notice.response === "未回答").length;
   const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました").length;
@@ -1224,20 +1398,20 @@ function renderNeighborHome(plan) {
       </article>
       <article>
         <span>公開範囲</span>
-        <strong>${escapeHtml(field.publicScope || "概略のみ共有")}</strong>
+        <strong>${escapeHtml(visibilityLabelForField(field))}</strong>
       </article>
     </div>
     <div class="neighbor-home-grid">
       <div class="neighbor-card">
         <strong>自分の圃場</strong>
-        <span>${escapeHtml(field.name)} / ${escapeHtml(profile.municipality || field.municipality || "市町村未設定")} ${escapeHtml(profile.district || field.district || "")}</span>
+        <span>${escapeHtml(field.name)}${ownFields.length > 1 ? ` / 他 ${ownFields.length - 1}件` : ""} / ${escapeHtml(profile.municipality || field.municipality || "市町村未設定")} ${escapeHtml(profile.district || field.district || "")}</span>
         <div class="field-mini-grid">
           <div><span>作物</span><strong>${escapeHtml(field.crop || "未登録")}</strong></div>
           <div><span>農薬使用ステータス</span><strong>${escapeHtml(field.cultivation || "未登録")}</strong></div>
           <div><span>有機JAS</span><strong>${escapeHtml(field.organicJas || "未回答")}</strong></div>
           <div><span>通知希望</span><strong>${escapeHtml(field.notifyPreference || "通知未確認")}</strong></div>
         </div>
-        <span class="small-note">公開範囲：${escapeHtml(field.publicScope || "概略のみ共有")}</span>
+        <span class="small-note">公開範囲：${escapeHtml(visibilityLabelForField(field))}</span>
         <span class="small-note">最終更新日：${escapeHtml(field.updatedAt || "デモデータ")}</span>
         <div class="form-actions compact-actions">
           <button class="secondary-button" data-view-target="fields" type="button">圃場・公開範囲を編集</button>
@@ -1264,8 +1438,12 @@ function renderNeighborNoticeCard(notice) {
   const reason = notificationReason(notice);
   const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
   const distanceClass = notice.level === "high" ? "red" : notice.level === "medium" ? "amber" : "green";
+  const cancellation = notice.plan.cancellation;
+  const phone = String(notice.plan.contact || "").replace(/[^0-9+]/g, "");
+  const replyNote = notice.plan.notificationReplyNotes?.[notice.id] || "";
   return `
     <div class="notice-response-row notice-card">
+      ${cancellation ? `<div class="notice-cancellation"><strong>${cancellation.state === "cancelled" ? "中止" : "延期"}になりました</strong><span>${escapeHtml(cancellation.reason || "理由未登録")}${cancellation.state === "postponed" && cancellation.newDate ? ` / 新しい予定：${escapeHtml(cancellation.newDate)} ${escapeHtml(cancellation.newTimeWindow || "")}` : ""}</span></div>` : ""}
       <div class="notice-card-head">
         <div>
           <strong>${escapeHtml(notice.plan.date)} ${escapeHtml(notice.plan.timeWindow)}</strong>
@@ -1273,6 +1451,7 @@ function renderNeighborNoticeCard(notice) {
         </div>
         <span class="pill ${responseClass}">${escapeHtml(notice.response)}</span>
       </div>
+      <div class="notice-operator"><span>散布者</span><strong>${escapeHtml(notice.plan.operator || "未登録")}</strong><span>連絡先：${phone ? `<a href="tel:${escapeAttr(phone)}">${escapeHtml(notice.plan.contact)}</a>` : "未登録"}</span></div>
       <div class="notice-card-metrics">
         <div>
           <span>距離</span>
@@ -1294,12 +1473,13 @@ function renderNeighborNoticeCard(notice) {
       </div>
       <span class="small-note">通知理由：${escapeHtml(reason)}</span>
       <span class="small-note">${escapeHtml(wind.detail)}</span>
+      ${cancellation ? "" : `<label class="reply-note-label">相談内容（200字まで）<textarea maxlength="200" rows="2" data-reply-note="${escapeAttr(`${notice.plan.id}:${notice.id}`)}">${escapeHtml(replyNote)}</textarea></label>
       <div class="pill-line notice-actions">
         <button class="pill-button" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="確認しました" type="button">確認しました</button>
         <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="時間変更希望" type="button">時間を相談</button>
-        <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="電話希望" type="button">電話で相談</button>
+        <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="電話希望" type="button" ${phone ? "" : "disabled"}>電話で相談</button>
         <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="収穫日につき要相談" type="button">収穫・作業あり</button>
-      </div>
+      </div>`}
     </div>
   `;
 }
@@ -1331,7 +1511,15 @@ function noticeWindSummary(notice) {
 
 function nextActionsForSprayer(plan) {
   const report = workRecordForPlan(plan);
+  const pendingReplies = riskItemsForPlan(plan)
+    .map((field) => ({
+      fieldName: field.name,
+      response: notificationResponse(plan, field.id),
+      note: plan.notificationReplyNotes?.[field.id] || "",
+    }))
+    .filter((reply) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(reply.response));
   return domainDashboard.buildSprayerNextActions({
+    pendingReplies,
     unnotifiedRisks: riskItemsForPlan(plan).filter((item) => item.notifyTarget && !item.notified),
     checks: plan.checks,
     actualSpeed: plan.weather.actualSpeed,
@@ -1353,12 +1541,12 @@ function weatherCheckSummary(plan) {
 
 function neighborRelevantNotices() {
   const since = dateOffset(-1);
-  const fieldId = activeField().id;
+  const myFieldIds = new Set(allFields().filter((field) => field.type !== "spray" && isSelfOwned(field)).map((field) => field.id));
   const notices = allPlans()
     .filter((plan) => plan.date >= since)
     .flatMap((plan) =>
       riskItemsForPlan(plan)
-        .filter((item) => item.notifyTarget && item.id === fieldId)
+        .filter((item) => item.notifyTarget && myFieldIds.has(item.id))
         .map((item) => ({
           ...item,
           plan,
@@ -1369,26 +1557,19 @@ function neighborRelevantNotices() {
 }
 
 function privacyScopeCard(field) {
-  const rows = [
-    ["圃場位置", "概略", "自分のみ詳細", "必要時詳細"],
-    ["栽培ステータス", "表示", "自分のみ編集", "表示"],
-    ["連絡先", "通知対象のみ", "自分のみ", "管理用"],
-    ["返信内容", "関係者のみ", "自分", "管理者"],
-  ];
-  const scope = field.publicScope || "概略のみ共有";
-  const reassurance = scope === "自分のみ"
-    ? "現在は自分だけが詳細を確認できます。通知対象への共有は行いません。"
-    : scope === "通知対象に詳細共有"
-      ? "通知対象の散布者にだけ、確認に必要な詳細を共有します。"
-      : scope === "地域管理者まで詳細共有"
-        ? "地域管理者まで詳細を共有し、散布者には通知に必要な範囲で表示します。"
-        : "現在は圃場の概略と通知希望だけを共有します。連絡先の詳細は広く表示しません。";
+  const visibility = visibilityLevelFromLegacy(field.visibilityLevel || field.publicScope);
+  const scope = visibility === "private" ? "最小限（名前と理由を伏せる）" : visibility === "workspace" ? "地域管理者にも共有" : "通知対象の散布者に共有";
+  const rows = visibility === "private"
+    ? [["圃場位置", "方向・距離のみ", "詳細", "非公開"], ["栽培状況", "種別のみ", "詳細", "非公開"], ["連絡先", "非公開", "詳細", "非公開"], ["返信内容", "関係者のみ", "詳細", "種別のみ"]]
+    : visibility === "workspace"
+      ? [["圃場位置", "詳細", "詳細", "詳細"], ["栽培状況", "詳細", "詳細", "詳細"], ["連絡先", "通知対象のみ", "詳細", "管理用"], ["返信内容", "関係者のみ", "詳細", "種別のみ"]]
+      : [["圃場位置", "通知対象へ詳細", "詳細", "詳細"], ["栽培状況", "通知対象へ詳細", "詳細", "詳細"], ["連絡先", "通知対象のみ", "詳細", "管理用"], ["返信内容", "関係者のみ", "詳細", "種別のみ"]];
   return `
     <div class="privacy-scope-card">
       <div>
         <span class="tag tag-blue">公開範囲</span>
         <strong>${escapeHtml(scope)}</strong>
-        <span>${escapeHtml(reassurance)}</span>
+        <span>農薬不使用ほ場が近くにあることと方向・距離は、飛散を防ぐため常に散布者へ伝わります。圃場名・栽培理由・お名前は設定に従って伏せられます。</span>
         <button class="ghost-button" data-view-target="profile" type="button">公開範囲を変更する</button>
       </div>
       <details class="privacy-scope-detail">
@@ -1522,7 +1703,7 @@ function renderAdminHome() {
       ${adminQueueItems(summary)
         .map(
           (item) => `
-            <button class="queue-chip ${item.count ? "todo" : "done"}" data-view-target="admin" type="button">
+            <button class="queue-chip ${item.count ? "todo" : "done"}" data-admin-queue="${escapeAttr(item.key)}" type="button">
               <span>${escapeHtml(item.label)}</span>
               <strong>${escapeHtml(String(item.count))}件</strong>
             </button>
@@ -1554,7 +1735,10 @@ function adminAttentionReasons(plan) {
     .filter((record) => record.response !== "未回答" && record.response !== "確認しました")
     .map((record) => {
       const field = fieldRepository.get(record.fieldId);
-      return `${field?.name || record.fieldId}：${record.response}`;
+      const label = field && disclosureFor(field, "admin") === "full"
+        ? field.name
+        : domainDisclosure.maskedFieldLabel(field);
+      return `${label || record.fieldId}：${record.response}`;
     });
   if (organicNear.length) {
     reasons.push({
@@ -1570,32 +1754,38 @@ function adminAttentionReasons(plan) {
       detail: `${unnotified.slice(0, 2).map((risk) => risk.name).join("、")}${unnotified.length > 2 ? " ほか" : ""}`,
     });
   }
-  if (windNeedsAttention(plan)) {
+  if (risks.some((risk) => risk.unregistered || risk.type === "public")) {
+    reasons.push({ level: "amber", title: "未登録圃場近接", detail: "公開情報または未登録の周辺圃場があります。" });
+  }
+  if (!plan.cancellation && windNeedsAttention(plan)) {
     reasons.push({ level: "amber", title: "風向風速要確認", detail: weatherLabel(plan) });
   }
-  if (!plan.checks.weatherEnv) {
+  if (!plan.cancellation && !plan.checks.weatherEnv) {
     reasons.push({ level: "amber", title: "散布者の気象確認未記録", detail: weatherCheckSummary(plan) });
   }
-  if (!plan.droneLog?.imported) {
+  if (!plan.cancellation && !plan.droneLog?.imported) {
     reasons.push({ level: "amber", title: "ドローンログ未取込", detail: "散布ON/OFF・高度・軌跡が未連携です。" });
   }
   const altitudeIssues = plan.droneLog?.imported ? altitudeCheckCount(plan.droneLog) : 0;
-  if (!plan.checks.altitude || altitudeIssues > 0) {
+  if (!plan.cancellation && (!plan.checks.altitude || altitudeIssues > 0)) {
     reasons.push({
       level: altitudeIssues > 0 ? "red" : "amber",
       title: "高度要確認",
       detail: altitudeIssues > 0 ? `${altitudeIssues}区間で予定高度との差を確認` : "飛行高度予定の確認が未完了です。",
     });
   }
-  if (plan.date <= dateOffset(0) && !report.doneDate) {
+  if (plan.date <= dateOffset(0) && !report.doneDate && !plan.cancellation) {
     reasons.push({ level: "amber", title: "実施後報告未提出", detail: "対象日を過ぎた散布の報告が未提出です。" });
   }
   if (consulting.length) {
     reasons.push({ level: "blue", title: "近隣返信要確認", detail: consulting.slice(0, 2).join("、") });
   }
   if (report.inquiry && report.inquiry !== "なし") {
-    reasons.push({ level: "blue", title: "問い合わせあり", detail: report.inquiry });
+    reasons.push({ level: "blue", title: "問い合わせあり", detail: report.inquiryDetail || report.inquiry });
   }
+  const targets = riskItemsForPlan(plan).filter((risk) => risk.notifyTarget && risk.notified);
+  const unacknowledged = targets.filter((risk) => !plan.notificationAcks?.[risk.id]);
+  if (unacknowledged.length) reasons.push({ level: "blue", title: "受領未確認", detail: `${unacknowledged.length}件が未確認` });
   return reasons.length ? reasons : [{ level: "green", title: "追加確認なし", detail: "通知・気象・報告の記録に大きな未完了はありません。" }];
 }
 
@@ -1633,10 +1823,12 @@ function sprayGoNoGo(plan) {
   const notifyComplete = notificationIsComplete(plan);
   const unresolvedRef = !planFieldResolution(plan).resolved;
   const unnotifiedHigh = riskItemsForPlan(plan).filter((r) => r.notifyTarget && r.level === "high" && !r.notified);
+  const replyCount = Object.values(plan.notificationResponses || {}).filter((response) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(response)).length;
   const factors = [
     { label: "気象条件", status: weather.level, detail: `${weather.label}（${weatherLabel(plan)}）` },
     { label: "降雨", status: rain ? "bad" : "good", detail: rainRiskLabel(w) },
     { label: "近隣通知", status: notifyComplete ? "good" : "warn", detail: notificationLabel(plan) },
+    { label: "近隣からの返信", status: replyCount ? "warn" : "good", detail: replyCount ? `${replyCount}件が調整待ち` : "調整待ちなし" },
     {
       label: "風下の要確認圃場",
       status: unresolvedRef || unnotifiedHigh.length ? "bad" : "good",
@@ -1660,6 +1852,7 @@ function sprayGoNoGo(plan) {
   if (unresolvedRef) actions.push({ view: "plans", label: "計画のほ場を確認" });
   if (weather.level !== "good") actions.push({ view: "weather", label: "気象を確認" });
   if (!notifyComplete) actions.push({ view: "notify", label: "近隣通知へ" });
+  if (replyCount) actions.push({ view: "notify", label: "返信を確認" });
   if (unnotifiedHigh.length) actions.push({ view: "map", label: "風下を確認" });
   return { verdict, ...meta, factors, actions };
 }
@@ -1738,7 +1931,7 @@ function renderGoNoGo() {
         <div class="gonogo-factor ${pending.length ? "warn" : "good"}"><span>未返信通知</span><b>${pending.length}件</b></div>
         <div class="gonogo-factor ${notices.length ? "warn" : "good"}"><span>近日散布予定</span><b>${notices.length}件</b></div>
         <div class="gonogo-factor ${consulting.length ? "warn" : "good"}"><span>相談中</span><b>${consulting.length}件</b></div>
-        <div class="gonogo-factor good"><span>公開範囲</span><b>${escapeHtml(activeField().publicScope || "概略のみ共有")}</b></div>
+        <div class="gonogo-factor good"><span>公開範囲</span><b>${escapeHtml(visibilityLabelForField(activeField()))}</b></div>
       </div>
       <div class="gonogo-actions">
         <button class="ghost-button" data-view-target="notify" type="button">通知に返信</button>
@@ -2243,7 +2436,7 @@ function renderDashboardMapReadouts() {
       { label: "未返信", value: `${pending.length}件`, note: "通知返信", level: pending.length ? "warn" : "good" },
       { label: "近日予定", value: `${notices.length}件`, note: "関係通知", level: notices.length ? "warn" : "good" },
       { label: "風下確認", value: `${windAttention.length}件`, note: "風向確認", level: windAttention.length ? "warn" : "good" },
-      { label: "公開範囲", value: field.publicScope || "概略共有", note: "圃場情報", level: "good" },
+      { label: "公開範囲", value: visibilityLabelForField(field), note: "圃場情報", level: "good" },
     ]
       .map(
         (item) => `
@@ -2912,7 +3105,15 @@ function showGisFieldPopup(map, event) {
     .addTo(map);
 }
 
-function gisFieldPopupHtml(field, adminStatus = "") {
+function fieldPopupHtml(field, adminStatus = "") {
+  const disclosed = disclosureFor(field);
+  if (disclosed !== "full") {
+    return `
+      <div class="pill-line">${adminStatus ? `<span class="pill amber">${escapeHtml(adminStatus)}</span>` : ""}<span class="pill green">安全確認対象</span></div>
+      <strong>${escapeHtml(domainDisclosure.maskedFieldLabel(field))}</strong>
+      <span>${escapeHtml(field.distance || "-")}m / ${escapeHtml(field.direction || "-")}</span>
+    `;
+  }
   return `
     <div class="pill-line">
       ${adminStatus ? `<span class="pill amber">${escapeHtml(adminStatus)}</span>` : ""}
@@ -2923,6 +3124,10 @@ function gisFieldPopupHtml(field, adminStatus = "") {
     <span>${escapeHtml(field.crop || "作物未登録")} / ${escapeHtml(field.distance || "-")}m / ${escapeHtml(field.direction || "-")}</span>
     <button class="ghost-button mini-button" data-field-edit="${escapeAttr(field.id)}" type="button">圃場を編集</button>
   `;
+}
+
+function gisFieldPopupHtml(field, adminStatus = "") {
+  return fieldPopupHtml(field, adminStatus);
 }
 
 function dashboardFieldClipPath(field, index) {
@@ -2964,15 +3169,7 @@ function showDashboardMapPopup(container, field) {
   popup.className = "dashboard-map-popup dashboard-glass-card";
   popup.style.left = `${Math.min(72, Number(field.x || 45) + Number(field.w || 8) + 1)}%`;
   popup.style.top = `${Math.max(8, Number(field.y || 35) - 4)}%`;
-  popup.innerHTML = `
-    <div class="pill-line">
-      <span class="pill ${field.chemicalUse === "なし" || field.organicJas === "あり" ? "green" : "blue"}">${escapeHtml(field.cultivation || FIELD_TYPE_META[field.type]?.[0] || "未確認")}</span>
-      <span class="pill ${field.notifyPreference === "希望する" ? "amber" : "green"}">${escapeHtml(field.notifyPreference || "通知候補")}</span>
-    </div>
-    <strong>${escapeHtml(field.name)}</strong>
-    <span>${escapeHtml(field.crop || "作物未登録")} / ${escapeHtml(field.distance || "-")}m / ${escapeHtml(field.direction || "-")}</span>
-    <button class="ghost-button mini-button" data-field-edit="${escapeAttr(field.id)}" type="button">圃場を編集</button>
-  `;
+  popup.innerHTML = fieldPopupHtml(field);
   container.appendChild(popup);
 }
 
@@ -3008,7 +3205,7 @@ function renderMap(container, options = {}) {
     });
     const label = document.createElement("span");
     label.className = "plot-label";
-    label.textContent = `${field.name} / ${meta[0]}`;
+    label.textContent = `${disclosureFor(field) === "full" ? field.name : domainDisclosure.maskedFieldLabel(field)} / ${meta[0]}`;
     plot.appendChild(label);
     container.appendChild(plot);
   });
@@ -3053,15 +3250,7 @@ function showMapFieldPopup(container, field) {
   popup.className = "map-field-popup";
   popup.style.left = `${Math.min(70, Number(field.x || 45) + Number(field.w || 8) + 1)}%`;
   popup.style.top = `${Math.max(8, Number(field.y || 35) - 4)}%`;
-  popup.innerHTML = `
-    <div class="pill-line">
-      <span class="pill ${field.chemicalUse === "なし" || field.organicJas === "あり" ? "green" : "blue"}">${escapeHtml(field.cultivation || FIELD_TYPE_META[field.type]?.[0] || "未確認")}</span>
-      <span class="pill ${field.notifyPreference === "希望する" ? "amber" : "green"}">${escapeHtml(field.notifyPreference || "通知候補")}</span>
-    </div>
-    <strong>${escapeHtml(field.name)}</strong>
-    <span>${escapeHtml(field.crop || "作物未登録")} / ${escapeHtml(field.distance || "-")}m / ${escapeHtml(field.direction || "-")}</span>
-    <button class="ghost-button mini-button" data-field-edit="${escapeAttr(field.id)}" type="button">圃場を編集</button>
-  `;
+  popup.innerHTML = fieldPopupHtml(field);
   container.appendChild(popup);
 }
 
@@ -3133,7 +3322,7 @@ function renderFieldStatus() {
       chemicalUse: candidate.chemicalUse,
       organicJas: candidate.organicJas,
       notifyPreference: candidate.notifyPreference,
-      publicScope: candidate.publicScope,
+      visibilityLevel: candidate.visibilityLevel,
       contactMethod: candidate.contactMethod,
       harvestWindow: candidate.harvestWindow,
       avoidReason: candidate.avoidReason,
@@ -3147,15 +3336,15 @@ function renderFieldStatus() {
 
   const list = $("#fieldStatusList");
   if (!list) return;
-  list.innerHTML = allFields()
-    .filter((field) => field.type !== "spray")
+  const editableFields = allFields().filter((field) => field.type !== "spray" && isSelfOwned(field));
+  list.innerHTML = editableFields.length ? editableFields
     .map(
       (field) => `
         <div class="field-status-row ${field.id === state.activeFieldId ? "active" : ""}">
           <div class="pill-line">
             <span class="pill ${field.chemicalUse === "なし" || field.organicJas === "あり" ? "green" : field.unregistered ? "amber" : "blue"}">${escapeHtml(field.cultivation || FIELD_TYPE_META[field.type]?.[0] || "未確認")}</span>
             <span class="pill ${field.notifyPreference === "希望する" ? "amber" : "green"}">${escapeHtml(field.notifyPreference || "通知候補")}</span>
-            <span class="pill blue">${escapeHtml(field.publicScope || "概略のみ共有")}</span>
+            <span class="pill blue">${escapeHtml(field.visibilityLevel === "private" ? "最小限" : field.visibilityLevel === "workspace" ? "地域管理者にも共有" : "通知対象に共有")}</span>
           </div>
           <strong>${escapeHtml(field.name)}</strong>
           <span>${escapeHtml(field.crop || "作物未登録")} / ${escapeHtml(field.avoidReason || "理由未登録")}</span>
@@ -3163,7 +3352,7 @@ function renderFieldStatus() {
         </div>
       `,
     )
-    .join("");
+    .join("") : `<div class="empty-state">まだ圃場を登録していません。「自分の圃場を追加」から登録してください。</div>`;
 }
 
 function renderDroneView() {
@@ -3210,13 +3399,14 @@ function updateFieldStatusFromForm() {
   const form = $("#fieldStatusForm");
   const target = activeField();
   if (!target || !form) return null;
-  ["name", "municipality", "district", "crop", "cultivation", "chemicalUse", "organicJas", "notifyPreference", "publicScope", "contactMethod", "harvestWindow", "avoidReason"].forEach((name) => {
+  ["name", "municipality", "district", "crop", "cultivation", "chemicalUse", "organicJas", "notifyPreference", "visibilityLevel", "contactMethod", "harvestWindow", "avoidReason"].forEach((name) => {
     target[name] = form.elements[name].value.trim();
   });
   ["seedling", "house", "waterNear", "unregistered"].forEach((name) => {
     target[name] = form.elements[name].checked;
   });
   target.notifyTarget = target.notifyPreference !== "未確認";
+  target.notifyPreferenceKey = notifyPreferenceKeyFromLabel(target.notifyPreference);
   if (target.chemicalUse === "なし" || target.organicJas === "あり") {
     target.type = target.organicJas === "あり" ? "organic" : "noChemical";
     target.short = "不使";
@@ -3279,6 +3469,8 @@ function renderNotification() {
         .map(
           (item) => {
             const response = notificationResponse(plan, item.id);
+            const acknowledgedAt = plan.notificationAcks?.[item.id] || "";
+            const statusLabel = acknowledgedAt ? `確認済み ${String(acknowledgedAt).slice(0, 10)}` : item.notified ? "通知済み・未確認" : "未通知";
             return `
             <div class="target-row">
               <input type="checkbox" data-notify-target="${escapeAttr(item.id)}" ${item.notified ? "" : "checked"} aria-label="${escapeAttr(item.name)}を通知対象にする">
@@ -3286,7 +3478,8 @@ function renderNotification() {
                 <strong>${escapeHtml(item.name)}</strong>
                 <span>${escapeHtml(item.owner)} / ${escapeHtml(item.distanceLabel)} / ${escapeHtml(item.message)}</span>
               </span>
-              <span class="pill ${item.notified ? "green" : "amber"}">${item.notified ? "通知済み" : "未通知"}</span>
+              <span class="pill ${acknowledgedAt ? "green" : item.notified ? "blue" : "amber"}">${escapeHtml(statusLabel)}</span>
+              <button class="ghost-button mini-button" data-notice-target="${escapeAttr(item.id)}" type="button">この宛先の文面</button>
               <label class="response-select">
                 返信
                 <select data-notify-plan="${escapeAttr(plan.id)}" data-notify-response="${escapeAttr(item.id)}">
@@ -3411,6 +3604,7 @@ function renderReport() {
     doneWeather: report.doneWeather || weatherLabel(plan),
     incident: report.incident,
     inquiry: report.inquiry,
+    inquiryDetail: report.inquiryDetail,
     reportType: report.reportType,
     actualAmount: report.actualAmount,
     altitudeNotes: report.altitudeNotes,
@@ -3432,6 +3626,7 @@ function renderReport() {
     <div class="risk-row">
       <strong>異常の有無：${escapeHtml(report.incident || "未入力")}</strong>
       <span>分類：${escapeHtml(report.reportType || "通常報告")} / 問い合わせ：${escapeHtml(report.inquiry || "未入力")}</span>
+      ${report.inquiryDetail ? `<span>${escapeHtml(report.inquiryDetail)}</span>` : ""}
     </div>
     <div class="risk-row">
       <strong>ドローンログ概要</strong>
@@ -3869,6 +4064,7 @@ function historyRecords() {
         operator: plan.operator,
         weather: report.doneWeather || weatherLabel(plan),
         reportType: report.reportType || "",
+        inquiryDetail: report.inquiryDetail || "",
       };
     })
     .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
@@ -3964,18 +4160,37 @@ function materialTypeTag(type) {
 }
 
 let adminSelectedId = null;
-let adminFilters = { status: "all", district: "all" };
+let adminFilters = { status: "all", district: "all", dateScope: "all", queue: null };
 let adminMapLibreMap;
+
+function adminQueueFilterPredicate(plan) {
+  if (!adminFilters.queue) return true;
+  const titles = new Set(adminAttentionReasons(plan).map((reason) => reason.title));
+  const titleByKey = {
+    notifyIncomplete: "通知未完了",
+    windNeed: "風向風速要確認",
+    reportMissing: "実施後報告未提出",
+    droneMissing: "ドローンログ未取込",
+    altitudeNeed: "高度要確認",
+    inquiry: "問い合わせあり",
+    unregisteredNear: "未登録圃場近接",
+  };
+  return titles.has(titleByKey[adminFilters.queue]);
+}
 
 function adminFilteredPlans() {
   return allPlans()
     .slice()
+    .filter(planMatchesAdminRegion)
+    .filter((plan) => adminFilters.dateScope === "all" || plan.date === adminDashboardDate())
     .filter((plan) => {
       const done = Boolean(workRecordForPlan(plan).doneDate);
-      if (adminFilters.status === "planned" && done) return false;
+      if (adminFilters.status === "planned" && (done || plan.cancellation)) return false;
       if (adminFilters.status === "done" && !done) return false;
+      if (adminFilters.status === "postponed" && plan.cancellation?.state !== "postponed") return false;
+      if (adminFilters.status === "cancelled" && plan.cancellation?.state !== "cancelled") return false;
       if (adminFilters.district !== "all" && plan.district !== adminFilters.district) return false;
-      return true;
+      return adminQueueFilterPredicate(plan);
     })
     .sort((a, b) => `${b.date} ${b.timeWindow}`.localeCompare(`${a.date} ${a.timeWindow}`));
 }
@@ -3991,6 +4206,13 @@ function renderAdmin() {
   }
   const statusSelect = $("#adminStatusFilter");
   if (statusSelect) statusSelect.value = adminFilters.status;
+  const dateScopeSelect = $("#adminDateScopeFilter");
+  if (dateScopeSelect) dateScopeSelect.value = adminFilters.dateScope;
+  const filterSummary = $("#adminFilterSummary");
+  if (filterSummary) {
+    const queueLabels = { notifyIncomplete: "通知未完了", windNeed: "風向風速要確認", reportMissing: "報告未提出", droneMissing: "ログ未取込", altitudeNeed: "高度要確認", inquiry: "問い合わせあり", unregisteredNear: "未登録圃場近接" };
+    filterSummary.textContent = `${adminDashboardFilters.municipality} / ${adminFilters.dateScope === "day" ? adminDashboardDate() : "全日"}${adminFilters.queue ? ` / ${queueLabels[adminFilters.queue] || "絞り込み"}のみ` : ""}`;
+  }
 
   const rows = adminFilteredPlans();
   if (rows.length && !rows.some((p) => p.id === adminSelectedId)) adminSelectedId = rows[0].id;
@@ -4005,7 +4227,7 @@ function renderAdmin() {
               <td>${escapeHtml(plan.operator)}</td>
               <td>${escapeHtml(plan.district)}<br><span class="muted-cell">${escapeHtml(plan.fieldName)}</span></td>
               <td>${materialTypeTag(plan.materialType || "農薬")}<br><span class="muted-cell">${escapeHtml(plan.pesticide)}</span></td>
-              <td>${done ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
+              <td>${plan.cancellation?.state === "cancelled" ? '<span class="pill red">中止</span>' : plan.cancellation?.state === "postponed" ? '<span class="pill blue">延期</span>' : done ? '<span class="pill green">実施済み</span>' : '<span class="pill amber">予定</span>'}</td>
               <td><div class="pill-line">${renderAdminReasonChips(plan, 2)}</div></td>
             </tr>`;
         })
@@ -4038,7 +4260,7 @@ function renderAdminDetail() {
     ["実施後報告", done ? `${report.doneDate} 提出済み` : "未提出"],
   ];
   info.innerHTML = `
-    <div class="gonogo-card gonogo-${g.verdict} admin-gonogo">${goNoGoInner(g, plan, false)}</div>
+    <div class="admin-record-status"><strong>記録状況：${g.verdict === "good" ? "条件内" : "追加確認あり"}</strong><span>散布の許可・承認ではありません。</span></div>
     ${renderAdminReasonPanel(plan)}
     <div class="admin-detail-rows">
       ${rows.map(([k, v]) => `<div class="admin-detail-row"><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`).join("")}
@@ -5491,6 +5713,9 @@ function profileFieldDefaults() {
     cultivation: profile.neighbor.defaultCultivation || "農薬使用なし",
     notifyPreference: notificationPreferenceLabel(profile.neighbor.notificationPreference),
     publicScope: visibilityLabel(profile.visibility.fieldLocation),
+    notifyPreferenceKey: notifyPreferenceKeyFromLabel(profile.neighbor.notificationPreference),
+    visibilityLevel: visibilityLevelFromLegacy(profile.visibility.fieldLocation),
+    ownerUserId: currentOwnerUserId(),
   };
 }
 
@@ -5523,7 +5748,8 @@ function applyNeighborProfileToField() {
   field.contactMethod = CONTACT_METHOD_LABELS[profile.preferredContactMethod] || field.contactMethod;
   field.cultivation = profile.neighbor.defaultCultivation || field.cultivation;
   field.notifyPreference = notificationPreferenceLabel(profile.neighbor.notificationPreference);
-  field.publicScope = visibilityLabel(profile.visibility.fieldLocation);
+  field.notifyPreferenceKey = notifyPreferenceKeyFromLabel(profile.neighbor.notificationPreference);
+  field.ownerUserId = currentOwnerUserId();
   if (profile.municipality && !field.municipality) field.municipality = profile.municipality;
   if (profile.district && !field.district) field.district = profile.district;
   field.updatedAt = dateOffset(0);
@@ -5738,6 +5964,7 @@ function updateReportFromForm() {
     doneWeather: form.elements.doneWeather.value.trim(),
     incident: form.elements.incident.value,
     inquiry: form.elements.inquiry.value,
+    inquiryDetail: form.elements.inquiryDetail.value.trim().slice(0, 300),
     reportType: form.elements.reportType.value,
     actualAmount: form.elements.actualAmount.value.trim(),
     altitudeNotes: form.elements.altitudeNotes.value.trim(),
@@ -5762,6 +5989,7 @@ function autoFillReportFromPlan() {
     doneWeather: report.doneWeather || weatherLabel(plan),
     incident: report.incident || "なし",
     inquiry: report.inquiry || "なし",
+    inquiryDetail: report.inquiryDetail || "",
     reportType: log.outsideFlight || altitudeCheckCount(log) ? "追加確認あり" : "通常報告",
     actualAmount: report.actualAmount || plan.amount,
     altitudeNotes: altitudeCheckCount(log) ? `${altitudeCheckCount(log)}点 要確認 / 最大 ${maxAltitude(log)}m` : "高度要確認区間なし",
@@ -5807,6 +6035,12 @@ function markSelectedTargetsNotified() {
   selected.forEach((id) => {
     notificationRepository.saveDelivery(plan.id, id, true);
   });
+  if (plan.cancellation) {
+    plan.cancellation.notifiedFieldIds = [...new Set([
+      ...(plan.cancellation.notifiedFieldIds || []),
+      ...selected,
+    ])];
+  }
   plan.checks.notice = notificationIsComplete(plan);
   planRepository.save(plan);
   saveState();
@@ -5814,15 +6048,26 @@ function markSelectedTargetsNotified() {
   showToast("通知履歴を更新しました。");
 }
 
-function setNotificationResponse(fieldId, response, planId = "") {
+function setNotificationResponse(fieldId, response, planId = "", note, options = {}) {
   const plan = planRepository.get(planId) || activePlan();
   notificationRepository.saveResponse(plan.id, fieldId, response || "未回答");
+  if (note !== undefined) {
+    plan.notificationReplyNotes = { ...(plan.notificationReplyNotes || {}), [fieldId]: String(note || "").slice(0, 200) };
+  }
+  if (options.acknowledge && response && response !== "未回答") {
+    plan.notificationAcks = { ...(plan.notificationAcks || {}) };
+    plan.notificationAcks[fieldId] ||= new Date().toISOString();
+  }
   plan.checks.notice = notificationIsComplete(plan);
   planRepository.save(plan);
   state.activePlanId = plan.id;
   saveState();
   renderAll();
   showToast(`返信を「${response || "未回答"}」に更新しました。`);
+  if (options.acknowledge && response === "電話希望") {
+    const phone = String(plan.contact || "").replace(/[^0-9+]/g, "");
+    if (phone) location.href = `tel:${phone}`;
+  }
 }
 
 function notificationResponse(plan, fieldId) {
@@ -5941,6 +6186,7 @@ function buildReportPrint(plan) {
         ["気象条件", report.doneWeather || weatherLabel(plan)],
         ["異常の有無", report.incident || "未入力"],
         ["問い合わせ", report.inquiry || "未入力"],
+        ["問い合わせ内容", report.inquiryDetail || ""],
         ["備考", report.reportNotes || ""],
       ])}
       ${photo}
@@ -6061,7 +6307,7 @@ function exportCsv() {
 function exportHistoryCsv() {
   const records = filteredHistoryRecords();
   const rows = [
-    ["実施/予定日", "時間", "圃場", "作物", "資材種別", "資材名", "使用量(10a)・希釈", "総量", "実施範囲", "カバー", "散布方法", "散布者", "気象", "報告"],
+    ["実施/予定日", "時間", "圃場", "作物", "資材種別", "資材名", "使用量(10a)・希釈", "総量", "実施範囲", "カバー", "散布方法", "散布者", "気象", "問い合わせ内容", "報告"],
     ...records.map((record) => [
       record.date,
       record.time,
@@ -6076,6 +6322,7 @@ function exportHistoryCsv() {
       record.method,
       record.operator,
       record.weather,
+      record.inquiryDetail,
       record.done ? "提出済み" : "未提出",
     ]),
   ];
@@ -6130,15 +6377,16 @@ function dashboardPlanFact(plan) {
     organicNear: risks.some(
       (risk) => ["organic", "noChemical"].includes(risk.type) && risk.level === "high",
     ),
-    windNeedsAttention: windNeedsAttention(plan),
+    windNeedsAttention: !plan.cancellation && windNeedsAttention(plan),
     droneImported: Boolean(plan.droneLog?.imported),
-    altitudeNeedsAttention: !plan.checks.altitude
-      || Boolean(plan.droneLog?.imported && altitudeCheckCount(plan.droneLog) > 0),
+    altitudeNeedsAttention: !plan.cancellation && (!plan.checks.altitude
+      || Boolean(plan.droneLog?.imported && altitudeCheckCount(plan.droneLog) > 0)),
     hasInquiry: Boolean(report.inquiry && report.inquiry !== "なし"),
     unregisteredNear: risks.some((risk) => risk.unregistered || risk.type === "public"),
     replyNeed: responses.filter(
       (value) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(value),
     ).length,
+    cancelled: Boolean(plan.cancellation),
     readiness: readinessScore(plan).value,
   };
 }
@@ -6178,9 +6426,19 @@ function riskItemsForPlan(plan) {
       let message = "周辺情報として確認。";
       const isOrganicLike = field.type === "organic" || field.type === "noChemical";
       const isSensitive = ["house", "preharvest", "water", "bee"].includes(field.type);
+      const windDirection = plan.weather?.actualDirection || plan.weather?.forecastDirection || "";
+      const preferenceAllows = domainDisclosure.notifyPreferenceAllows({
+        pref: field.notifyPreferenceKey || notifyPreferenceKeyFromLabel(field.notifyPreference),
+        isDownwind: Boolean(windDirection && direction === downwindDirection(windDirection)),
+        windDirectionKnown: Boolean(windDirection),
+        isAgrochemical: (plan.materialType || "農薬") === "農薬",
+        isOrganicLike,
+        distance,
+        organicRadius: rules.organicRadius,
+      });
       let requiresNotice = distance === null
-        ? Boolean(field.notifyTarget)
-        : Boolean(field.notifyTarget && distance <= rules.notifyRadius);
+        ? true
+        : Boolean(field.notifyTarget && preferenceAllows && distance <= rules.notifyRadius);
       if (distance === null) {
         level = "high";
         message = "圃場境界の座標を確認できないため、距離判定を保留しています。";
@@ -6197,8 +6455,18 @@ function riskItemsForPlan(plan) {
         message = `実証ルール案上の通知候補です。通知対象距離 ${rules.notifyRadius}m 圏内にあります。`;
       }
       const notified = notificationRecord(plan, field.id).delivered;
+      const disclosure = disclosureFor(field);
+      const visibleName = disclosure === "full" ? field.name : domainDisclosure.maskedFieldLabel(field);
+      if (disclosure !== "full" && distance !== null) {
+        if (level === "high") message = `周辺確認が必要です。${direction}方向 ${distance}m に${visibleName}があります。実証ルール案の重点確認距離 ${rules.organicRadius}m 以内です。`;
+        else if (level === "medium") message = `${direction}方向 ${distance}m の${visibleName}が通知・作業調整の確認対象です。`;
+      }
       return {
         ...field,
+        name: visibleName,
+        owner: disclosure === "full" ? field.owner : "非公開",
+        crop: disclosure === "full" ? field.crop : "",
+        avoidReason: disclosure === "full" ? field.avoidReason : "",
         distance,
         direction,
         notifyTarget: requiresNotice,
@@ -6206,6 +6474,7 @@ function riskItemsForPlan(plan) {
         notified,
         distanceLabel: distance === null ? "距離未判定" : `${distance}m`,
         message,
+        disclosure,
       };
     })
     .filter((item) => item.notifyTarget || item.level !== "low");
@@ -6478,19 +6747,38 @@ function materialTerm(plan) {
   return MATERIAL_TERMS[plan?.materialType] || "散布";
 }
 
-function buildNoticeText(plan, channel) {
+function buildNoticeText(plan, channel, targetFieldId = null) {
   const rules = activeSettings();
   const term = materialTerm(plan);
   const materialLine = plan.materialType && plan.materialType !== "農薬" ? "使用資材" : "使用農薬";
+  const cancellation = plan.cancellation;
+  const noticeKind = cancellation?.state === "cancelled" ? "中止" : cancellation?.state === "postponed" ? "延期" : "予定";
   const channelLead = {
     line: "関係者のみなさまへ",
-    mail: `件名：${term}予定のお知らせ`,
-    paper: `${term}予定のお知らせ`,
+    mail: `件名：${term}${noticeKind}のお知らせ`,
+    paper: `${term}${noticeKind}のお知らせ`,
   }[channel];
   const risks = riskItemsForPlan(plan)
-    .filter((item) => item.notifyTarget)
-    .map((item) => `・${item.name}（${item.distanceLabel}、${item.message}）`)
+    .filter((item) => item.notifyTarget && (!targetFieldId || item.id === targetFieldId))
+    .map((item) => {
+      return `・${item.name}（${item.distanceLabel}、${item.message}）`;
+    })
     .join("\n");
+  if (cancellation) {
+    const reschedule = cancellation.state === "postponed" && cancellation.newDate
+      ? `\n新しい予定：${cancellation.newDate} ${cancellation.newTimeWindow || "時間未定"}`
+      : "";
+    return `${channelLead}
+
+${plan.district}で予定していた以下の${term}は、${noticeKind}になりました。
+
+当初予定：${plan.date} ${plan.timeWindow}
+散布ほ場：${plan.fieldName}
+理由：${cancellation.reason || "未登録"}${cancellation.reasonDetail ? `（${cancellation.reasonDetail}）` : ""}${reschedule}
+連絡先：${plan.contact}
+
+このお知らせは、地域内で予定変更を共有するためのものです。`;
+  }
   return `${channelLead}
 
 ${plan.district}で以下の${term}を予定しています。
@@ -6587,13 +6875,13 @@ function activeDroneLog() {
 }
 
 function activeField() {
-  const editableFields = fieldRepository.list().filter((field) => field.type !== "spray");
+  const editableFields = fieldRepository.list().filter((field) => field.type !== "spray" && isSelfOwned(field));
   const selected = fieldRepository.get(state.activeFieldId);
   const fallback = editableFields[0] || createBlankField();
   if (!state.activeFieldId && fallback.id) {
     state.activeFieldId = fallback.id;
   }
-  return selected?.type !== "spray" ? selected : fallback;
+  return selected?.type !== "spray" && isSelfOwned(selected) ? selected : fallback;
 }
 
 // --- 実際のほ場境界（GeoJSON）の取込・表示 ---
@@ -6864,6 +7152,7 @@ function adoptParcel(kind) {
     return;
   }
   const importedField = imported.field;
+  importedField.ownerUserId = currentOwnerUserId();
   if (kind === "spray") {
     let spray = allFields().find((f) => f.type === "spray");
     if (!spray) {
@@ -6957,7 +7246,10 @@ function createBlankField() {
     chemicalUse: "なし",
     organicJas: "なし",
     notifyPreference: "希望する",
+    notifyPreferenceKey: "allNearby",
     publicScope: "概略のみ共有",
+    visibilityLevel: "related",
+    ownerUserId: currentOwnerUserId(),
     contactMethod: "LINE",
     harvestWindow: "",
     avoidReason: "農薬影響を避けたい",
@@ -7245,7 +7537,7 @@ function createSampleState() {
     purpose: "初期除草",
     method: "ドローン",
     operator: "匿名散布事業者A",
-    contact: "デモ連絡先A",
+    contact: "0296-00-0001（デモ）",
     droneModel: "SDK対応予定機種A",
     aircraftRegistration: "DEMO-DRONE-001",
     pilot: "匿名操縦者A",
@@ -7324,7 +7616,7 @@ function createSampleState() {
     purpose: "病害予防",
     method: "ドローン",
     operator: "匿名散布者B",
-    contact: "デモ連絡先B",
+    contact: "0296-00-0002（デモ）",
     droneModel: "SDK対応予定機種B",
     aircraftRegistration: "DEMO-DRONE-002",
     pilot: "匿名操縦者B",
@@ -7397,7 +7689,7 @@ function createSampleState() {
     purpose: "害虫防除",
     method: "ドローン",
     operator: "匿名散布事業者C",
-    contact: "デモ連絡先C",
+    contact: "0296-00-0003（デモ）",
     droneModel: "SDK対応予定機種A",
     aircraftRegistration: "DEMO-DRONE-003",
     pilot: "匿名操縦者C",
@@ -7602,6 +7894,7 @@ function defaultReport() {
     doneWeather: "",
     incident: "なし",
     inquiry: "なし",
+    inquiryDetail: "",
     reportType: "通常報告",
     actualAmount: "",
     altitudeNotes: "",
@@ -7659,6 +7952,13 @@ function normalizeState(input) {
       contactMethod: "未確認",
       harvestWindow: "未登録",
       avoidReason: "",
+      visibilityLevel: visibilityLevelFromLegacy(migratedField.visibilityLevel || migratedField.publicScope),
+      notifyPreferenceKey: notifyPreferenceKeyFromLabel(migratedField.notifyPreferenceKey || migratedField.notifyPreference),
+      ownerUserId: migratedField.ownerUserId ?? (["spray-field-a", "organic-field-a"].includes(migratedField.id)
+        ? "local-demo-user"
+        : ["no-chemical-field-b", "seedling-house-c", "preharvest-field-d", "water-channel-d", "facility-e"].includes(migratedField.id)
+          ? "demo-neighbor-c"
+          : null),
       seedling: false,
       house: false,
       waterNear: migratedField.type === "water",
@@ -7666,6 +7966,11 @@ function normalizeState(input) {
       ...migratedField,
       ...sampleGeometry,
     };
+    merged.visibilityLevel = visibilityLevelFromLegacy(merged.visibilityLevel || merged.publicScope);
+    merged.notifyPreferenceKey = notifyPreferenceKeyFromLabel(merged.notifyPreferenceKey || merged.notifyPreference);
+    if (merged.ownerUserId == null && ["spray-field-a", "organic-field-a", "no-chemical-field-b", "seedling-house-c", "preharvest-field-d", "water-channel-d", "facility-e"].includes(merged.id)) {
+      merged.ownerUserId = ["spray-field-a", "organic-field-a"].includes(merged.id) ? "local-demo-user" : "demo-neighbor-c";
+    }
     // 既知デモ圃場は整備済みサンプル座標が正。保存済みの旧geometryを残すと航空写真との整合修正が反映されない。
     if (sampleGeometry.geo) merged.geometry = null;
     const geometry = normalizedFieldGeometry(merged, index);
@@ -7704,7 +8009,11 @@ function normalizeState(input) {
     checks: { ...defaultChecks(false), ...(plan.checks || {}) },
     notificationTargets: plan.notificationTargets || {},
     notificationResponses: plan.notificationResponses || {},
-    report: { ...defaultReport(), ...(plan.report || {}) },
+    notificationAcks: plan.notificationAcks || {},
+    notificationReplyNotes: plan.notificationReplyNotes || {},
+    cancellation: plan.cancellation || null,
+    status: plan.status || "planned",
+    report: { ...defaultReport(), ...(plan.report || {}), inquiryDetail: plan.report?.inquiryDetail || "" },
   }));
   next.plans = domainState.migratePlanFieldRefs(next.plans, next.fields);
   next.activePlanId = next.plans.some((plan) => plan.id === next.activePlanId)

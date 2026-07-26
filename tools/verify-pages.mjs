@@ -142,7 +142,7 @@ assert(landingNarrow.value.signalHidden, "Narrow mobile hero should prioritize p
 
 const expectedNavigation = {
   sprayer: ["プロフィール登録", "トップ", "散布計画", "圃場マップ", "気象メモ", "近隣通知", "散布前チェック", "ドローン連携", "実施後報告", "作業履歴"],
-  neighbor: ["プロフィール登録", "トップ", "圃場マップ", "圃場ステータス", "近隣通知"],
+  neighbor: ["プロフィール登録", "トップ", "圃場マップ", "圃場ステータス"],
   admin: ["プロフィール登録", "トップ", "散布予定・実績"],
 };
 
@@ -160,7 +160,7 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
     overflow: document.documentElement.scrollWidth - innerWidth,
   })`, { width: 1440, height: 960 }, 3500);
   const expectedRoleLabel = { sprayer: "散布者", neighbor: "周辺農家", admin: "地域管理" }[role];
-  const expectedKpiCount = { sprayer: 8, neighbor: 5, admin: 9 }[role];
+  const expectedKpiCount = { sprayer: 9, neighbor: 5, admin: 9 }[role];
   assert(result.value.role === expectedRoleLabel, `${role} demo opened as ${result.value.role}`);
   assert(JSON.stringify(result.value.navigation) === JSON.stringify(expected), `${role} navigation mismatch: ${result.value.navigation.join(" / ")}`);
   assert(result.value.kpiCount === expectedKpiCount, `${role} KPI count: ${result.value.kpiCount}`);

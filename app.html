@@ -41,7 +41,7 @@
           <button class="nav-item" data-roles="sprayer neighbor" data-view-target="map" type="button"><span class="nav-icon">◇</span><span>圃場マップ</span></button>
           <button class="nav-item" data-roles="neighbor" data-view-target="fields" type="button"><span class="nav-icon">▦</span><span>圃場ステータス</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
-          <button class="nav-item" data-roles="sprayer neighbor" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
@@ -416,7 +416,6 @@
             </div>
           </div>
 
-          <div class="fields-readonly-note">周辺農家が登録した圃場ステータスの閲覧画面です。編集は「周辺農家」モードで行います。</div>
 
           <div class="form-layout fields-form-layout">
             <form class="panel form-panel fields-edit-only" id="fieldStatusForm">
@@ -437,16 +436,18 @@
                 <label>通知希望
                   <select name="notifyPreference">
                     <option>希望する</option>
+                    <option>近接時のみ</option>
+                    <option>風下方向のみ</option>
+                    <option>農薬散布のみ</option>
                     <option>必要時のみ</option>
                     <option>未確認</option>
                   </select>
                 </label>
                 <label>公開範囲
-                  <select name="publicScope">
-                    <option>概略のみ共有</option>
-                    <option>通知対象に詳細共有</option>
-                    <option>地域管理者まで詳細共有</option>
-                    <option>自分のみ</option>
+                  <select name="visibilityLevel">
+                    <option value="private">最小限（名前と理由を伏せる）</option>
+                    <option value="related">通知対象の散布者に共有</option>
+                    <option value="workspace">地域管理者にも共有</option>
                   </select>
                 </label>
                 <details class="form-section wide-field">
@@ -712,6 +713,7 @@
                     <option>未確認</option>
                   </select>
                 </label>
+                <label class="wide-field">問い合わせの内容<textarea name="inquiryDetail" rows="3" maxlength="300" placeholder="相談内容や対応経過を記録"></textarea></label>
                 <label>報告分類
                   <select name="reportType">
                     <option>通常報告</option>
@@ -847,9 +849,19 @@
                 <option value="all">すべて</option>
                 <option value="planned">予定</option>
                 <option value="done">実施済み</option>
+                <option value="postponed">延期</option>
+                <option value="cancelled">中止</option>
               </select>
             </label>
             <label class="select-label">地区<select id="adminDistrictFilter"></select></label>
+            <label class="select-label">対象日
+              <select id="adminDateScopeFilter">
+                <option value="all">すべての日</option>
+                <option value="day">ダッシュボードの指定日</option>
+              </select>
+            </label>
+            <button class="ghost-button" id="clearAdminFiltersButton" type="button">絞り込みを解除</button>
+            <span class="small-note" id="adminFilterSummary"></span>
           </div>
 
           <div class="admin-layout">
@@ -1230,6 +1242,18 @@
               </div>
             </article>
 
+            <article class="panel profile-panel" id="demoDataPanel">
+              <div class="panel-head"><div>
+                <span class="tag tag-attention">デモデータ</span>
+                <h4>サンプルの読込と初期化</h4>
+              </div></div>
+              <p class="small-note">この操作はこの端末の表示データだけを対象とします。クラウドへ移行済みの地域データは削除しません。</p>
+              <div class="form-actions">
+                <button class="ghost-button" id="loadSampleButtonProfile" type="button">サンプルを読み込む</button>
+                <button class="danger-button" id="resetDemoDataButton" type="button">この端末のデモデータを消去</button>
+              </div>
+            </article>
+
             <article class="panel profile-panel profile-save-panel">
               <div>
                 <span class="tag tag-attention">V1 MVP</span>
@@ -1262,13 +1286,13 @@
     <nav class="mobile-quickbar" aria-label="モバイル主要操作">
       <button data-roles="sprayer neighbor admin" data-view-target="profile" type="button"><span>◎</span>登録</button>
       <button data-roles="sprayer neighbor admin" data-view-target="dashboard" type="button"><span>⌂</span>トップ</button>
+      <button data-roles="sprayer" data-view-target="plans" type="button"><span>＋</span>計画</button>
       <button data-roles="sprayer" data-view-target="weather" type="button"><span>↗</span>気象</button>
       <button data-roles="sprayer neighbor" data-view-target="map" type="button"><span>◇</span>マップ</button>
       <button data-roles="neighbor" data-view-target="fields" type="button"><span>▦</span>圃場</button>
-      <button data-roles="sprayer neighbor" data-view-target="notify" type="button"><span>✉</span>通知</button>
+      <button data-roles="sprayer" data-view-target="notify" type="button"><span>✉</span>通知</button>
       <button data-roles="sprayer" data-view-target="checklist" type="button"><span>✓</span>チェック</button>
       <button data-roles="sprayer" data-view-target="report" type="button"><span>□</span>報告</button>
-      <button data-roles="sprayer" data-view-target="history" type="button"><span>≡</span>履歴</button>
       <button data-roles="admin" data-view-target="admin" type="button"><span>▤</span>散布一覧</button>
     </nav>
     <script src="vendor/maplibre-gl/maplibre-gl.js" defer></script>
@@ -1276,6 +1300,6 @@
     <script src="vendor/shpjs/shp.min.js" defer></script>
     <script src="vendor/supabase/supabase.min.js" defer></script>
     <script src="js/config/supabase-runtime.js" defer></script>
-    <script src="js/main.js?v=20260725-magic-link" defer></script>
+    <script src="js/main.js?v=20260726-role-ux-final" defer></script>
   </body>
 </html>

@@ -26,15 +26,18 @@ test("圃場を正規化列と元データへ変換できる", () => {
     crop: "小松菜",
     geometry: { type: "Polygon", coordinates: [[[140, 36], [140.1, 36], [140, 36]]] },
     custom: "kept",
+    ownerUserId: "00000000-0000-4000-8000-000000000099",
   };
   const row = fieldToRow(field, context);
   assert.equal(row.client_ref, "field-a");
   assert.equal(row.field_type, "organic");
   assert.equal(row.field_data.custom, "kept");
+  assert.equal(row.owner_user_id, field.ownerUserId);
   const restored = rowToField({ ...row, version: 2 });
   assert.equal(restored.id, "field-a");
   assert.equal(restored.custom, "kept");
   assert.equal(restored.remoteVersion, 2);
+  assert.equal(restored.ownerUserId, field.ownerUserId);
 });
 
 test("計画は圃場UUIDへ解決し往復できる", () => {
@@ -62,6 +65,8 @@ test("気象・通知・実施報告に安定した同期キーを付ける", ()
     weather: { source: "Open-Meteo", windSpeed: 2.4 },
     notificationTargets: { "field-a": true },
     notificationResponses: { "field-a": "確認しました" },
+    notificationReplyNotes: { "field-a": "朝7時以降を希望" },
+    notificationAcks: { "field-a": "2026-07-24T00:10:00.000Z" },
     report: { doneDate: "2026-07-24", actualAmount: "500mL" },
   };
   const planUuid = "00000000-0000-4000-8000-000000000020";
@@ -71,6 +76,8 @@ test("気象・通知・実施報告に安定した同期キーを付ける", ()
   assert.equal(weather.source_key, "current");
   assert.equal(notice.target_key, "field:field-a");
   assert.equal(notice.response_code, "confirmed");
+  assert.equal(notice.notification_data.replyNote, "朝7時以降を希望");
+  assert.equal(notice.notification_data.acknowledgedAt, "2026-07-24T00:10:00.000Z");
   assert.equal(report.idempotency_key, "work-record:plan-a");
 });
 

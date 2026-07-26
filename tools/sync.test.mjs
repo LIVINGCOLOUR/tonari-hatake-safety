@@ -34,6 +34,9 @@ function sampleState() {
       id: "p1",
       notificationTargets: { f1: true },
       notificationResponses: { f1: "確認しました" },
+      notificationAcks: { f1: "2026-07-23T06:00:00.000Z" },
+      notificationReplyNotes: { f1: "7時以降を希望" },
+      cancellation: { state: "postponed", reason: "強風", newDate: "2026-07-25" },
       droneLog: {
         imported: true,
         vendor: "vendor-a",
@@ -50,6 +53,7 @@ function sampleState() {
       geometry: { type: "Polygon", coordinates: [[[140, 36], [141, 36], [141, 37], [140, 36]]] },
       externalRefs: [{ provider: "wagri", externalId: "parcel-1", revision: "2026" }],
       provenance: { source: "wagri", stableKey: "wagri:parcel-1" },
+      visibilityLevel: "private",
     }],
     unknownLegacyKey: { keep: true },
   };
@@ -72,6 +76,10 @@ test("remote payload keeps operational provenance but excludes device state and 
   assert.equal(payload.workspace.fields[0].externalRefs[0].provider, "wagri");
   assert.equal(payload.workspace.fields[0].provenance.stableKey, "wagri:parcel-1");
   assert.equal(payload.workspace.plans[0].notificationResponses.f1, "確認しました");
+  assert.equal(payload.workspace.plans[0].notificationAcks.f1, "2026-07-23T06:00:00.000Z");
+  assert.equal(payload.workspace.plans[0].notificationReplyNotes.f1, "7時以降を希望");
+  assert.equal(payload.workspace.plans[0].cancellation.state, "postponed");
+  assert.equal(payload.workspace.fields[0].visibilityLevel, "private");
   assert.equal(payload.workspace.plans[0].report.doneDate, "2026-07-23");
   assert.equal(payload.workspace.plans[0].report.photoData, undefined);
   assert.equal(payload.workspace.plans[0].droneLog.points, undefined);

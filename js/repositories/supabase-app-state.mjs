@@ -140,6 +140,8 @@ function operationType(plan) {
 }
 
 function planStatus(plan) {
+  if (plan?.cancellation?.state === "cancelled") return "cancelled";
+  if (plan?.cancellation?.state === "postponed") return "postponed";
   if (plan?.report?.doneDate) return "completed";
   const value = String(plan?.status || "").toLowerCase();
   return allowedPlanStatuses.has(value) ? value : "planned";
@@ -149,7 +151,7 @@ export function fieldToRow(field, context) {
   return {
     workspace_id: required(context?.workspaceId, "地域"),
     client_ref: required(field?.id, "圃場ID"),
-    owner_user_id: required(context?.userId, "利用者"),
+    owner_user_id: required(field?.ownerUserId || context?.userId, "利用者"),
     name: String(field?.name || "名称未設定"),
     field_type: allowedFieldTypes.has(field?.type) ? field.type : "other",
     crop: String(field?.crop || "未登録"),
@@ -184,6 +186,7 @@ export function rowToField(row) {
     harvestWindow: String(row?.harvest_window || "未登録"),
     avoidReason: String(row?.avoid_reason || ""),
     visibilityLevel: visibilityLevel(row?.visibility_level),
+    ownerUserId: row?.owner_user_id || row?.field_data?.ownerUserId || null,
     geometry: row?.geometry || row?.field_data?.geometry || null,
     geometryRevision: String(row?.geometry_revision || "missing"),
     externalRefs: arrayValue(row?.external_refs),
@@ -265,7 +268,11 @@ export function notificationToRow(plan, fieldClientRef, context) {
     response_message: responseToCode.has(response) ? "" : response,
     responded_at: response !== "未回答" ? context?.syncedAt || new Date().toISOString() : null,
     response_by: response !== "未回答" ? context?.userId || null : null,
-    notification_data: { clientFieldRef: fieldClientRef },
+    notification_data: {
+      clientFieldRef: fieldClientRef,
+      replyNote: String(plan?.notificationReplyNotes?.[fieldClientRef] || ""),
+      acknowledgedAt: plan?.notificationAcks?.[fieldClientRef] || null,
+    },
     idempotency_key: `notification:${plan.id}:${fieldClientRef}`,
   };
 }
@@ -314,6 +321,14 @@ function mergeRelatedRows(plans, related) {
       [fieldRef]: row.response_code === "other"
         ? String(row.response_message || "未回答")
         : (codeToResponse.get(row.response_code) || "未回答"),
+    };
+    plan.notificationReplyNotes = {
+      ...(plan.notificationReplyNotes || {}),
+      [fieldRef]: String(row.notification_data?.replyNote || ""),
+    };
+    plan.notificationAcks = {
+      ...(plan.notificationAcks || {}),
+      ...(row.notification_data?.acknowledgedAt ? { [fieldRef]: row.notification_data.acknowledgedAt } : {}),
     };
   });
   arrayValue(related.reports).forEach((row) => {
@@ -438,6 +453,8 @@ export function createSupabaseAppStateRepository({ client, storageService = null
         const targets = new Set([
           ...Object.keys(objectValue(plan.notificationTargets)),
           ...Object.keys(objectValue(plan.notificationResponses)),
+          ...Object.keys(objectValue(plan.notificationReplyNotes)),
+          ...Object.keys(objectValue(plan.notificationAcks)),
         ]);
         targets.forEach((fieldRef) => notifications.push(notificationToRow(plan, fieldRef, {
           ...context,

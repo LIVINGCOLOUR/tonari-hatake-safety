@@ -279,7 +279,7 @@ test("role dashboard metrics preserve labels, counts, and alert states", () => {
     organicRadius: 300,
     activeReadiness: 65,
   });
-  assert.deepEqual(sprayer.map((metric) => metric.value), ["1件", "1件", "1件", "1件", "1件", "1件", "1件", "65"]);
+  assert.deepEqual(sprayer.map((metric) => metric.value), ["1件", "1件", "1件", "1件", "1件", "1件", "1件", "0件", "65"]);
   assert.equal(sprayer.at(-1).alert, true);
 
   const neighbor = buildNeighborDashboardMetrics({
@@ -307,6 +307,7 @@ test("dashboard view models preserve role priorities and workflow order", () => 
   assert.deepEqual(notices.map((notice) => notice.id), ["pending", "consulting", "confirmed"]);
 
   const actions = buildSprayerNextActions({
+    pendingReplies: [{ fieldName: "農薬不使用ほ場", response: "時間変更希望", note: "7時以降を希望" }],
     unnotifiedRisks: [{ name: "有機ほ場B", message: "通知が必要" }],
     checks: { weatherForecast: false, wind: false, weatherEnv: false, dips: false },
     actualSpeed: "",
@@ -317,8 +318,9 @@ test("dashboard view models preserve role priorities and workflow order", () => 
   });
   assert.deepEqual(
     actions.map((action) => action.view),
-    ["notify", "weather", "weather", "weather", "checklist", "drone", "report"],
+    ["notify", "notify", "weather", "weather", "weather", "checklist", "drone", "report"],
   );
+  assert.equal(actions[0].detail, "7時以降を希望");
 
   const workflow = buildSprayerWorkflowModel({
     plan: {
