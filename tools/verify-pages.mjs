@@ -86,16 +86,18 @@ const landingDesktop = await inspectPage("/", `() => ({
   roleLinks: [...document.querySelectorAll('.role-card a')].map((link) => link.getAttribute('href')),
   featureLinks: [...document.querySelectorAll('.feature-item a')].map((link) => link.getAttribute('href')),
   featureStatuses: [...document.querySelectorAll('.feature-item .feature-status')].map((item) => item.textContent.trim()),
+  featureDescriptions: [...document.querySelectorAll('.feature-item > p')].map((item) => item.textContent.trim()),
 })`);
 assert(landingDesktop.value.title.includes("となり畑セーフティ"), "Landing page title is missing");
 assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: ${landingDesktop.value.imageFailures.join(", ")}`);
 assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${landingDesktop.value.overflow}px`);
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");
-assert(landingDesktop.value.featureLinks.length === 4, "Landing page must expose all four planned capabilities");
+assert(landingDesktop.value.featureLinks.length === 4, "Landing page must expose all four capability demos");
 assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?role=sprayer#")), "Capability links must open an available sprayer demo view");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "デモで利用可能").length === 2, "Landing page must identify currently available capabilities");
 assert(landingDesktop.value.featureStatuses.some((status) => status === "開発予定"), "Landing page must identify future capabilities");
-assert(landingDesktop.value.featureStatuses.some((status) => status.includes("ライブ連携予定")), "Landing page must distinguish playback from live coverage");
+assert(landingDesktop.value.featureStatuses.some((status) => status === "一部デモで利用可"), "Landing page must mark the playback-only capability as partial");
+assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("散布中にその場で表示する機能は開発予定")), "Landing page must distinguish recorded playback from live spray display");
 assert(landingDesktop.errors.length === 0, `Landing runtime errors: ${landingDesktop.errors.join(", ")}`);
 
 // Browser zoom-out increases the CSS viewport. Keep the hero copy from being
