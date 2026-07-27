@@ -92,12 +92,13 @@ assert(landingDesktop.value.title.includes("となり畑セーフティ"), "Land
 assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: ${landingDesktop.value.imageFailures.join(", ")}`);
 assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${landingDesktop.value.overflow}px`);
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");
-assert(landingDesktop.value.featureLinks.length === 4, "Landing page must expose all four capability demos");
+assert(landingDesktop.value.featureLinks.length === 2, "Only current and next-pilot capabilities should link to demos");
 assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?role=sprayer#")), "Capability links must open an available sprayer demo view");
-assert(landingDesktop.value.featureStatuses.filter((status) => status === "デモで利用可能").length === 2, "Landing page must identify currently available capabilities");
-assert(landingDesktop.value.featureStatuses.some((status) => status === "開発予定"), "Landing page must identify future capabilities");
-assert(landingDesktop.value.featureStatuses.some((status) => status === "一部デモで利用可"), "Landing page must mark the playback-only capability as partial");
-assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("散布中にその場で表示する機能は開発予定")), "Landing page must distinguish recorded playback from live spray display");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "現在のデモ").length === 1, "Landing page must identify the currently available workflow");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "次の実証開発").length === 1, "Landing page must identify the DJI log-import pilot");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "将来構想").length === 2, "Landing page must separate future drone capabilities");
+assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("実ファイルを入手して形式を検証してから対応")), "Landing page must not present DJI log import as implemented");
+assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("実証済みの機体から段階的に対応")), "Landing page must not imply universal live telemetry support");
 assert(landingDesktop.errors.length === 0, `Landing runtime errors: ${landingDesktop.errors.join(", ")}`);
 
 // Browser zoom-out increases the CSS viewport. Keep the hero copy from being
