@@ -160,6 +160,9 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
     timelineTitles: [...document.querySelectorAll('#timeline li strong')]
       .map((item) => item.textContent.trim()),
     kpiCount: document.querySelectorAll('#kpiGrid .kpi-card').length,
+    activePlan: document.querySelector('#activePlanSelect')?.value,
+    caseTitle: document.querySelector('#caseBar strong')?.textContent.trim(),
+    deadNeighborNotifyLink: Boolean(document.querySelector('#goNoGoCard [data-view-target="notify"]')),
     overflow: document.documentElement.scrollWidth - innerWidth,
   })`, { width: 1440, height: 960 }, 3500);
   const expectedRoleLabel = { sprayer: "散布者", neighbor: "周辺農家", admin: "地域管理" }[role];
@@ -167,6 +170,8 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
   assert(result.value.role === expectedRoleLabel, `${role} demo opened as ${result.value.role}`);
   assert(JSON.stringify(result.value.navigation) === JSON.stringify(expected), `${role} navigation mismatch: ${result.value.navigation.join(" / ")}`);
   assert(result.value.kpiCount === expectedKpiCount, `${role} KPI count: ${result.value.kpiCount}`);
+  assert(result.value.activePlan === "plan-kasama-demo", `${role} did not keep the Kasama demo case active`);
+  assert(result.value.caseTitle?.includes("実証ケースK"), `${role} case bar is missing the shared case title`);
   if (role === "sprayer") {
     assert(result.value.workflowTargets.includes("history"), "Sprayer workflow must end in work history");
     assert(result.value.timelineTitles.includes("作業履歴"), "Sprayer timeline must include work history");
@@ -174,6 +179,7 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
   if (role === "neighbor") {
     assert(result.value.workflowTargets.includes("fields"), "Neighbor workflow must expose field privacy settings");
     assert(result.value.timelineTitles.includes("公開範囲"), "Neighbor timeline must include privacy scope");
+    assert(!result.value.deadNeighborNotifyLink, "Neighbor reply action must not link to the forbidden notify view");
   }
   if (role === "admin") {
     assert(!result.value.workflowTargets.includes("plans"), "Admin workflow must not expose spray-plan editing");

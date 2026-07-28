@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>デモ | となり畑セーフティ</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260725-conflict-compare">
+    <link rel="stylesheet" href="css/styles.css?v=20260728-kasama-case">
   </head>
   <body>
     <div class="app-shell">
@@ -74,6 +74,7 @@
         </header>
 
         <div class="profile-mode-banner" id="profileModeBanner"></div>
+        <div class="case-bar" id="caseBar"></div>
 
         <section class="view active" data-view="dashboard" aria-labelledby="dashboardTitle">
           <div class="section-head">
@@ -195,7 +196,10 @@
               <h3 id="plansTitle">散布計画登録</h3>
               <p>散布前に必要な情報を記録します。</p>
             </div>
-            <button class="ghost-button" id="duplicatePlanButton" type="button">この計画を複製</button>
+            <div class="section-actions">
+              <button class="ghost-button" id="printPlanButton" type="button">計画書PDF</button>
+              <button class="ghost-button" id="duplicatePlanButton" type="button">この計画を複製</button>
+            </div>
           </div>
 
           <div class="form-layout">
@@ -506,7 +510,15 @@
               <h3 id="droneTitle">ドローン連携・飛行ログ取込</h3>
               <p>SDK/API連携は準備中として、V1ではサンプル飛行ログで散布ON/OFF・高度・予定範囲との差分を確認します。</p>
             </div>
-            <button class="primary-button" id="loadDroneLogButton" type="button">サンプル飛行ログ取込</button>
+            <div class="section-actions">
+              <a class="rx-import-button" href="data/flight-logs/kasama-agras-sample.json" download>サンプルJSON取得</a>
+              <label class="rx-import-button">
+                サンプルJSONを選択
+                <input type="file" id="flightLogFileInput" accept=".json,application/json" hidden>
+              </label>
+              <button class="secondary-button" id="loadDroneLogButton" type="button">同梱ログを取込</button>
+              <button class="primary-button" id="printFlightLogButton" type="button">ログ結果PDF</button>
+            </div>
           </div>
 
           <div class="drone-layout">
@@ -549,7 +561,10 @@
               <h3 id="notifyTitle">近隣通知</h3>
               <p>関係者へ共有する文面と通知履歴を作成します。</p>
             </div>
-            <button class="primary-button" id="printNoticeButton" type="button">通知書PDF</button>
+            <div class="section-actions">
+              <button class="ghost-button" id="printNoticeReplyButton" type="button">通知・返信記録PDF</button>
+              <button class="primary-button" id="printNoticeButton" type="button">通知書PDF</button>
+            </div>
           </div>
 
           <div class="notify-layout">
@@ -1300,6 +1315,6 @@
     <script src="vendor/shpjs/shp.min.js" defer></script>
     <script src="vendor/supabase/supabase.min.js" defer></script>
     <script src="js/config/supabase-runtime.js" defer></script>
-    <script src="js/main.js?v=20260726-role-ux-final" defer></script>
+    <script src="js/main.js?v=20260728-kasama-case" defer></script>
   </body>
 </html>

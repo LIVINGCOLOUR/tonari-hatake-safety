@@ -287,6 +287,45 @@ body[data-role="neighbor"] .topbar-controls {
   font-weight: 800;
 }
 
+.case-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: -10px 0 22px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--green);
+  background: #f3f8f5;
+}
+
+.case-bar-main,
+.case-bar-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.case-bar-main {
+  flex-wrap: wrap;
+}
+
+.case-bar-main strong {
+  font-size: 16px;
+}
+
+.case-bar-main > span:not(.tag),
+.case-bar-status small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.case-bar-status {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .topbar h2,
 .section-head h3,
 .panel h4 {
@@ -3206,6 +3245,7 @@ label {
   height: 220px;
   align-items: end;
   gap: 8px;
+  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 14px;
@@ -3696,6 +3736,7 @@ label {
   .rule-banner,
   .section-actions,
   .profile-mode-banner,
+  .case-bar,
   .profile-save-panel,
   .workflow-section-head,
   .boundary-status-row {
@@ -3706,6 +3747,12 @@ label {
   .topbar-controls {
     width: 100%;
     min-width: 0;
+  }
+
+  .case-bar-main,
+  .case-bar-status {
+    align-items: flex-start;
+    justify-content: flex-start;
   }
 
   #activePlanSelect {
@@ -3812,9 +3859,28 @@ label {
   .profile-mode-banner button,
   .section-head p,
   #ruleBanner .rule-compact-note,
-  #ruleBanner span:not(.tag),
-  .topbar-controls {
+  #ruleBanner span:not(.tag) {
     display: none;
+  }
+
+  body[data-role="sprayer"] .topbar-controls {
+    display: flex;
+  }
+
+  .case-bar {
+    margin-bottom: 12px;
+    padding: 10px 11px;
+  }
+
+  .case-bar-main > span:not(.tag),
+  .case-bar-status small {
+    width: 100%;
+  }
+
+  .case-bar-status .pill {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
   }
 
   .topbar {

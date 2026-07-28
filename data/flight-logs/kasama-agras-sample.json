@@ -1,0 +1,26 @@
+{
+  "sampleFormat": "tonari-flight-log/v1",
+  "sourceNote": "DJI AGRAS想定のサンプル様式です。実機ログの自動解析ではありません。",
+  "vendor": "DJI",
+  "model": "DJI AGRAS（実証想定）",
+  "aircraftRegistration": "DEMO-AGRAS-001",
+  "remoteId": "RID-DEMO-AGRAS-001",
+  "pilot": "笠間デモ操縦者",
+  "sprayDevice": "液剤散布装置",
+  "startedAt": "06:04",
+  "endedAt": "06:48",
+  "points": [
+    { "x": 46, "y": 40, "altitude": 1.2, "sprayOn": false },
+    { "x": 60, "y": 40, "altitude": 2.1, "sprayOn": true },
+    { "x": 60, "y": 42, "altitude": 2.2, "sprayOn": true },
+    { "x": 46, "y": 42, "altitude": 2.3, "sprayOn": true },
+    { "x": 46, "y": 44, "altitude": 2.1, "sprayOn": true },
+    { "x": 60, "y": 44, "altitude": 2.4, "sprayOn": true },
+    { "x": 60, "y": 46, "altitude": 2.3, "sprayOn": true },
+    { "x": 46, "y": 46, "altitude": 2.2, "sprayOn": true },
+    { "x": 46, "y": 48, "altitude": 2.4, "sprayOn": true },
+    { "x": 60, "y": 48, "altitude": 2.5, "sprayOn": true },
+    { "x": 61, "y": 50, "altitude": 3.4, "sprayOn": false, "altitudeCheck": true, "outside": true },
+    { "x": 50, "y": 50, "altitude": 1.5, "sprayOn": false }
+  ]
+}

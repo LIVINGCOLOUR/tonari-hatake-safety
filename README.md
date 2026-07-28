@@ -56,7 +56,7 @@ http://localhost:8080/
 - Open-Meteo Forecast API による気象予報の自動取得
 - 散布前チェックリスト
 - ドローン連携モック
-- サンプル飛行ログ取込
+- DJI AGRASを想定した実証用サンプルJSONの飛行ログ取込（実機ログ自動解析は未実装）
 - 散布カバレッジ表示と再生
 - 可変施肥（VRA）処方マップの取込・作成・編集・GeoJSON書き出し
 - 実施後報告
@@ -64,7 +64,7 @@ http://localhost:8080/
 - 自治体向け地域管理画面
 - 散布予定・実績一覧、行クリック詳細、上空写真、作業詳細、気象確認状況
 - 管理者ロールでは、操作タブを `トップ` と `散布予定・実績` に限定
-- PDF印刷用ビュー
+- 案件共通バーと、計画・通知返信・散布前確認・飛行ログ・実施後報告・地域一覧のPDF印刷用ビュー
 - Magic Linkログイン、地域ワークスペース、3ロール所属
 - Supabaseへの圃場・計画・通知・報告の同期
 - 通信切断中の変更を端末へ保持し、起動時・再接続時に再送
@@ -78,6 +78,8 @@ http://localhost:8080/
 - `js/landing.js`: 紹介ページのナビゲーション
 - `css/styles.css`: UIスタイル
 - `js/main.js`: UI状態、描画、地図、気象取得、境界取込IO、VRA、CSV/PDF処理
+- `js/domain/flight-log.mjs`: 実証用サンプル飛行ログ形式の検証・正規化
+- `data/flight-logs/kasama-agras-sample.json`: DJI AGRASを想定した実証用サンプルログ
 - `js/domain/state.mjs`: 保存形式と圃場参照の移行
 - `js/domain/geometry.mjs`: WGS84形状、距離、方位、安定ハッシュ
 - `js/domain/import.mjs`: 圃場取込の正規化、来歴、外部参照、重複排除

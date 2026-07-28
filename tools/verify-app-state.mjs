@@ -489,10 +489,10 @@ await evaluate("localStorage.clear()");
 await open("/app.html?role=admin#admin");
 const admin = await evaluate(`(() => ({
   rows: document.querySelectorAll("#adminTableBody tr.admin-row").length,
-  flagged: document.querySelector("#adminDetailInfo")?.textContent.includes("散布ほ場参照切れ") || false,
+  flagged: document.querySelector("#adminTableBody")?.textContent.includes("散布ほ場参照切れ") || false,
   view: document.querySelector(".view.active")?.id || location.hash,
 }))()`);
-assert(admin.rows === 4, `admin table rows: ${admin.rows}`);
+assert(admin.rows === 5, `admin table rows: ${admin.rows}`);
 assert(admin.flagged, "admin detail does not flag the unresolved sample plan");
 
 // --- scenario 4: every sprayer view renders, including with the unresolved
@@ -1294,6 +1294,69 @@ assert(
   accountStatusFallback.warning.includes("状況を確認できません"),
   "Deletion status outage was not explained to the user",
 );
+
+// --- scenario 18: one Kasama case stays active across all demo roles -------
+await evaluate("localStorage.clear()");
+await open("/app.html?role=sprayer&plan=plan-kasama-demo#dashboard");
+const kasamaCase = await evaluate(`(async () => {
+  const plan = activePlan();
+  const outputs = [buildPlanPrint(plan), buildNoticeReplyPrint(plan), buildPrecheckPrint(plan), buildFlightLogPrint(plan), buildReportPrint(plan)];
+  const registeredState = createSampleState();
+  registeredState.profile = { ...defaultProfile(), registered: true, role: "sprayer", name: "登録済み利用者" };
+  registeredState.plans = registeredState.plans.filter((item) => item.id !== "plan-kasama-demo");
+  registeredState.activePlanId = "plan-drone-1";
+  const registeredNormalized = normalizeState(registeredState);
+  const adviceBeforeImport = buildAdvice(plan).map((item) => item.title).join(" / ");
+  autoFillReportFromPlan();
+  const reportBeforeImport = workRecordForPlan(plan);
+  plan.checks.altitude = false;
+  const sampleResponse = await fetch("data/flight-logs/kasama-agras-sample.json", { cache: "no-store" });
+  const parsedSample = domainFlightLog.parseSampleFlightLog(await sampleResponse.text());
+  if (parsedSample.ok) applyImportedFlightLog(parsedSample.log, "検証用ログ取込");
+  const importedPlan = planRepository.get(plan.id);
+  const sprayerPlan = state.activePlanId;
+  setRole("neighbor");
+  const neighborPlan = state.activePlanId;
+  const neighborHasNotice = neighborRelevantNotices().some((notice) => notice.plan.id === sprayerPlan);
+  setRole("admin");
+  const adminPlan = state.activePlanId;
+  return {
+    sprayerPlan,
+    neighborPlan,
+    adminPlan,
+    adminSelectedId,
+    neighborHasNotice,
+    outputsReady: outputs.every((html) => html.includes("<article") && html.length > 200),
+    flightDisclosure: outputs[3].includes("実機ログの自動解析") && outputs[3].includes("未実装"),
+    registeredCaseWasNotInjected: !registeredNormalized.plans.some((item) => item.id === "plan-kasama-demo"),
+    preImportReportStayedBlank: reportBeforeImport.altitudeNotes === "飛行ログ未取込"
+      && reportBeforeImport.outsideFlight === "未確認"
+      && !reportBeforeImport.reportNotes.includes("サンプル飛行ログ"),
+    preImportAdviceStayedBlank: !adviceBeforeImport.includes("散布高度の確認")
+      && !adviceBeforeImport.includes("予定範囲外飛行の確認"),
+    importedThroughRepository: Boolean(importedPlan?.droneLog?.imported),
+    altitudeStayedHumanControlled: importedPlan?.checks?.altitude === false,
+    replyEvidence: outputs[1].includes("時間変更希望") && outputs[1].includes("8時以降"),
+    unimportedFlightIsBlank: outputs[3].includes("飛行ログが未取込")
+      && !outputs[3].includes("<th>最大高度</th>")
+      && !outputs[3].includes("<th>散布ON区間</th>")
+      && !outputs[3].includes("06:04"),
+  };
+})()`);
+assert(kasamaCase.sprayerPlan === "plan-kasama-demo", "Kasama case URL did not select the requested plan");
+assert(kasamaCase.neighborPlan === kasamaCase.sprayerPlan && kasamaCase.adminPlan === kasamaCase.sprayerPlan,
+  `Role switching changed the active case: ${JSON.stringify(kasamaCase)}`);
+assert(kasamaCase.adminSelectedId === kasamaCase.sprayerPlan, "Admin detail did not follow the shared case");
+assert(kasamaCase.neighborHasNotice, "Neighbor could not see a notice for the shared case");
+assert(kasamaCase.outputsReady, "One or more municipality records were empty");
+assert(kasamaCase.flightDisclosure, "Flight-log output did not disclose the sample-only implementation");
+assert(kasamaCase.registeredCaseWasNotInjected, "Kasama demo case leaked into a registered user's plan list");
+assert(kasamaCase.preImportReportStayedBlank, "Report auto-fill used placeholder flight results before import");
+assert(kasamaCase.preImportAdviceStayedBlank, "Drone advice used placeholder flight results before import");
+assert(kasamaCase.importedThroughRepository, "Bundled flight log was not persisted through the plan repository");
+assert(kasamaCase.altitudeStayedHumanControlled, "Flight-log import auto-completed the human altitude check");
+assert(kasamaCase.replyEvidence, "Neighbor response evidence was missing from the notice record");
+assert(kasamaCase.unimportedFlightIsBlank, "Unimported flight evidence contained fictional result values");
 
 await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`, { method: "PUT" });
 socket.close();

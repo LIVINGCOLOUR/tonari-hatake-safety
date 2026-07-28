@@ -437,6 +437,7 @@ let domainPrescription;
 let domainCoverage;
 let domainDashboard;
 let domainDisclosure;
+let domainFlightLog;
 let weatherService;
 let boundaryIOService;
 let exportIOService;
@@ -558,7 +559,7 @@ function notifyPreferenceKeyFromLabel(value) {
 async function init() {
   const magicLinkReturn = new URLSearchParams(location.search).get("auth") === "magic-link";
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
-  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, domainDisclosure, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule, accountOperationsService] = await Promise.all([
+  [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, domainDisclosure, domainFlightLog, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule, accountOperationsService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
     import("./domain/geometry.mjs?v=20260721-phase3"),
     import("./domain/import.mjs?v=20260721-phase3"),
@@ -567,6 +568,7 @@ async function init() {
     import("./domain/coverage.mjs?v=20260723-phase6"),
     import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
     import("./domain/disclosure.mjs?v=20260726-role-boundary-final"),
+    import("./domain/flight-log.mjs?v=20260728-kasama-case"),
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
@@ -611,9 +613,14 @@ async function init() {
   workRecordRepository = repositories.workRecords;
   configureRemoteSync();
   await loadRemoteStateWhenEnabled();
-  const requestedRole = new URLSearchParams(location.search).get("role");
+  const searchParams = new URLSearchParams(location.search);
+  const requestedRole = searchParams.get("role");
   if (!profileRole(state) && ROLE_META[requestedRole]) {
     state.role = requestedRole;
+  }
+  const requestedPlan = searchParams.get("plan");
+  if (requestedPlan && planRepository.get(requestedPlan)) {
+    state.activePlanId = requestedPlan;
   }
   activeRole = profileRole(state) || state.role || "sprayer";
   state.role = activeRole;
@@ -633,6 +640,12 @@ async function init() {
 
 function bindEvents() {
   document.body.addEventListener("click", (event) => {
+    const scrollTarget = event.target.closest("[data-scroll-target]");
+    if (scrollTarget) {
+      document.getElementById(scrollTarget.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
     const roleTarget = event.target.closest("#roleSwitcher [data-role]");
     if (roleTarget) {
       setRole(roleTarget.dataset.role);
@@ -890,6 +903,9 @@ function bindEvents() {
   $("#copyNoticeButton").addEventListener("click", copyNotice);
   $("#markNotifiedButton").addEventListener("click", markSelectedTargetsNotified);
   $("#printNoticeButton").addEventListener("click", () => printDocument("notice"));
+  $("#printPlanButton").addEventListener("click", () => printDocument("plan"));
+  $("#printNoticeReplyButton").addEventListener("click", () => printDocument("replies"));
+  $("#printFlightLogButton").addEventListener("click", () => printDocument("flight"));
   $("#printPrecheckButton").addEventListener("click", () => printDocument("precheck"));
   $("#printReportButton").addEventListener("click", () => printDocument("report"));
   $("#printAdminButton").addEventListener("click", () => printDocument("admin"));
@@ -926,17 +942,10 @@ function bindEvents() {
     renderAll();
     showToast("圃場ステータスを保存しました。");
   });
-  $("#loadDroneLogButton").addEventListener("click", () => {
-    const log = createSampleDroneLog(true);
-    state.droneLog = log;
-    const plan = activePlan();
-    plan.droneLog = log;
-    plan.checks.flightLog = true;
-    plan.checks.altitude = true;
-    saveState();
-    renderAll();
-    switchView("drone");
-    showToast("サンプル飛行ログを取り込み、この計画に紐付けました。");
+  $("#loadDroneLogButton").addEventListener("click", loadBundledFlightLog);
+  $("#flightLogFileInput")?.addEventListener("change", async (event) => {
+    await importFlightLogFile(event.target.files[0]);
+    event.target.value = "";
   });
   $("#autoFillReportButton").addEventListener("click", () => {
     autoFillReportFromPlan();
@@ -1087,6 +1096,7 @@ function renderAll() {
   renderRoleSwitcher();
   renderProfileModeBanner();
   renderPlanSelect();
+  renderCaseBar();
   renderRuleBanner();
   renderRoleActionPanel();
   renderDashboard();
@@ -1145,6 +1155,7 @@ function setRole(role) {
   }
   activeRole = role;
   state.role = role;
+  if (role === "admin") adminSelectedId = state.activePlanId;
   saveState();
   renderAll();
   if (!roleAllowsView(activeView)) {
@@ -1211,6 +1222,42 @@ function renderPlanSelect() {
     .map((plan) => `<option value="${escapeAttr(plan.id)}">${escapeHtml(plan.date)} ${escapeHtml(plan.fieldName)}</option>`)
     .join("");
   select.value = state.activePlanId;
+}
+
+function renderCaseBar() {
+  const bar = $("#caseBar");
+  const plan = activePlan();
+  if (!bar || !plan) return;
+  const report = workRecordForPlan(plan);
+  const roleNote = activeRole === "admin"
+    ? "記録状況を確認します。散布の許可・承認を行う画面ではありません。"
+    : activeRole === "neighbor"
+      ? "あなたの圃場に関係する予定と返信状況を確認します。"
+      : "計画から通知、飛行ログ、実施後報告まで同じ案件として記録します。";
+  const neighborNotice = activeRole === "neighbor"
+    ? neighborRelevantNotices().find((notice) => notice.plan.id === plan.id)
+    : null;
+  const statusPills = activeRole === "neighbor"
+    ? `
+      <span class="pill ${neighborNotice?.response && neighborNotice.response !== "未回答" ? "green" : "amber"}">返信 ${escapeHtml(neighborNotice?.response || "未回答")}</span>
+      <span class="pill ${plan.cancellation ? "amber" : "green"}">予定 ${escapeHtml(plan.cancellation?.state === "cancelled" ? "中止" : plan.cancellation?.state === "postponed" ? "延期" : "登録中")}</span>
+    `
+    : `
+      <span class="pill ${notificationIsComplete(plan) ? "green" : "amber"}">通知 ${escapeHtml(notificationLabel(plan))}</span>
+      <span class="pill ${plan.droneLog?.imported ? "green" : "amber"}">ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"}</span>
+      <span class="pill ${report.doneDate ? "green" : "amber"}">報告 ${report.doneDate ? "提出済み" : "未提出"}</span>
+    `;
+  bar.innerHTML = `
+    <div class="case-bar-main">
+      <span class="tag tag-green">表示中の実証案件</span>
+      <strong>${escapeHtml(plan.caseLabel || plan.fieldName)}</strong>
+      <span>${escapeHtml(plan.date)} ${escapeHtml(plan.timeWindow)} / ${escapeHtml(plan.fieldName)} / ${escapeHtml(plan.pesticide)}</span>
+    </div>
+    <div class="case-bar-status">
+      ${statusPills}
+      <small>${escapeHtml(roleNote)}</small>
+    </div>
+  `;
 }
 
 function renderRuleBanner() {
@@ -1540,10 +1587,10 @@ function weatherCheckSummary(plan) {
 }
 
 function neighborRelevantNotices() {
-  const since = dateOffset(-1);
+  const since = dateOffset(-7);
   const myFieldIds = new Set(allFields().filter((field) => field.type !== "spray" && isSelfOwned(field)).map((field) => field.id));
   const notices = allPlans()
-    .filter((plan) => plan.date >= since)
+    .filter((plan) => plan.date >= since || plan.id === state.activePlanId)
     .flatMap((plan) =>
       riskItemsForPlan(plan)
         .filter((item) => item.notifyTarget && myFieldIds.has(item.id))
@@ -1934,7 +1981,7 @@ function renderGoNoGo() {
         <div class="gonogo-factor good"><span>公開範囲</span><b>${escapeHtml(visibilityLabelForField(activeField()))}</b></div>
       </div>
       <div class="gonogo-actions">
-        <button class="ghost-button" data-view-target="notify" type="button">通知に返信</button>
+        <button class="ghost-button" data-scroll-target="roleActionPanel" type="button">通知に返信</button>
         <button class="ghost-button" data-view-target="fields" type="button">公開範囲を確認</button>
       </div>
     `;
@@ -2365,6 +2412,7 @@ function renderMapView() {
           </div>
           <strong>${escapeHtml(item.name)}</strong>
           <span>${escapeHtml(item.message)}</span>
+          <small>確認理由：${escapeHtml(riskReasonLabel(item))}</small>
         </div>
       `,
     )
@@ -2502,7 +2550,8 @@ function renderGisLegend(container, mode = "field") {
         ]
       : [
           ["散布ほ場", FIELD_LAYER_COLORS.spray],
-          ["有機・不使用", FIELD_LAYER_COLORS.organic],
+          ["有機JAS", FIELD_LAYER_COLORS.organic],
+          ["農薬不使用", FIELD_LAYER_COLORS.noChemical],
           ["ハウス・育苗", FIELD_LAYER_COLORS.house],
           ["収穫直前", FIELD_LAYER_COLORS.preharvest],
           ["水源・水路", FIELD_LAYER_COLORS.water],
@@ -3369,24 +3418,26 @@ function renderDroneView() {
       ${statusRow("操縦者", plan.pilot || log.pilot, "blue")}
       ${statusRow("散布装置", plan.sprayDevice || log.sprayDevice, "blue")}
       ${statusRow("ログ取込状態", log.imported ? "サンプルログ取込済み" : "サンプルログ未取込", log.imported ? "green" : "amber")}
-      ${statusRow("最終同期", log.lastSync, log.imported ? "green" : "amber")}
+      ${statusRow("取込方式", "実証用サンプル様式（実機ログ自動解析・非公開API同期は未実装）", "amber")}
+      ${statusRow("ログ取込日時", flightLogImportedAtLabel(log), log.imported ? "green" : "amber")}
     `;
   }
 
   const flight = $("#flightLogSummary");
   if (flight) {
-    flight.innerHTML = `
+    flight.innerHTML = log.imported ? `
       <div class="flight-summary-grid">
         ${metricCard("飛行時間", `${log.startedAt} - ${log.endedAt}`)}
         ${metricCard("散布ON区間", `${log.sprayOnSegments}区間`)}
         ${metricCard("最大高度", `${maxAltitude(log)}m`)}
-        ${metricCard("高度要確認", `${altitudeCheckCount(log)}点`)}
-        ${metricCard("予定範囲外", log.outsideFlight ? "要確認" : "なし")}
+        ${metricCard("高度要確認（ファイル値）", `${altitudeCheckCount(log)}点`)}
+        ${metricCard("予定範囲外（ファイル値）", log.outsideFlight ? "記録あり" : "申告なし・未照合")}
       </div>
-    `;
+    ` : `<div class="empty-state">飛行ログは未取込です。実績時刻・高度・散布範囲は、ログ取込後に表示します。</div>`;
   }
 
-  renderAltitudeChart(log);
+  if (log.imported) renderAltitudeChart(log);
+  else $("#altitudeChart").innerHTML = "";
   const advice = $("#droneAdviceList");
   if (advice) {
     advice.innerHTML = buildAdvice(plan)
@@ -3464,7 +3515,7 @@ function renderNotification() {
   const plan = activePlan();
   $("#noticeText").value = buildNoticeText(plan, noticeChannel);
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
-  $("#notifyTargetList").innerHTML = targets.length
+  const rows = targets.length
     ? targets
         .map(
           (item) => {
@@ -3492,6 +3543,10 @@ function renderNotification() {
         )
         .join("")
     : `<div class="empty-state">通知対象はありません。</div>`;
+  $("#notifyTargetList").innerHTML = `
+    <p class="small-note">返信は本来、周辺農家の画面から登録されます。ここでの変更は実証デモ用の代理入力です。</p>
+    ${rows}
+  `;
 }
 
 function renderChecklist() {
@@ -3890,6 +3945,44 @@ function importPrescriptionFile(file) {
   reader.readAsText(file);
 }
 
+async function importFlightLogFile(file) {
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    showToast("ファイルが大きすぎます（上限2MB）。");
+    return;
+  }
+  try {
+    const result = domainFlightLog.parseSampleFlightLog(await file.text());
+    if (!result.ok) throw new Error(result.reason);
+    applyImportedFlightLog(result.log, "サンプル様式の飛行ログを取り込みました。");
+  } catch (error) {
+    showToast(`取り込めませんでした：${error.message || "この実証用サンプル様式のみ読み込めます。"}`);
+  }
+}
+
+async function loadBundledFlightLog() {
+  try {
+    const response = await fetch("data/flight-logs/kasama-agras-sample.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("同梱サンプルを取得できません。");
+    const result = domainFlightLog.parseSampleFlightLog(await response.text());
+    if (!result.ok) throw new Error(result.reason);
+    applyImportedFlightLog(result.log, "同梱のDJI AGRAS想定サンプルを取り込みました。");
+  } catch (error) {
+    showToast(`取り込めませんでした：${error.message}`);
+  }
+}
+
+function applyImportedFlightLog(log, message) {
+  const plan = activePlan();
+  plan.droneLog = log;
+  plan.checks.flightLog = true;
+  planRepository.save(plan);
+  saveState();
+  renderAll();
+  switchView("drone");
+  showToast(message);
+}
+
 function loadSamplePrescription() {
   const plan = activePlan();
   const rx = samplePrescription(plan);
@@ -4215,6 +4308,7 @@ function renderAdmin() {
   }
 
   const rows = adminFilteredPlans();
+  if (rows.some((plan) => plan.id === state.activePlanId)) adminSelectedId = state.activePlanId;
   if (rows.length && !rows.some((p) => p.id === adminSelectedId)) adminSelectedId = rows[0].id;
 
   tbody.innerHTML = rows.length
@@ -5978,22 +6072,24 @@ function updateReportFromForm() {
 
 function autoFillReportFromPlan() {
   const plan = activePlan();
-  const log = activeDroneLog();
+  const log = plan.droneLog?.imported ? plan.droneLog : null;
   const report = workRecordForPlan(plan);
+  const coverage = estimateCoverage(plan);
   saveWorkRecord(plan, {
     doneDate: report.doneDate || plan.date,
-    doneTime: report.doneTime || (log.imported ? `${log.startedAt}-${log.endedAt}` : plan.timeWindow),
+    doneTime: report.doneTime || (log ? `${log.startedAt}-${log.endedAt}` : plan.timeWindow),
     doneField: report.doneField || plan.fieldName,
     donePesticide: report.donePesticide || plan.pesticide,
-    doneArea: report.doneArea || plan.sprayArea,
+    doneArea: report.doneArea || `${plan.sprayArea}${coverage.hasLog ? `（カバー率${coverage.coveragePct}%）` : ""}`,
     doneWeather: report.doneWeather || weatherLabel(plan),
     incident: report.incident || "なし",
     inquiry: report.inquiry || "なし",
     inquiryDetail: report.inquiryDetail || "",
-    reportType: log.outsideFlight || altitudeCheckCount(log) ? "追加確認あり" : "通常報告",
+    reportType: log ? (log.outsideFlight || altitudeCheckCount(log) ? "追加確認あり" : "通常報告") : (report.reportType || "通常報告"),
     actualAmount: report.actualAmount || plan.amount,
-    altitudeNotes: altitudeCheckCount(log) ? `${altitudeCheckCount(log)}点 要確認 / 最大 ${maxAltitude(log)}m` : "高度要確認区間なし",
-    outsideFlight: log.outsideFlight ? "要確認" : "なし",
+    altitudeNotes: log ? `最大高度${maxAltitude(log)}m / 高度要確認${altitudeCheckCount(log)}点（ファイル申告値）` : (report.altitudeNotes || "飛行ログ未取込"),
+    outsideFlight: log ? (log.outsideFlight ? "要確認（ファイル申告値）" : "未照合（ファイル申告なし）") : (report.outsideFlight || "未確認"),
+    reportNotes: report.reportNotes || (log ? "サンプル飛行ログより自動入力。実機ログの自動解析結果ではありません。" : "計画情報より自動入力。飛行実績はログ取込後に追記してください。"),
   });
 }
 
@@ -6110,8 +6206,11 @@ function countNotificationResponses(response) {
 function printDocument(type) {
   const plan = activePlan();
   const htmlByType = {
+    plan: buildPlanPrint(plan),
     notice: buildNoticePrint(plan),
+    replies: buildNoticeReplyPrint(plan),
     precheck: buildPrecheckPrint(plan),
+    flight: buildFlightLogPrint(plan),
     report: buildReportPrint(plan),
     admin: buildAdminPrint(),
     history: buildHistoryPrint(),
@@ -6124,6 +6223,32 @@ function printDocument(type) {
   } catch (error) {
     showToast(`印刷できませんでした：${exportIOService.exportErrorMessage(error)}`);
   }
+}
+
+function buildPlanPrint(plan) {
+  const total = domainSpray.formatTotalAmount(plan);
+  return `
+    <article class="print-doc">
+      <h1>散布計画 記録票</h1>
+      <p>案件：${escapeHtml(plan.caseLabel || plan.fieldName)} / 作成日：${escapeHtml(formatDateTime(new Date()))}</p>
+      ${printTable([
+        ["予定日時", `${plan.date} ${plan.timeWindow}`],
+        ["ほ場・地区", `${plan.fieldName} / ${plan.district}`],
+        ["作物・目的", `${plan.crop} / ${plan.purpose}`],
+        ["資材", `${plan.materialType || "農薬"} / ${plan.pesticide}`],
+        ["散布者・連絡先", `${plan.operator} / ${plan.contact}`],
+        ["機体・登録記号", `${plan.droneModel || "未記録"} / ${plan.aircraftRegistration || "未記録"}`],
+        ["操縦者・補助者", `${plan.pilot || "未記録"} / ${plan.assistant || "未記録"}`],
+        ["装置・ノズル", `${plan.sprayDevice || "未記録"} / ${plan.nozzle || "未記録"}`],
+        ["高度・速度予定", `${plan.plannedAltitude || "未記録"} / ${plan.plannedSpeed || "未記録"}`],
+        ["登録番号・収穫前日数", `${plan.pesticideRegistration || "未記録"} / ${plan.preHarvestDays || "未記録"}`],
+        ["使用量・希釈・総量", `${plan.amount || "未記録"} / ${plan.dilution || "未記録"} / ${total}`],
+        ["散布面積・幅", `${plan.sprayArea || "未記録"} / ${plan.sprayWidthM || "未記録"}m`],
+        ["備考", plan.notes || ""],
+      ])}
+      <p>本票は計画と確認材料の記録です。散布可否を決めるものではありません。</p>
+    </article>
+  `;
 }
 
 function buildNoticePrint(plan) {
@@ -6146,6 +6271,37 @@ function buildNoticePrint(plan) {
   `;
 }
 
+function buildNoticeReplyPrint(plan) {
+  const rows = riskItemsForPlan(plan)
+    .filter((item) => item.notifyTarget)
+    .map((item) => {
+      const record = notificationRecord(plan, item.id);
+      return [
+        item.name,
+        item.distanceLabel,
+        item.direction || "未記録",
+        record.delivered ? "通知済み" : "未通知",
+        plan.notificationAcks?.[item.id] || "未確認",
+        record.response || "未回答",
+        plan.notificationReplyNotes?.[item.id] || "",
+      ];
+    });
+  return `
+    <article class="print-doc">
+      <h1>近隣通知・返信 記録票</h1>
+      <p>案件：${escapeHtml(plan.caseLabel || plan.fieldName)} / ${escapeHtml(plan.date)} ${escapeHtml(plan.timeWindow)}</p>
+      <table>
+        <thead><tr><th>通知先</th><th>距離</th><th>方向</th><th>通知</th><th>確認日時</th><th>返信</th><th>相談メモ</th></tr></thead>
+        <tbody>${rows.length
+          ? rows.map((row) => `<tr>${row.map((value) => `<td>${escapeHtml(value || "")}</td>`).join("")}</tr>`).join("")
+          : `<tr><td colspan="7">散布ほ場の参照または周辺圃場を確認できないため、通知先を判定できません。</td></tr>`}
+        </tbody>
+      </table>
+      <p>LINE等で行った連絡と返信を、関係者間の調整記録として一覧化しています。</p>
+    </article>
+  `;
+}
+
 function buildPrecheckPrint(plan) {
   const rules = activeSettings();
   const progress = checkProgress(plan);
@@ -6162,12 +6318,53 @@ function buildPrecheckPrint(plan) {
         ["使用農薬", plan.pesticide],
         ["散布方法", plan.method],
         ["風向・風速", weatherLabel(plan)],
+        ["API予報", `${plan.weather.source || "未取得"} / 取得 ${plan.weather.fetchedAt || "未記録"} / 対象 ${plan.weather.forecastTargetTime || "未記録"}`],
+        ["現地実測", `${plan.weather.actualDirection || "未記録"} ${plan.weather.actualSpeed || "-"}m/s / ${plan.weather.measuredAt || "未記録"} / ${plan.weather.measuredPlace || "未記録"} / ${plan.weather.measurementMethod || "未記録"} / ${plan.weather.measuredBy || "未記録"}`],
+        ["散布者による気象確認", plan.checks.weatherEnv ? "確認済み" : "未確認"],
         ["通知状況", notificationLabel(plan)],
       ])}
       <h2>チェック項目</h2>
       ${printTable(rows)}
       <h2>周辺確認</h2>
       ${printTable(riskItemsForPlan(plan).map((item) => [item.name, item.message]))}
+    </article>
+  `;
+}
+
+function buildFlightLogPrint(plan) {
+  const log = plan.droneLog;
+  if (!log?.imported) {
+    return `
+      <article class="print-doc">
+        <h1>飛行ログ 確認結果</h1>
+        <p>案件：${escapeHtml(plan.caseLabel || plan.fieldName)}</p>
+        ${printTable([
+          ["取込状態", "未取込"],
+          ["予定時刻", plan.timeWindow || "未記録"],
+          ["予定高度", plan.plannedAltitude || "未記録"],
+        ])}
+        <p>飛行ログが未取込のため、実績時刻・最大高度・散布ON区間・予定範囲外は記載できません。</p>
+        <p>現在の対応範囲は、DJI AGRASを想定した実証用サンプル様式です。実機ログの自動解析、非公開API同期、リアルタイム監視は未実装です。</p>
+      </article>
+    `;
+  }
+  const coverage = estimateCoverage(plan);
+  return `
+    <article class="print-doc">
+      <h1>飛行ログ 確認結果</h1>
+      <p>案件：${escapeHtml(plan.caseLabel || plan.fieldName)}</p>
+      ${printTable([
+        ["取込状態", log.imported ? "サンプルログ取込済み" : "未取込"],
+        ["予定 / 実績時刻", `${plan.timeWindow} / ${log.startedAt || "-"}-${log.endedAt || "-"}`],
+        ["予定高度 / 最大高度", `${plan.plannedAltitude || "未記録"} / ${maxAltitude(log)}m`],
+        ["散布範囲 / カバー率", `${plan.sprayArea || "未記録"} / ${coverage.hasLog ? `${coverage.coveragePct}%` : "未算出"}`],
+        ["散布ON区間", `${log.sprayOnSegments || 0}区間`],
+        ["高度要確認（ファイル申告値）", `${altitudeCheckCount(log)}点`],
+        ["予定範囲外（ファイル申告値）", log.outsideFlight ? "記録あり" : "申告なし（アプリ側照合なし）"],
+        ["機体・操縦者", `${log.model || plan.droneModel || "未記録"} / ${log.pilot || plan.pilot || "未記録"}`],
+        ["データ出典", log.sourceNote || "実証用サンプル飛行ログ"],
+      ])}
+      <p>現在はDJI AGRASを想定した実証用サンプル様式です。実機ログの自動解析、非公開API同期、リアルタイム監視は未実装です。</p>
     </article>
   `;
 }
@@ -6196,6 +6393,7 @@ function buildReportPrint(plan) {
 
 function buildAdminPrint() {
   const rules = activeSettings();
+  const plans = adminFilteredPlans();
   return `
     <article class="print-doc">
       <h1>地域内 農薬散布予定・確認状況一覧</h1>
@@ -6206,7 +6404,7 @@ function buildAdminPrint() {
           <tr><th>日付</th><th>地区</th><th>ほ場</th><th>周辺確認</th><th>通知</th><th>チェック</th><th>確認進捗</th><th>報告</th></tr>
         </thead>
         <tbody>
-          ${allPlans()
+          ${plans
             .map((plan) => {
               const progress = checkProgress(plan);
               return `<tr>
@@ -6480,6 +6678,13 @@ function riskItemsForPlan(plan) {
     .filter((item) => item.notifyTarget || item.level !== "low");
 }
 
+function riskReasonLabel(item) {
+  const type = FIELD_TYPE_META[item.type]?.[0] || "周辺圃場";
+  const distance = item.distanceLabel || "距離未判定";
+  const wind = item.direction && item.direction !== "-" ? `${item.direction}方向` : "方向未判定";
+  return `${type}として登録 / ${distance} / ${wind}`;
+}
+
 function riskLevel(plan) {
   const risks = riskItemsForPlan(plan);
   if (risks.some((risk) => risk.level === "high" && !risk.notified)) return "high";
@@ -6677,7 +6882,7 @@ function renderReadinessCards(plan) {
 }
 
 function buildAdvice(plan) {
-  const log = activeDroneLog();
+  const log = plan.droneLog?.imported ? plan.droneLog : null;
   const advice = [];
   const rules = activeSettings();
   const speed = Number(plan.weather.actualSpeed || plan.weather.forecastSpeed || 0);
@@ -6705,13 +6910,13 @@ function buildAdvice(plan) {
       detail: "風下方向または重点確認範囲に通知候補があります。散布前に連絡方法と時間調整を確認してください。",
     });
   }
-  if (altitudeCheckCount(log) > 0) {
+  if (log && altitudeCheckCount(log) > 0) {
     advice.push({
       title: "散布高度の確認",
       detail: "高度が高い可能性がある区間があります。作物上高度とログ高度の種類を確認してください。",
     });
   }
-  if (log.outsideFlight) {
+  if (log?.outsideFlight) {
     advice.push({
       title: "予定範囲外飛行の確認",
       detail: "散布予定範囲外の飛行ログがあります。実施範囲と散布ON/OFF区間を確認してください。",
@@ -6727,7 +6932,7 @@ function buildAdvice(plan) {
 }
 
 function maxAltitude(log = activeDroneLog()) {
-  return Math.max(0, ...log.points.map((point) => point.altitude));
+  return (log.points || []).reduce((maximum, point) => Math.max(maximum, Number(point.altitude) || 0), 0);
 }
 
 function altitudeCheckCount(log = activeDroneLog()) {
@@ -6872,6 +7077,14 @@ function activeDroneLog() {
   const plan = activePlan();
   if (plan && plan.droneLog) return plan.droneLog;
   return createSampleDroneLog(false);
+}
+
+function flightLogImportedAtLabel(log) {
+  if (!log?.imported) return "未取込";
+  const value = log.importedAt || log.lastSync;
+  if (!value) return "取込日時未記録";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : formatDateTime(parsed);
 }
 
 function activeField() {
@@ -7346,18 +7559,21 @@ function loopFlightPoints() {
 function createSampleDroneLog(imported = false) {
   const points = imported ? serpentineFlightPoints() : loopFlightPoints();
   return {
-    vendor: "デモSDKベンダー",
-    model: "SDK対応予定機種A",
-    sdkStatus: imported ? "サンプルログ取込済み" : "SDK/API連携はV1では未接続",
+    vendor: "DJI",
+    model: "DJI AGRAS（実証想定）",
+    sdkStatus: imported ? "実証用サンプル様式を取込済み" : "実機API/SDK連携は未接続",
     aircraftRegistration: "DEMO-DRONE-001",
     remoteId: "RID-DEMO-001",
     pilot: "匿名操縦者",
     sprayDevice: "液剤散布装置A",
     imported: Boolean(imported),
-    lastSync: imported ? formatDateTime(new Date()) : "未同期",
+    importedAt: imported ? new Date().toISOString() : "",
+    sampleFormat: "tonari-flight-log/v1",
+    sourceNote: "DJI AGRAS想定の実証用サンプル様式。実機ログの自動解析ではありません。",
     startedAt: "06:04",
     endedAt: "07:02",
-    sprayOnSegments: points.filter((point) => point.sprayOn).length,
+    sprayOnPoints: points.filter((point) => point.sprayOn).length,
+    sprayOnSegments: points.reduce((total, point, index) => total + (point.sprayOn && !points[index - 1]?.sprayOn ? 1 : 0), 0),
     outsideFlight: points.some((point) => point.outside),
     points,
   };
@@ -7604,6 +7820,79 @@ function createSampleState() {
     report: defaultReport(),
   };
 
+  const planK = {
+    ...structuredClone(plan1),
+    id: "plan-kasama-demo",
+    caseLabel: "笠間市 農薬飛散予防 実証ケースK",
+    fieldId: "spray-field-a",
+    fieldIdSource: "sample",
+    date: dateOffset(0),
+    timeWindow: "06:00-07:30",
+    fieldName: "笠間デモほ場A",
+    district: "笠間市 友部地区",
+    crop: "水稲",
+    materialType: "農薬",
+    pesticide: "水稲用除草剤A（サンプル）",
+    purpose: "初期除草",
+    method: "ドローン",
+    operator: "笠間デモ散布事業者",
+    contact: "0296-00-0001（デモ）",
+    droneModel: "DJI AGRAS（実証想定）",
+    aircraftRegistration: "DEMO-AGRAS-001",
+    pilot: "笠間デモ操縦者",
+    assistant: "笠間デモ補助者",
+    sprayDevice: "液剤散布装置",
+    plannedAltitude: "作物上2m目安",
+    plannedSpeed: "3.5m/s",
+    notes: "有機・農薬不使用ほ場、育苗ハウス、収穫直前ほ場、水路への飛散予防を確認する実証案件。",
+    weather: {
+      ...structuredClone(plan1.weather),
+      forecastDirection: "北西",
+      forecastSpeed: 2.2,
+      maxGust: 3.4,
+      rainForecast: "午前中は降雨なし",
+      actualDirection: "北西",
+      actualSpeed: 1.8,
+      measuredAt: "05:45",
+      measuredPlace: "笠間デモほ場A 南西角",
+      measurementMethod: "携帯風速計で測定",
+      measuredBy: "笠間デモ補助者",
+      source: "Open-Meteo Forecast API（デモ取得値）",
+      fetchedAt: `${dateOffset(0)} 05:30`,
+      forecastTargetTime: `${dateOffset(0)}T06:00`,
+    },
+    checks: {
+      ...defaultChecks(true),
+      flightLog: false,
+      report: false,
+    },
+    notificationTargets: {
+      "organic-field-a": true,
+      "no-chemical-field-b": true,
+      "seedling-house-c": true,
+      "preharvest-field-d": true,
+      "water-channel-d": true,
+    },
+    notificationResponses: {
+      "organic-field-a": "時間変更希望",
+      "no-chemical-field-b": "確認しました",
+      "seedling-house-c": "確認しました",
+      "preharvest-field-d": "確認しました",
+      "water-channel-d": "未回答",
+    },
+    notificationReplyNotes: {
+      "organic-field-a": "収穫が近いので8時以降に変更いただけますか。",
+    },
+    notificationAcks: {
+      "organic-field-a": `${dateOffset(0)}T05:12:00+09:00`,
+      "no-chemical-field-b": `${dateOffset(0)}T05:14:00+09:00`,
+      "seedling-house-c": `${dateOffset(0)}T05:18:00+09:00`,
+      "preharvest-field-d": `${dateOffset(0)}T05:21:00+09:00`,
+    },
+    droneLog: null,
+    report: defaultReport(),
+  };
+
   const plan2 = {
     id: "plan-drone-2",
     date: dateOffset(1),
@@ -7844,12 +8133,12 @@ function createSampleState() {
   return {
     profile: defaultProfile(),
     role: "sprayer",
-    activePlanId: "plan-drone-1",
+    activePlanId: "plan-kasama-demo",
     activeFieldId: "organic-field-a",
     settings: { ...DEFAULT_SETTINGS },
     droneLog: createSampleDroneLog(false),
     fields,
-    plans: [plan1, plan2, plan3, plan4],
+    plans: [planK, plan1, plan2, plan3, plan4],
   };
 }
 
@@ -7999,6 +8288,13 @@ function normalizeState(input) {
     ? next.activeFieldId
     : editableFields[0]?.id;
   next.plans = Array.isArray(next.plans) ? next.plans : [];
+  if (!next.profile.registered && !next.plans.some((plan) => plan.id === "plan-kasama-demo")) {
+    const demoCase = createSampleState().plans.find((plan) => plan.id === "plan-kasama-demo");
+    if (demoCase) {
+      next.plans.unshift(structuredClone(demoCase));
+      next.activePlanId = demoCase.id;
+    }
+  }
   next.plans = next.plans.map((plan) => ({
     ...createBlankPlan(),
     ...plan,
