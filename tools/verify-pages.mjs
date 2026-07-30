@@ -88,7 +88,7 @@ const landingDesktop = await inspectPage("/", `() => ({
   featureStatuses: [...document.querySelectorAll('.feature-item .feature-status')].map((item) => item.textContent.trim()),
   featureDescriptions: [...document.querySelectorAll('.feature-item > p')].map((item) => item.textContent.trim()),
 })`);
-assert(landingDesktop.value.title.includes("となり畑セーフティ"), "Landing page title is missing");
+assert(landingDesktop.value.title.includes("となりの畑セーフティ（仮称）"), "Landing page title is missing");
 assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: ${landingDesktop.value.imageFailures.join(", ")}`);
 assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${landingDesktop.value.overflow}px`);
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");

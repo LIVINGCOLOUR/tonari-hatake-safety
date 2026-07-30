@@ -58,6 +58,7 @@ h1, h2, h3 { text-wrap: balance; }
 .site-brand-mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 7px; color: #fff; background: var(--leaf); font-weight: 900; }
 .site-brand-copy { display: grid; line-height: 1.2; }
 .site-brand-copy strong { font-size: 17px; white-space: nowrap; }
+.provisional-label { font-size: .62em; font-weight: 800; }
 .site-brand-copy small { margin-top: 3px; color: #b8d2c8; font-size: 9px; font-weight: 800; letter-spacing: .12em; }
 .site-header.scrolled .site-brand-copy small { color: var(--leaf); }
 .site-nav { display: flex; align-items: center; gap: 26px; font-size: 14px; font-weight: 800; }
@@ -76,6 +77,7 @@ h1, h2, h3 { text-wrap: balance; }
 .hero-inner { position: relative; z-index: 1; width: min(var(--content), calc(100% - 48px)); margin: 50px auto 0; }
 .hero-kicker, .section-label { margin: 0 0 16px; color: var(--leaf-bright); font-size: 12px; font-weight: 900; letter-spacing: .14em; }
 .hero h1 { max-width: 650px; margin: 0; font-size: clamp(52px, 7.2vw, 96px); line-height: 1.05; letter-spacing: 0; }
+.hero-provisional { display: inline-block; margin-left: 12px; font-size: .22em; vertical-align: .18em; }
 .hero-lead { max-width: 650px; margin: 28px 0 12px; font-size: clamp(22px, 2.6vw, 35px); font-weight: 800; line-height: 1.45; }
 .hero-body { max-width: 650px; margin: 0; color: #dce8e2; font-size: 17px; }
 .hero-actions { display: flex; max-width: 650px; flex-wrap: wrap; gap: 12px; margin-top: 32px; }

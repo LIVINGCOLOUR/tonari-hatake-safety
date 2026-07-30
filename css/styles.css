@@ -108,6 +108,13 @@ img {
   line-height: 1.14;
 }
 
+.brand h1 .provisional-label {
+  color: #c4d1dc;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .brand span,
 .org-card span,
 .eyebrow {
