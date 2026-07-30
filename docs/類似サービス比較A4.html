@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>となりの畑セーフティ（仮称） 類似サービス比較</title>
+<style>
+  @page { size: A4 landscape; margin: 9mm 10mm 8mm; }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Yu Gothic", "YuGothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: 8.6px;
+    line-height: 1.45;
+    color: #1a2b2b;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 2.5px solid #1f4e46;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+  }
+  .head h1 { font-size: 15px; margin: 0; color: #14453d; letter-spacing: .03em; }
+  .head .sub { font-size: 9px; color: #4a6660; margin: 2px 0 0; }
+  .head .tag {
+    font-size: 8.2px;
+    color: #14453d;
+    border: 1.2px solid #1f4e46;
+    border-radius: 2px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  th, td {
+    border: 1px solid #9db4ae;
+    padding: 2.8px 4.5px;
+    vertical-align: top;
+    text-align: left;
+    word-break: break-word;
+  }
+  thead th {
+    background: #e6f0ec;
+    color: #14453d;
+    font-size: 8.4px;
+    line-height: 1.3;
+    text-align: center;
+    vertical-align: middle;
+  }
+  thead th .ex { display: block; font-size: 7.2px; font-weight: 400; color: #5b736d; margin-top: 1px; }
+
+  col.axis  { width: 11.5%; }
+  col.other { width: 10.6%; }
+  col.ours  { width: 15%; }
+
+  td.axis {
+    background: #f2f6f4;
+    font-weight: 700;
+    color: #14453d;
+    font-size: 8.4px;
+  }
+  th.ours-h {
+    background: #d9ecdf;
+    border: 1.8px solid #2d8c49;
+    border-bottom-width: 1px;
+    font-size: 9px;
+  }
+  td.ours {
+    background: #eef7f1;
+    border-left: 1.8px solid #2d8c49;
+    border-right: 1.8px solid #2d8c49;
+  }
+  tr:last-child td.ours { border-bottom: 1.8px solid #2d8c49; }
+
+  /* 記号 */
+  .yes  { color: #1c7a37; font-weight: 700; }
+  .part { color: #a06c0a; font-weight: 700; }
+  .no   { color: #8fa29d; }
+  .plan { color: #14453d; font-weight: 700; }
+
+  /* 強調行：散布高度 */
+  tr.hl td {
+    background: #fdf6e2;
+    border-top: 2px solid #b97f1a;
+    border-bottom: 2px solid #b97f1a;
+  }
+  tr.hl td.axis {
+    background: #f9edcd;
+    color: #7a5308;
+  }
+  tr.hl td.ours { background: #f6f1d8; }
+
+  .callout {
+    border: 1.5px solid #b97f1a;
+    background: #fdf6e2;
+    border-radius: 3px;
+    padding: 5px 8px;
+    margin: 6px 0 0;
+    font-size: 8.6px;
+  }
+  .callout b { color: #7a5308; }
+
+  .bottom { display: flex; gap: 8px; margin-top: 6px; }
+  .bottom .bx {
+    flex: 1;
+    border: 1.2px solid #7f9c94;
+    border-radius: 3px;
+    padding: 5px 8px;
+    background: #f5f9f7;
+  }
+  .bottom .bx .bt { font-weight: 700; color: #14453d; margin: 0 0 2px; font-size: 8.8px; }
+  .bottom .bx p, .bottom .bx ul { margin: 0; }
+  .bottom .bx ul { padding-left: 13px; }
+
+  .legend { margin-top: 5px; font-size: 8px; color: #4a6660; }
+  .legend b { color: #1a2b2b; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div>
+    <h1>類似サービス・現行運用との比較 ─ となりの畑セーフティ（仮称）</h1>
+    <p class="sub">「散布前の周知と、周知・作業の記録」という視点で、既存の手段・サービス分野と比較したものです</p>
+  </div>
+  <div class="tag">手持ち資料（説明補助用・配布しません）</div>
+</div>
+
+<table>
+  <colgroup>
+    <col class="axis">
+    <col class="other"><col class="other"><col class="other"><col class="other"><col class="other"><col class="other">
+    <col class="ours">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>比較の観点</th>
+      <th>現行の運用<span class="ex">回覧・防災無線・JA機関紙・電話</span></th>
+      <th>DIPS2.0／飛行情報共有<span class="ex">国土交通省</span></th>
+      <th>農作業記録アプリ<span class="ex">例：アグリノート等</span></th>
+      <th>防除・農薬記録アプリ<span class="ex">例：アグリハブ等</span></th>
+      <th>ほ場管理プラットフォーム<span class="ex">例：xarvio、WAGRI連携等</span></th>
+      <th>ドローンメーカークラウド<span class="ex">例：DJI、国内メーカー等</span></th>
+      <th class="ours-h">となりの畑セーフティ<span class="ex">本サービス（開発中）</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="axis">主な目的</td>
+      <td>地域への一律の周知</td>
+      <td>航空法上の許可承認・飛行情報の共有</td>
+      <td>作業記録・経営管理</td>
+      <td>農薬の適正使用・防除履歴</td>
+      <td>生育管理・可変施肥・営農支援</td>
+      <td>機体の運用・作業効率</td>
+      <td class="ours"><span class="yes">散布前の周知と、周知したこと・作業したことの記録</span></td>
+    </tr>
+    <tr>
+      <td class="axis">主な利用者</td>
+      <td>自治体・JA・集落</td>
+      <td>飛行の許可申請者</td>
+      <td>生産者</td>
+      <td>生産者・指導機関</td>
+      <td>生産者・法人</td>
+      <td>散布オペレーター</td>
+      <td class="ours"><span class="yes">散布者・周辺農家・自治体／JAの3者</span></td>
+    </tr>
+    <tr>
+      <td class="axis">散布計画の登録</td>
+      <td class="no">紙・口頭</td>
+      <td><span class="part">△</span> 飛行計画として</td>
+      <td><span class="yes">○</span></td>
+      <td><span class="yes">○</span></td>
+      <td><span class="yes">○</span></td>
+      <td><span class="yes">○</span></td>
+      <td class="ours"><span class="yes">○</span> 資材・使用量・機体・操縦者まで一つの案件に</td>
+    </tr>
+    <tr>
+      <td class="axis">周辺の配慮対象の把握<br><span style="font-weight:400;font-size:7.6px">有機・養蜂・学校・住宅等</span></td>
+      <td><span class="part">△</span> 担当者の経験に依存</td>
+      <td class="no">－ 対象外</td>
+      <td class="no">－ 自分のほ場のみ</td>
+      <td class="no">－ 自分のほ場のみ</td>
+      <td class="no">－ 自分のほ場のみ</td>
+      <td class="no">－ 対象外</td>
+      <td class="ours"><span class="yes">○</span> 航空写真上で周辺ほ場・距離・風下方向を確認</td>
+    </tr>
+    <tr>
+      <td class="axis">散布前の周知と、<br>延期・再開の再連絡</td>
+      <td><span class="part">△</span> 一律・広域で、自分に関係するか分かりにくい。再連絡は届きにくい</td>
+      <td class="no">－ 住民向けの周知機能はない</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="ours"><span class="yes">○</span> 地区単位のLINEオープンチャットへ、判断材料の入った文面を配信。延期・再開も同じ地区へ。周知した事実が記録に残る</td>
+    </tr>
+    <tr>
+      <td class="axis">相手からの返信・<br>相談の記録</td>
+      <td><span class="part">△</span> 電話・口頭で残らない</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="ours"><span class="yes">○</span> 確認・時間変更の希望・電話相談を計画に紐づけて保存</td>
+    </tr>
+    <tr>
+      <td class="axis">気象の確認記録</td>
+      <td class="no">－ 記録に残らない</td>
+      <td class="no">－</td>
+      <td><span class="part">△</span> 手入力</td>
+      <td><span class="part">△</span> 手入力</td>
+      <td><span class="yes">○</span> 気象データ連携</td>
+      <td><span class="part">△</span> 機体側の計測</td>
+      <td class="ours"><span class="yes">○</span> 予報の自動取得と現地実測のメモを分けて記録</td>
+    </tr>
+    <tr class="hl">
+      <td class="axis">★ 散布高度の記録と<br>適正確認</td>
+      <td class="no">－ 現場の目視のみ</td>
+      <td class="no">－ 上限（対地150m）のみが対象</td>
+      <td class="no">－ 入力項目にない</td>
+      <td class="no">－ 入力項目にない</td>
+      <td class="no">－</td>
+      <td><span class="part">△</span> 記録はあるが、飛散の観点での確認ではない</td>
+      <td class="ours"><span class="part">△</span> 取込んだログの高度と要確認区間を表示<span class="plan">（実機ログの自動取得・逸脱の自動抽出は開発予定）</span></td>
+    </tr>
+    <tr>
+      <td class="axis">飛行ログ・<br>散布カバレッジ</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td><span class="part">△</span> 作業機連携による</td>
+      <td><span class="yes">◎</span> 最も得意な領域</td>
+      <td class="ours"><span class="part">△</span> 取込済みログの再生・未散布範囲の表示<span class="plan">（実機連携は開発予定）</span></td>
+    </tr>
+    <tr>
+      <td class="axis">飛行中の位置の共有<br><span style="font-weight:400;font-size:7.6px">いま、どこで散布しているか</span></td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td><span class="part">△</span> 自社機のみ・契約による</td>
+      <td class="ours"><span class="plan">（開発予定）</span> 地域の関係者が地図上で共有する形を目指す</td>
+    </tr>
+    <tr>
+      <td class="axis">実施後報告・防除履歴</td>
+      <td><span class="part">△</span> 紙の防除日誌</td>
+      <td class="no">－</td>
+      <td><span class="yes">○</span></td>
+      <td><span class="yes">◎</span></td>
+      <td><span class="yes">○</span></td>
+      <td><span class="part">△</span> 作業実績として</td>
+      <td class="ours"><span class="yes">○</span> CSV／PDFで出力</td>
+    </tr>
+    <tr>
+      <td class="axis">自治体・JAによる<br>地域の一覧把握</td>
+      <td><span class="part">△</span> 受付簿・電話対応</td>
+      <td><span class="part">△</span> 行政側の照会に限る</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="ours"><span class="yes">○</span> 市町村・日付で予定／実績と要確認案件を一覧</td>
+    </tr>
+    <tr>
+      <td class="axis">苦情・事故の際の証跡</td>
+      <td class="no">－ 再現が困難</td>
+      <td><span class="part">△</span> 飛行記録のみ</td>
+      <td><span class="part">△</span> 自分の作業記録のみ</td>
+      <td><span class="part">△</span> 自分の作業記録のみ</td>
+      <td><span class="part">△</span> 自分の作業記録のみ</td>
+      <td><span class="part">△</span> 飛行記録のみ</td>
+      <td class="ours"><span class="yes">○</span> 計画・周知・返信・確認・実施を一つの案件として書類出力</td>
+    </tr>
+    <tr>
+      <td class="axis">周辺農家の情報保護</td>
+      <td><span class="part">△</span> 口頭で広がりやすい</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="no">－</td>
+      <td class="ours"><span class="yes">○</span> 公開範囲を本人が設定。非公開のほ場は方向・距離のみ共有</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <b>★ 散布高度について：</b>散布の高さは農薬の飛散量を大きく左右しますが、<b>航空法は上限（対地150m）だけを、農薬取締法は薬剤だけを対象としており、「実際の散布が適切な高さで行われたか」を地域の側が確認するしくみは、現在ほぼ空白になっています。</b>機体の飛行ログにはこのデータが残っているため、本サービスはここを確認できるようにすることを重視しています。
+</div>
+
+<div class="bottom">
+  <div class="bx">
+    <p class="bt">位置づけ</p>
+    <p>既存のサービスの多くは<b>「自分のほ場・自分の作業を管理する」</b>ための道具であり、<b>「隣の畑の人へ知らせ、その事実を残す」</b>機能は各分野の主目的の外にあります。本サービスはその隙間を埋めるもので、既存の記録アプリやメーカークラウドと競合せず、記録の取り込み元・出力先として併用できる設計です。</p>
+  </div>
+  <div class="bx">
+    <p class="bt">既存サービスとの連携の想定</p>
+    <ul>
+      <li>ほ場境界：農林水産省の筆ポリゴン（利用中）、eMAFF農地ナビ、WAGRI、xarvio（読み取り専用の受け口まで実装済み。接続は契約・データ利用条件の確認後）</li>
+      <li>飛行ログ：ドローンメーカーの作業ログを取り込み、散布範囲・高度として表示</li>
+      <li>気象：Open-Meteo（予報値。現地の実測の代わりにはしない）</li>
+    </ul>
+  </div>
+</div>
+
+<p class="legend">
+  凡例：<b><span class="yes">◎</span></b> 中心機能　<b><span class="yes">○</span></b> 対応　<b><span class="part">△</span></b> 部分的・限定的　<b><span class="plan">（開発予定）</span></b> 本サービスで開発を予定　<b><span class="no">－</span></b> 対象外　｜
+  注記：他社・他分野の内容は2026年7月時点で公開されている情報にもとづく<b>一般的な機能分野としての整理</b>であり、個別製品の最新仕様を保証するものではありません。
+</p>
+
+</body>
+</html>

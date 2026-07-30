@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>となりの畑セーフティ（仮称） MVP 基本仕様書</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Yu Gothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: 10.5px; line-height: 1.62; color: #1a2b2b; margin: 0;
+  }
+  h1 { font-size: 21px; margin: 0 0 2px; letter-spacing: .04em; }
+  h2 {
+    font-size: 14px; margin: 22px 0 8px; padding: 5px 10px;
+    background: #1f4e46; color: #fff; border-radius: 3px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 12px; margin: 14px 0 6px; padding-left: 8px;
+    border-left: 4px solid #2d8c49; color: #143c34;
+    page-break-after: avoid;
+  }
+  h4 { font-size: 11px; margin: 10px 0 4px; color: #1f4e46; page-break-after: avoid; }
+  p { margin: 4px 0; }
+  ul, ol { margin: 4px 0 8px; padding-left: 20px; }
+  li { margin: 1.5px 0; }
+  table {
+    border-collapse: collapse; width: 100%; margin: 6px 0 10px;
+    font-size: 9.8px; page-break-inside: auto;
+  }
+  th, td { border: 1px solid #9db4ae; padding: 3.5px 6px; vertical-align: top; text-align: left; }
+  th { background: #e3efe9; color: #143c34; font-weight: 600; white-space: nowrap; }
+  tr { page-break-inside: avoid; }
+  code {
+    font-family: "Consolas", "Courier New", monospace; font-size: 9.5px;
+    background: #eef3f1; padding: 0 3px; border-radius: 2px;
+  }
+  pre {
+    font-family: "Consolas", monospace; font-size: 9px; line-height: 1.45;
+    background: #f2f6f4; border: 1px solid #ccdcd5; border-radius: 3px;
+    padding: 7px 9px; white-space: pre-wrap; word-break: break-all;
+    page-break-inside: avoid; margin: 5px 0 9px;
+  }
+  .cover { text-align: left; padding: 26px 4px 8px; border-bottom: 3px solid #1f4e46; margin-bottom: 14px; }
+  .cover .sub { color: #4a6660; font-size: 12px; margin-top: 4px; }
+  .meta-table { width: 62%; }
+  .badge {
+    display: inline-block; background: #2d8c49; color: #fff; border-radius: 3px;
+    font-size: 9px; padding: 1px 7px; margin-right: 4px; vertical-align: middle;
+  }
+  .badge.gray { background: #6b7f7a; }
+  .badge.red { background: #c94b44; }
+  .badge.amber { background: #b97f1a; }
+  .note {
+    background: #fdf6e6; border: 1px solid #e3c988; border-radius: 3px;
+    padding: 6px 9px; margin: 6px 0; page-break-inside: avoid;
+  }
+  .col-n { white-space: nowrap; }
+  .toc { columns: 2; column-gap: 28px; font-size: 10px; }
+  .toc ol { margin: 0; padding-left: 18px; }
+  .small { font-size: 9px; color: #57706a; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <p class="small">REGIONAL SPRAY SAFETY — SYSTEM SPECIFICATION</p>
+  <h1>となりの畑セーフティ（仮称） MVP　基本仕様書</h1>
+  <p class="sub">農薬・液体肥料等のドローン散布に関する 散布前確認・近隣通知・飛行ログ確認・実施後報告 支援システム</p>
+</div>
+
+<table class="meta-table">
+  <tr><th>文書名</th><td>となりの畑セーフティ（仮称） MVP 基本仕様書</td></tr>
+  <tr><th>作成日</th><td>2026年7月7日</td></tr>
+  <tr><th>対象バージョン</th><td>V1（MVP）／ 基準コミット <code>d4d01cd</code>「地域管理を自治体向けに刷新: 散布一覧＋クリック詳細」以降の作業版</td></tr>
+  <tr><th>公開デモURL</th><td>https://tonari-hatake-safety.pages.dev/（Cloudflare Pages・URL公開）</td></tr>
+  <tr><th>リポジトリ</th><td>https://github.com/LIVINGCOLOUR/tonari-hatake-safety（private）</td></tr>
+  <tr><th>想定地域</th><td>茨城県笠間市周辺（匿名サンプルデモ）</td></tr>
+</table>
+
+<h2>目次</h2>
+<div class="toc">
+<ol>
+  <li>システム概要（目的・位置づけ・設計方針）</li>
+  <li>システム構成（技術スタック・ファイル構成・外部連携）</li>
+  <li>利用者ロールと画面遷移</li>
+  <li>画面仕様（全12ビュー）</li>
+  <li>機能仕様（判定ロジック・計算式・閾値）</li>
+  <li>データ仕様（状態スキーマ・保存方式）</li>
+  <li>境界データ・地図仕様</li>
+  <li>帳票・出力仕様（CSV / PDF）</li>
+  <li>非機能要件・運用（デプロイ・ローカル起動・検証）</li>
+  <li>未実装事項・既知の制約・今後の課題</li>
+  <li>参照資料</li>
+</ol>
+</div>
+
+<h2>1. システム概要</h2>
+
+<h3>1.1 目的</h3>
+<p>農薬・液体肥料などのドローン散布について、<strong>散布者・周辺農家・自治体/JA担当者が同じ地図と確認状況を見ながら</strong>、散布前確認、近隣通知、飛行ログ確認、実施後報告を行うためのフロントエンドMVPである。飛散（ドリフト）被害を<strong>事後の記録ではなく事前の予防</strong>として支援することを目的とする。</p>
+
+<h3>1.2 位置づけ・設計方針</h3>
+<ul>
+  <li>笠間市周辺を想定した<strong>匿名サンプルによる実証デモ</strong>であり、実運用の判定システムではない。</li>
+  <li>法的な判定や被害の原因断定は行わない。確認状況を「未確認」「要確認」「記録済み」の3区分で扱う。</li>
+  <li>目的は、散布者・周辺農家・JA・自治体が<strong>同じ情報を見て</strong>、農薬・資材の飛散リスクを事前に下げること。</li>
+  <li>バックエンドを持たない静的SPA。ビルド工程なし。データはブラウザの <code>localStorage</code> に保存。</li>
+  <li>UIは高密度な業務ツール調で統一。ランディングページは設けない（引継ぎルールとして明記）。</li>
+</ul>
+
+<h3>1.3 対象ユーザー（3ロール）</h3>
+<table>
+  <tr><th>ロール</th><th>内部キー</th><th>役割</th><th>主な操作</th></tr>
+  <tr><td>散布者</td><td><code>sprayer</code></td><td>散布前後の確認</td><td>計画登録、周辺確認、気象確認、近隣通知、チェックリスト、ドローンログ、実施後報告、作業履歴</td></tr>
+  <tr><td>周辺農家</td><td><code>neighbor</code></td><td>圃場登録・通知返信</td><td>農薬不使用・有機JAS・収穫前等の圃場ステータス登録、散布通知への返信</td></tr>
+  <tr><td>地域管理</td><td><code>admin</code></td><td>自治体・JA向け確認</td><td>散布予定・実績の一覧確認、行クリック詳細、実証ルール（閾値）設定</td></tr>
+</table>
+
+<h2>2. システム構成</h2>
+
+<h3>2.1 アーキテクチャ</h3>
+<ul>
+  <li><strong>構成:</strong> 静的HTML/CSS/JSのシングルページアプリケーション（SPA）。ビルドツール・パッケージマネージャ不要。</li>
+  <li><strong>サーバー:</strong> なし（Cloudflare Pagesによる静的配信のみ）。</li>
+  <li><strong>永続化:</strong> ブラウザ <code>localStorage</code>（キー: <code>tonariHatakeSafetyMvp.v3.coverage</code>）。</li>
+  <li><strong>外部API:</strong> Open-Meteo Forecast API（気象予報）、国土地理院タイル（地図背景）。いずれもAPIキー不要。</li>
+  <li><strong>起動条件:</strong> <code>fetch()</code> で境界カタログを読むため、<code>file://</code> 直接オープン不可。HTTPサーバー経由必須。</li>
+</ul>
+
+<h3>2.2 ファイル構成</h3>
+<table>
+  <tr><th>パス</th><th>内容</th><th>規模</th></tr>
+  <tr><td><code>index.html</code></td><td>SPA全画面のマークアップ（12ビュー、サイドバー、モバイルクイックバー、印刷シート、トースト）</td><td>約925行</td></tr>
+  <tr><td><code>css/styles.css</code></td><td>画面全体のスタイル（クエリ文字列 <code>?v=</code> でキャッシュバスト）</td><td>約3,058行</td></tr>
+  <tr><td><code>js/main.js</code></td><td>全ロジック単一ファイル。状態管理、描画、地図、気象取得、境界取込、カバレッジ、VRA、CSV/PDF</td><td>約5,671行</td></tr>
+  <tr><td><code>vendor/maplibre-gl/</code></td><td>MapLibre GL JS（地図描画）</td><td>—</td></tr>
+  <tr><td><code>vendor/turf/</code></td><td>Turf.js（地理空間計算）</td><td>—</td></tr>
+  <tr><td><code>vendor/shpjs/</code></td><td>shpjs（Shapefile読込・座標系変換）</td><td>—</td></tr>
+  <tr><td><code>data/boundaries/index.json</code></td><td>市町村境界カタログ</td><td>5市町村登録</td></tr>
+  <tr><td><code>data/boundaries/*.geojson</code></td><td>軽量デモ境界（笠間市デモ、友部エリアデモ 各約1.8KB）</td><td>2件</td></tr>
+  <tr><td><code>data/boundaries/*-fude.zip</code></td><td>筆ポリゴンShapefile zip（笠間市 5.3MB／水戸市 4.7MB／石岡市 6.2MB、2021年版）</td><td>3件</td></tr>
+  <tr><td><code>README.md</code> / <code>HANDOFF.md</code></td><td>概要・引継ぎ資料（別AI/別スレッド引継ぎ時はHANDOFF.mdを先に読ませる運用）</td><td>—</td></tr>
+</table>
+
+<h3>2.3 外部連携仕様</h3>
+<table>
+  <tr><th>連携先</th><th>用途</th><th>エンドポイント／内容</th></tr>
+  <tr><td>国土地理院タイル</td><td>地図背景</td><td>航空写真: <code>https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg</code><br>標準地図: <code>https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png</code>（raster・tileSize 256・出典表示「地理院タイル」）</td></tr>
+  <tr><td>Open-Meteo Forecast API</td><td>気象予報の自動取得</td><td><code>https://api.open-meteo.com/v1/forecast</code><br>パラメータ: <code>timezone=Asia/Tokyo</code>, <code>wind_speed_unit=ms</code>, <code>forecast_days=7</code>, current/hourlyともに 気温・湿度・降水（hourlyは降水確率も）・風速10m・風向10m・突風10m</td></tr>
+</table>
+
+<h2>3. 利用者ロールと画面遷移</h2>
+
+<h3>3.1 ロール別の表示可能ビュー</h3>
+<table>
+  <tr><th>ビュー（内部名）</th><th>表示名</th><th>sprayer</th><th>neighbor</th><th>admin</th></tr>
+  <tr><td><code>dashboard</code></td><td>トップダッシュボード</td><td>●</td><td>●</td><td>●</td></tr>
+  <tr><td><code>plans</code></td><td>散布計画登録</td><td>●</td><td>—</td><td>—</td></tr>
+  <tr><td><code>map</code></td><td>圃場マップ・周辺確認</td><td>●</td><td>●</td><td>—</td></tr>
+  <tr><td><code>fields</code></td><td>圃場ステータス登録</td><td>—</td><td>●</td><td>—</td></tr>
+  <tr><td><code>drone</code></td><td>ドローン連携・飛行ログ取込</td><td>●</td><td>—</td><td>—</td></tr>
+  <tr><td><code>notify</code></td><td>近隣通知</td><td>●</td><td>●</td><td>—</td></tr>
+  <tr><td><code>checklist</code></td><td>散布前チェックリスト</td><td>●</td><td>—</td><td>—</td></tr>
+  <tr><td><code>weather</code></td><td>気象・風向風速確認</td><td>●</td><td>—</td><td>—</td></tr>
+  <tr><td><code>report</code></td><td>実施後報告</td><td>●</td><td>—</td><td>—</td></tr>
+  <tr><td><code>history</code></td><td>作業履歴・防除履歴</td><td>●</td><td>—</td><td>—</td></tr>
+  <tr><td><code>admin</code></td><td>散布予定・実績（地域管理）</td><td>—</td><td>—</td><td>●</td></tr>
+  <tr><td><code>sources</code></td><td>データソース・根拠資料</td><td colspan="3">ナビ非表示（内部ビューとして存在）</td></tr>
+</table>
+<ul>
+  <li>ロール切替はサイドバー上部のロールスイッチャーで行い、選択ロールは状態に保存される。</li>
+  <li>地域管理ロールは操作タブを意図的に「トップ」「散布予定・実績」の2つに限定している。</li>
+  <li>URLハッシュによる直接遷移（例 <code>/#admin</code>）はロールが許可しない場合リダイレクトされる。</li>
+  <li>モバイル用に画面下部固定のクイックバー（トップ／気象／マップ／圃場／通知／チェック／報告／散布一覧）を持ち、同じロール制御が適用される。</li>
+</ul>
+
+<h2 class="pagebreak">4. 画面仕様</h2>
+
+<h3>4.1 共通レイアウト</h3>
+<ul>
+  <li><strong>サイドバー:</strong> ブランド表示（「実証モード／匿名サンプル運用」）、ロールスイッチャー、ナビゲーション、「サンプル読込」「散布計画を追加」ボタン。</li>
+  <li><strong>トップバー:</strong> 現在ビューのパンくず・タイトル、「表示中の散布計画」セレクタ、CSV出力ボタン。</li>
+  <li><strong>通知トースト:</strong> 画面隅に一時表示（<code>role="status"</code> / <code>aria-live="polite"</code>）。</li>
+  <li><strong>印刷シート:</strong> PDF印刷用の非表示要素 <code>#printSheet</code> に帳票HTMLを流し込み、ブラウザ印刷を起動する方式。</li>
+</ul>
+
+<h3>4.2 トップダッシュボード（dashboard）</h3>
+<ul>
+  <li><strong>go/no-goカード:</strong> 表示中計画の散布可否を「○ 本日 散布可」「△ 要注意・確認あり」「× 延期・要対応」で表示。要因（気象条件・降雨・近隣通知・風下の要確認圃場）と改善アクションボタン付き（5.1参照）。管理ロールでは地域サマリー（対象日の散布件数・実施済み・通知未完了・要確認）に切替。</li>
+  <li><strong>実証ルールバナー:</strong> 現在の閾値設定（確認距離・風速等）の要約を表示。</li>
+  <li><strong>ロール別アクションパネル:</strong> 散布者にはワークフロー（計画→周辺確認→通知→気象→報告）、周辺農家には自圃場と返信状況、管理者には地域集計を表示。</li>
+  <li><strong>KPIカード群:</strong> ロールに応じた件数指標。</li>
+  <li><strong>航空写真ミニ地図:</strong> MapLibreによる縮小GISビュー。気象条件カード（判定・風速・風下/降雨）、フォーカス操作（散布ほ場へ／全体表示／風下確認）、作業軌跡サマリー、凡例、圃場件数ドックをオーバーレイ表示。</li>
+  <li><strong>優先確認リスト:</strong> priorityScore順の要対応計画一覧。</li>
+  <li><strong>タイムライン:</strong> 計画登録→周辺確認→近隣通知→風向風速確認→実施後報告の5段階。</li>
+  <li><strong>散布予定一覧テーブル:</strong> 日時・ほ場・方法・確認・通知。</li>
+</ul>
+
+<h3>4.3 散布計画登録（plans）</h3>
+<p>散布前に必要な情報を1フォームで記録する。「この計画を複製」ボタンあり。</p>
+<table>
+  <tr><th>グループ</th><th>入力項目</th></tr>
+  <tr><td>基本（必須）</td><td>散布予定日（date）、散布時間帯（例 06:00-07:30）、散布ほ場、地区、作物名、資材種別（農薬／液体肥料・葉面散布／その他資材）、使用資材名、使用目的、散布方法（ドローン／無人ヘリ／ブームスプレーヤー／動噴／その他）、散布者名または事業者名、連絡先</td></tr>
+  <tr><td>ドローン・飛行条件</td><td>ドローン機体、機体登録記号、操縦者、補助者、散布装置、ノズル・粒径、飛行高度予定、飛行速度予定。<br>「この機体・操縦者を既定に保存」「既定を反映」で機材テンプレートを保存・適用（既定値: SDK対応予定機種A／DEMO-DRONE-001／匿名操縦者／匿名補助者／液剤散布装置A／中粒径ノズル／作物上2m目安／3.5m/s）</td></tr>
+  <tr><td>農薬ラベル・使用条件</td><td>農薬登録番号、収穫前日数、10a当たり使用量、希釈倍率、ラベル確認日</td></tr>
+  <tr><td>散布量・カバレッジ</td><td>使用量（数値・10a当たり）、単位（mL/L/g/kg）、散布面積（ha）、散布幅（m）→ <strong>総量を自動計算</strong>（5.6参照）</td></tr>
+  <tr><td>その他</td><td>散布範囲（テキスト）、備考</td></tr>
+</table>
+<p>右側サイドパネルに「周辺確認要約」「準備度サマリー」「確認進捗メーター」「通知文を作成」ボタンを常時表示（sticky）。</p>
+
+<h3>4.4 圃場マップ・周辺確認（map）</h3>
+<ul>
+  <li><strong>表示レイヤー切替（セグメント）:</strong> 周辺・風下／飛行ログ／散布カバレッジ／処方マップ の4モード。</li>
+  <li><strong>地図:</strong> MapLibre + 地理院航空写真。圃場ポリゴン（種別色分け）、リスクバッファ円、風下ゾーン扇形、飛行ライン・ポイントをGeoJSONレイヤーで重畳。圃場クリックでポップアップ。</li>
+  <li><strong>フォーカスチップ:</strong> 散布ほ場へ／全体表示／風下確認。</li>
+  <li><strong>散布カバレッジパネル:</strong> 散布済（緑）／未散布（グレー）表示、「▶ 散布を再生」による時系列再生、進捗バー、カバー率読み上げ（5.7参照）。</li>
+  <li><strong>処方マップパネル:</strong> 可変施肥（VRA）処方の作成／GeoJSON取込／サンプル／クリア、ゾーン別施用量エディタ、色分け凡例（5.8参照）。</li>
+  <li><strong>圃場境界取込パネル:</strong> 対象市町村セレクタ（カタログ読込）、個別取込（GeoJSON/Shapefile zip）、「市町村データに戻す」（7章参照）。</li>
+  <li><strong>周辺確認パネル:</strong> 通知対象と確認項目のリスト。</li>
+  <li><strong>風向メモパネル:</strong> 風下方向カード。</li>
+</ul>
+
+<h3>4.5 圃場ステータス登録（fields）</h3>
+<ul>
+  <li>周辺農家ロールで編集可能。他ロールでは閲覧専用（「編集は周辺農家モードで」の注記表示）。</li>
+  <li>入力項目: 圃場名、作物、栽培区分（農薬使用あり／農薬使用なし／有機JAS／有機JASではないが農薬不使用／特定農薬を避けたい／未登録・未回答）、農薬使用（あり／なし／未回答）、有機JAS（なし／あり／未回答）、通知希望（希望する／必要時のみ／未確認）、連絡方法（LINE／メール／電話／紙／未確認）、収穫予定時期、農薬不使用・影響回避の理由、チェック（育苗中／ハウスあり／水源・水路近接／未確認圃場として扱う）。</li>
+  <li>「自分の圃場を追加」で新規圃場（既定: 農薬使用なし・通知希望・距離120m・南東方向）を作成。</li>
+  <li>登録済み周辺圃場ステータスの一覧を右パネルに表示。</li>
+</ul>
+
+<h3>4.6 気象・風向風速確認（weather）</h3>
+<ul>
+  <li>「気象情報を自動取得」でOpen-Meteoから予報取得（5.4参照）。取得状況はステータス欄に表示。</li>
+  <li>入力項目: 取得地点 緯度・経度（既定 36.345, 140.304 = 笠間市周辺デモ）、予報風向（8方位）、予報風速、最大瞬間風速、気温、湿度、降雨予報、実測風向、実測風速、測定時刻、測定場所、測定方法（風速計で測定／目視／気象アプリ／気象庁等データ／その他）、測定者、備考。</li>
+  <li>右パネルに風下コンパスと気象評価（判定・メッセージ）を表示。</li>
+  <li>設計方針: 予報は自動取得するが「散布直前の現地実測の代替ではない」ため、実測値は手入力とする。</li>
+</ul>
+
+<h3>4.7 近隣通知（notify）</h3>
+<ul>
+  <li>通知手段の切替: LINE／メール／紙（文面の書き出しが変わる。メールは「件名：〜」付き）。</li>
+  <li>通知文はテンプレートから自動生成し、編集可能なテキストエリアに表示（5.5参照）。</li>
+  <li>操作: 文面コピー（クリップボード）、選択先を通知済みにする、通知書PDF。</li>
+  <li>通知対象リスト: riskItemsForPlanで判定された通知対象圃場を列挙し、通知済み管理と返信（未回答／確認しました／時間変更希望／電話希望／収穫日につき要相談）を記録。</li>
+</ul>
+
+<h3>4.8 散布前チェックリスト（checklist）</h3>
+<ul>
+  <li>15項目のチェックリスト（下表）。完了数のドーナツグラフと「N / 15」表示、未完了項目の抽出リスト、確認書PDF出力。</li>
+</ul>
+<table>
+  <tr><th>ID</th><th>項目</th><th>詳細</th></tr>
+  <tr><td><code>label</code></td><td>農薬ラベルを確認した</td><td>対象作物、使用時期、使用回数、周辺作物への注意事項</td></tr>
+  <tr><td><code>amount</code></td><td>使用量・希釈倍率を確認した</td><td>10a当たり使用量、希釈倍率、散布量を記録</td></tr>
+  <tr><td><code>organic</code></td><td>周辺の農薬不使用ほ場を確認した</td><td>農薬不使用、有機JAS、影響回避希望の圃場と風下方向</td></tr>
+  <tr><td><code>preharvest</code></td><td>収穫時期の近い作物を確認した</td><td>収穫直前、育苗中、ハウス換気予定</td></tr>
+  <tr><td><code>sensitive</code></td><td>住宅・水源・養蜂等を確認した</td><td>公共施設、水路、養蜂、住宅地への配慮</td></tr>
+  <tr><td><code>notice</code></td><td>近隣通知を行った</td><td>通知先、通知内容、通知日時</td></tr>
+  <tr><td><code>wind</code></td><td>風向・風速を確認した</td><td>予報と実測の両方、測定場所</td></tr>
+  <tr><td><code>weatherEnv</code></td><td>高温・低湿度・降雨予報を確認した</td><td>気温、湿度、最大瞬間風速、降雨予報（気象自動取得で自動ON）</td></tr>
+  <tr><td><code>aircraft</code></td><td>機体登録記号を確認した</td><td>機体、操縦者、補助者、散布装置</td></tr>
+  <tr><td><code>dips</code></td><td>DIPS飛行計画を確認した</td><td>V1では確認記録のみ。API連携は後続</td></tr>
+  <tr><td><code>flightLog</code></td><td>ドローンログ取込設定を確認した</td><td>飛行ルート、高度、散布ON/OFFログの取得準備</td></tr>
+  <tr><td><code>altitude</code></td><td>飛行高度予定を確認した</td><td>GPS高度、地表基準高度、作物上推定高度の扱い</td></tr>
+  <tr><td><code>postpone</code></td><td>強風時は延期する判断基準を確認した</td><td>風速目安超過時の時間変更先</td></tr>
+  <tr><td><code>equipment</code></td><td>散布装置の点検を行った</td><td>ノズル、タンク、飛行経路、周辺立入</td></tr>
+  <tr><td><code>report</code></td><td>実施後報告を行う</td><td>実施日時、気象、異常有無、問い合わせ</td></tr>
+</table>
+
+<h3>4.9 ドローン連携・飛行ログ取込（drone）</h3>
+<ul>
+  <li>SDK/API連携は「準備中」の連携モックとして表示。V1ではサンプル飛行ログを取り込んで検証する。</li>
+  <li><strong>機体・SDK連携状況パネル:</strong> ベンダー（デモSDKベンダー）、機体（SDK対応予定機種A）、機体登録記号（DEMO-DRONE-001）、リモートID（RID-DEMO-001）、同期状態を表示。</li>
+  <li><strong>ログ解析パネル:</strong> 飛行ルート、高度チャート（バー表示・ダウンサンプリング）、散布ON/OFF区間数、開始/終了時刻（サンプル: 06:04〜07:02）、予定範囲外飛行フラグ。</li>
+  <li><strong>助言パネル:</strong> ログから生成する追加確認事項（高度要確認ポイント、範囲外飛行など）。</li>
+  <li>ログ形式: ポイント列 <code>{x, y, altitude, sprayOn, altitudeCheck, outside}</code>。サンプルは取込前=周回8点／取込後=蛇行（serpentine）28点（14行×2点、散布幅を考慮したグリッドカバレッジ計算が意味を持つ形）。</li>
+</ul>
+
+<h3>4.10 実施後報告（report）</h3>
+<ul>
+  <li>入力項目: 実施日、実施時間、実施ほ場、使用農薬、実施範囲、実施時の風向・風速、異常の有無（なし／問い合わせあり／確認事項あり）、近隣からの問い合わせ（なし／あり／未確認）、報告分類（通常報告／問い合わせあり／追加確認あり）、実散布量、高度要確認区間、予定範囲外飛行（なし／要確認／未確認）、写真メモ（画像ファイル・DataURL保存）、備考。</li>
+  <li>「計画とログから自動入力」で計画・気象・ドローンログから報告フォームを自動充填。</li>
+  <li>報告プレビュー（散布者控え）と実施後報告PDF出力。</li>
+</ul>
+
+<h3>4.11 作業履歴・防除履歴（history）</h3>
+<ul>
+  <li>散布計画と実施後報告から圃場ごとの農薬・肥料散布履歴を自動集計。防除履歴の記帳・出荷確認の控え用途。</li>
+  <li>KPIカード、フィルター（圃場／資材種別／状態=すべて・実施済み・予定のみ）。</li>
+  <li>履歴テーブル列: 実施/予定日、圃場、作物、種別、資材名、使用量(10a)・希釈、総量、範囲・カバー、位置、方法、散布者、報告。</li>
+  <li>集計グラフ: 圃場ごとの散布回数（バー）、資材種別の内訳（バー）。</li>
+  <li>出力: 履歴CSV、履歴PDF。</li>
+</ul>
+
+<h3>4.12 散布予定・実績＝地域管理（admin）</h3>
+<ul>
+  <li>自治体・JA向けに「誰が・どこで・いつ・何を」散布する／したかを一覧表示。</li>
+  <li>フィルター: 状態（すべて／予定／実施済み）、地区。管理ダッシュボード側では都道府県・市町村・対象日フィルター（茨城県: 笠間市・水戸市・石岡市・つくば市／栃木県: 益子町・真岡市／千葉県: 香取市・成田市）。</li>
+  <li>一覧列: 日時、散布者、地区／ほ場、資材、状態、気象。</li>
+  <li><strong>行クリック詳細:</strong> 航空写真地図上に対象圃場・散布域を表示し、作業詳細と気象での実施可否（go/no-go）を確認。</li>
+  <li><strong>実証ルール案設定フォーム:</strong> デモ地域名、管理者名、有機ほ場の重点確認距離、通知対象距離、住宅・水源等の確認距離、再確認推奨風速、延期検討風速、事前通知期限（日前）、報告提出期限（日後）、共有範囲（関係者限定／部会内共有／自治体・JA共有）。保存／標準値に戻す。</li>
+  <li>一覧PDF出力。</li>
+</ul>
+
+<h3>4.13 データソース・根拠資料（sources）</h3>
+<p>MVP上の確認項目の参照元（農水省2件・茨城県1件・MVP表示方針1件）をカード表示。ナビには出さない内部ビュー。</p>
+
+<h2 class="pagebreak">5. 機能仕様（判定ロジック・計算式）</h2>
+
+<h3>5.1 散布可否判定（go/no-go）</h3>
+<p>表示中計画に対し以下4要因を評価し、3段階の判定を返す。</p>
+<table>
+  <tr><th>要因</th><th>判定内容</th></tr>
+  <tr><td>気象条件</td><td>weatherDecision の判定レベル（5.2）</td></tr>
+  <tr><td>降雨</td><td>降雨予報テキストが「なし」「0」以外の値を含むと注意（<code>rainNeedsAttention</code>）</td></tr>
+  <tr><td>近隣通知</td><td>通知対象圃場すべてに通知済みか（<code>notificationIsComplete</code>）</td></tr>
+  <tr><td>風下の要確認圃場</td><td>通知対象かつリスク高（high）で未通知の圃場件数</td></tr>
+</table>
+<pre>verdict =
+  stop（× 延期・要対応）    … 気象=bad または 降雨注意 または 高リスク未通知あり
+  caution（△ 要注意・確認あり）… 気象=warn または 通知未完了
+  go（○ 本日 散布可）       … 上記以外</pre>
+<p>判定に応じて改善アクション（気象を確認／近隣通知へ／風下を確認）を提示する。</p>
+
+<h3>5.2 気象判定（weatherDecision）</h3>
+<p>閾値は実証ルール設定（5.9）に従う。既定: 再確認推奨風速 2.5m/s、延期検討風速 3.0m/s。</p>
+<pre>実測風速が未入力                                → 「△ 実測待ち」 (warn)
+風速 ≥ 延期検討風速(3.0) or 突風 ≥ 延期+2(5.0) or 降雨注意 → 「× 延期検討」 (bad)
+風速 ≥ 再確認推奨(2.5)  or 突風 ≥ 再確認+1(3.5)          → 「△ 再測定」 (warn)
+上記以外                                          → 「○ 条件内」 (good)
+※ 風速は 実測値優先、なければ予報値。</pre>
+
+<h3>5.3 周辺リスク判定（riskItemsForPlan / riskLevel）</h3>
+<p>散布ほ場以外の全登録圃場について、種別と距離から通知要否とリスクレベルを判定する。</p>
+<table>
+  <tr><th>条件</th><th>レベル</th><th>扱い</th></tr>
+  <tr><td>有機系（有機JAS <code>organic</code>・農薬不使用 <code>noChemical</code>）が重点確認距離（既定100m）以内</td><td>high</td><td>通知必須。「周辺確認が必要」メッセージ</td></tr>
+  <tr><td>センシティブ（ハウス <code>house</code>・収穫直前 <code>preharvest</code>・水源 <code>water</code>・養蜂 <code>bee</code>）が確認距離（既定160m）以内</td><td>medium</td><td>通知・作業調整の確認対象</td></tr>
+  <tr><td>通知希望圃場が通知対象距離（既定160m）以内</td><td>medium</td><td>通知候補</td></tr>
+  <tr><td>上記以外</td><td>low</td><td>一覧から除外（通知対象でない場合）</td></tr>
+</table>
+<p>圃場種別: 散布ほ場 <code>spray</code>／有機ほ場 <code>organic</code>／農薬不使用 <code>noChemical</code>／ハウス <code>house</code>／収穫直前 <code>preharvest</code>／水源・水路 <code>water</code>／養蜂 <code>bee</code>／公共施設 <code>public</code>。地図凡例色は spray=#c94b44、organic系=#2d8c49、house=#477bc0、preharvest=#e3a329、water=#3393bb、bee=#8a6734、public=#695faf。</p>
+<p><strong>計画リスクレベル:</strong> high未通知あり or 風要注意 → high／highあり or 通知未完了 or mediumあり → medium／その他 → low。<br>
+<strong>優先度スコア:</strong> リスク毎に high=4点・medium=2点、未通知+2点、風要注意+3点、当日以前で報告未提出+1点。ダッシュボードの優先確認リストの並び順に使用。</p>
+
+<h3>5.4 気象予報の自動取得（Open-Meteo連携）</h3>
+<ul>
+  <li>計画の散布予定日＋時間帯の開始時刻（例 06:00）に最も近い hourly 予報値を選択（<code>pickForecastHour</code>）。hourlyが無い場合は current 値でフォールバック。</li>
+  <li>取得値→格納: 風向（度→8方位変換）、風速・突風・気温（小数1位丸め）、湿度（整数）、降水（降水確率≥50%なら「降水確率N%」、降水量>0なら「N mmの降水見込み」、それ以外は確率表記か「なし」）。</li>
+  <li>取得成功時: 出典「Open-Meteo Forecast API」、取得日時、予報対象時刻を記録し、チェック項目 <code>weatherEnv</code> を自動ON。備考に「散布直前に現地実測を記録してください」を自動セット。</li>
+  <li>取得失敗時: 「取得失敗／手入力の値を使用してください」を表示し手入力継続可能。</li>
+</ul>
+
+<h3>5.5 近隣通知文の自動生成</h3>
+<ul>
+  <li>チャネル別書き出し: LINE=「関係者のみなさまへ」、メール=「件名：（資材種別語）予定のお知らせ」、紙=「（資材種別語）予定のお知らせ」。</li>
+  <li>資材種別語: 農薬→「農薬散布」、液体肥料・葉面散布→「肥料散布」、その他資材→「資材散布」。資材名ラベルも「使用農薬」⇔「使用資材」を切替。</li>
+  <li>本文構成: 地区・予定日時・散布ほ場・作物・資材種別・資材名・使用目的・散布方法・ドローン機体・予定飛行時間・散布者・連絡先／周辺確認対象の列挙（圃場名・距離・事由）／風向風速メモ／実証ルール要約（重点確認距離・通知距離・延期風速）／日時変更の可能性の注意書き／目的説明。</li>
+  <li>通知済み管理: 通知対象ごとに通知済みフラグ、返信5択（未回答／確認しました／時間変更希望／電話希望／収穫日につき要相談）を記録。周辺農家ロールが自圃場宛て通知に返信する。</li>
+</ul>
+
+<h3>5.6 散布総量の自動計算</h3>
+<pre>総量 = 使用量(10a当たり) × 面積(ha) × 10
+単位繰上げ: mL→L（1000）、g→kg（1000）で自動整形</pre>
+
+<h3>5.7 散布カバレッジ（グリッド判定・再生）</h3>
+<ul>
+  <li>散布ほ場ポリゴンを<strong>5mメッシュ</strong>（<code>COVERAGE_CELL_M=5</code>）に分割し、飛行ログの散布ON区間の軌跡と散布幅（既定値あり・計画の散布幅m使用）から各セルの散布済/未散布を判定。メートル座標変換は簡易正距円筒近似（<code>projectMeters</code>）、セル内外判定はレイキャスティング＋線分距離。</li>
+  <li>グリッドはキャッシュし、再生時はポイントindexまでの部分カバレッジを逐次計算。</li>
+  <li>UI: 散布済（緑）／未散布（グレー）の色分け、再生／リセット、進捗バー、カバー率・散布済セル数の読み上げ表示。</li>
+</ul>
+
+<h3>5.8 可変施肥（VRA）処方マップ</h3>
+<ul>
+  <li><strong>取込:</strong> GeoJSON（.geojson/.json）のポリゴンから処方を構築。施用量フィールドは候補キー（rate等）から自動検出。</li>
+  <li><strong>作成:</strong> 散布ほ場をゾーン分割して基準施用量から処方を生成（ゾーン数・基準量・単位・資材名を指定）。</li>
+  <li><strong>編集:</strong> ゾーン別施用量のインライン編集、再生成。</li>
+  <li><strong>表示:</strong> 施用量を5段階の色分け（#f7fcb9→#00441b、少→多）。ゾーン面積は球面近似の面積計算（ha）。</li>
+  <li><strong>出力:</strong> GeoJSON書き出し（エクスポート）。</li>
+  <li>単位候補: kg/ha、L/ha、g/10a、mL/10a。サンプル処方の生成機能あり。localStorage容量超過時は「表示中のみ保持」にフォールバック。</li>
+</ul>
+
+<h3>5.9 実証ルール設定（閾値・既定値）</h3>
+<table>
+  <tr><th>設定キー</th><th>項目</th><th>既定値</th></tr>
+  <tr><td><code>regionName</code></td><td>デモ地域名</td><td>笠間市周辺を想定した実証デモ</td></tr>
+  <tr><td><code>managerName</code></td><td>管理者名</td><td>地域管理者</td></tr>
+  <tr><td><code>organicRadius</code></td><td>有機ほ場の重点確認距離</td><td>100 m（設定範囲 10〜1000）</td></tr>
+  <tr><td><code>notifyRadius</code></td><td>通知対象距離</td><td>160 m（同上）</td></tr>
+  <tr><td><code>sensitiveRadius</code></td><td>住宅・水源等の確認距離</td><td>160 m（同上）</td></tr>
+  <tr><td><code>windCaution</code></td><td>再確認推奨風速</td><td>2.5 m/s</td></tr>
+  <tr><td><code>windLimit</code></td><td>延期検討風速</td><td>3.0 m/s</td></tr>
+  <tr><td><code>noticeDeadlineDays</code></td><td>事前通知期限</td><td>1 日前</td></tr>
+  <tr><td><code>reportDeadlineDays</code></td><td>報告提出期限</td><td>1 日後</td></tr>
+  <tr><td><code>sharingScope</code></td><td>共有範囲</td><td>関係者限定（／部会内共有／自治体・JA共有）</td></tr>
+</table>
+
+<h3>5.10 準備度スコア（readinessScore）</h3>
+<pre>準備度 = チェック進捗% × 0.40 + 通知完了% × 0.25 + 気象準備% × 0.20 + リスク% × 0.15
+  気象準備%: 実測未入力=35 / 風速≥延期検討=45 / ≥再確認推奨=75 / 条件内=100
+  リスク%: 高リスク未通知あり=45 / なし=100
+  レベル: ≥80 good ／ ≥60 caution ／ <60 attention</pre>
+
+<h2 class="pagebreak">6. データ仕様</h2>
+
+<h3>6.1 保存方式</h3>
+<ul>
+  <li><code>localStorage</code> キー: <code>tonariHatakeSafetyMvp.v3.coverage</code>（JSON1オブジェクト）。</li>
+  <li>読み込み時に <code>normalizeState()</code> で欠損フィールドを既定値で補完（後方互換マイグレーション）。パース失敗時はサンプル状態を生成。</li>
+  <li>「サンプル読込」でデモ用サンプル状態（圃場7件・複数計画・ドローンログ等）を再生成。</li>
+  <li>保存容量超過時はトースト通知し、処方マップ等は表示中のみ保持。</li>
+</ul>
+
+<h3>6.2 状態スキーマ（ルート）</h3>
+<table>
+  <tr><th>キー</th><th>型</th><th>内容</th></tr>
+  <tr><td><code>role</code></td><td>string</td><td>アクティブロール（sprayer/neighbor/admin）</td></tr>
+  <tr><td><code>settings</code></td><td>object</td><td>実証ルール設定（5.9）</td></tr>
+  <tr><td><code>equipmentTemplate</code></td><td>object</td><td>機体・操縦者の既定値テンプレート</td></tr>
+  <tr><td><code>fields</code></td><td>array</td><td>圃場一覧（6.3）</td></tr>
+  <tr><td><code>activeFieldId</code></td><td>string</td><td>周辺農家ロールで編集対象の圃場</td></tr>
+  <tr><td><code>plans</code></td><td>array</td><td>散布計画一覧（6.4）</td></tr>
+  <tr><td><code>activePlanId</code></td><td>string</td><td>表示中の散布計画</td></tr>
+  <tr><td><code>droneLog</code></td><td>object</td><td>飛行ログ（6.5）</td></tr>
+</table>
+
+<h3>6.3 圃場（field）オブジェクト</h3>
+<pre>{ id, type(spray|organic|noChemical|house|preharvest|water|bee|public),
+  name, short(2文字表記), crop, cultivation, chemicalUse, organicJas,
+  notifyPreference, contactMethod, harvestWindow, avoidReason,
+  seedling, house, waterNear, unregistered(bool),
+  x, y, w, h(デモ用%座標の矩形), geo([lng,lat]配列: 実境界ポリゴン・任意),
+  distance(散布ほ場からのm), direction(8方位), notifyTarget(bool), owner }</pre>
+<p>実境界（geo）を持つ圃場が1件以上あると、地図の表示範囲は自動でその外接範囲（18%パディング）に切替わる。なければデモ既定範囲（笠間市周辺 140.2732〜140.2892E, 36.3526〜36.3646N、中心 [140.2812, 36.3586]・ズーム15.6）。</p>
+
+<h3>6.4 散布計画（plan）オブジェクト</h3>
+<pre>{ id, date, timeWindow, fieldName, district, crop,
+  materialType(農薬|液体肥料・葉面散布|その他資材), pesticide, purpose,
+  method(ドローン|無人ヘリ|ブームスプレーヤー|動噴|その他), operator, contact,
+  droneModel, aircraftRegistration, pilot, assistant, sprayDevice, nozzle,
+  plannedAltitude, plannedSpeed,
+  pesticideRegistration, preHarvestDays, amount, dilution,
+  ratePer10a, rateUnit(mL|L|g|kg), areaHa, sprayWidthM, labelCheckedAt,
+  sprayArea, notes,
+  droneLog(計画別ログ・null可), prescription(VRA処方・null可),
+  weather{ latitude, longitude, locationLabel, forecastDirection, forecastSpeed,
+           maxGust, temperature, humidity, rainForecast,
+           actualDirection, actualSpeed, measuredAt, measuredPlace,
+           measurementMethod, measuredBy, source, fetchedAt,
+           forecastTargetTime, weatherNotes },
+  checks{ 15項目ID: bool },
+  notificationTargets{ fieldId: bool }, notificationResponses{ fieldId: 返信5択 },
+  report{ doneDate, doneTime, doneField, donePesticide, doneArea, doneWeather,
+          incident, inquiry, reportType, actualAmount, altitudeNotes,
+          outsideFlight, photoData(DataURL), photoName, reportNotes } }</pre>
+
+<h3>6.5 飛行ログ（droneLog）オブジェクト</h3>
+<pre>{ vendor, model, sdkStatus, aircraftRegistration, remoteId, pilot, sprayDevice,
+  imported(bool), lastSync, startedAt, endedAt,
+  sprayOnSegments(散布ON点数), outsideFlight(bool),
+  points[ { x, y(%座標), altitude(m), sprayOn, altitudeCheck, outside } ] }</pre>
+
+<h3>6.6 境界カタログ（data/boundaries/index.json）</h3>
+<pre>{ "municipalities": [
+    { "code": "082163",  "name": "笠間市（デモ・軽量）",     "file": "kasama.geojson" },
+    { "code": "082163b", "name": "友部エリア（デモ）",       "file": "tomobe.geojson" },
+    { "code": "08216",   "name": "笠間市（筆ポリゴン2021）", "file": "kasama-fude.zip" },
+    { "code": "08201",   "name": "水戸市（筆ポリゴン2021）", "file": "mito-fude.zip" },
+    { "code": "08205",   "name": "石岡市（筆ポリゴン2021）", "file": "ishioka-fude.zip" } ] }</pre>
+
+<h2>7. 境界データ・地図仕様</h2>
+<ul>
+  <li><strong>地図エンジン:</strong> MapLibre GL JS（vendor同梱）。背景は地理院タイル（航空写真／標準地図）。地図インスタンスはダッシュボード用・圃場マップ用・管理詳細用の3系統。</li>
+  <li><strong>取込形式:</strong> GeoJSON（.geojson/.json）、Shapefile zip（.zip/.shp、shpjsで読込）。Shapefileの座標系は同梱 <code>.prj</code> から自動でWGS84変換。</li>
+  <li><strong>カタログ読込:</strong> 起動時に <code>index.json</code> を読み、選択中の市町村境界を自動読込。セレクタで切替可能。「市町村データに戻す」で個別取込を破棄。</li>
+  <li><strong>2段階の扱い:</strong> 少数ポリゴン → 管理対象ほ場として直接読み込み（フィールド化）。多数の筆ポリゴン → <strong>背景レイヤー（表示専用・非永続、表示上限 <code>PARCEL_DISPLAY_LIMIT=400</code> 筆）</strong>として表示し、地図タップ→ポップアップから「散布ほ場にする」「周辺ほ場に追加」で個別採用（adoptParcel）。</li>
+  <li><strong>距離・方位の自動計算:</strong> 圃場採用・取込時に散布ほ場中心からの距離（ハバサイン）と8方位を再計算（<code>recomputeFieldDistances</code>）。</li>
+  <li><strong>風下ゾーン:</strong> 気象の風向から風下方向扇形を生成して地図に重畳。リスクバッファは設定距離の円ポリゴン。</li>
+</ul>
+
+<h2>8. 帳票・出力仕様</h2>
+<table>
+  <tr><th>出力</th><th>方式</th><th>内容</th></tr>
+  <tr><td>通知書PDF</td><td rowspan="5">印刷シート（<code>#printSheet</code>）にHTML帳票を構築し、ブラウザの印刷ダイアログを起動（PDF保存はブラウザ機能）</td><td>近隣通知文の印刷体裁</td></tr>
+  <tr><td>確認書PDF</td><td>散布前チェックリストの確認記録</td></tr>
+  <tr><td>実施後報告PDF</td><td>実施内容・問い合わせ・写真メモ</td></tr>
+  <tr><td>一覧PDF（管理）</td><td>散布予定・実績一覧</td></tr>
+  <tr><td>履歴PDF</td><td>作業履歴・防除履歴</td></tr>
+  <tr><td>CSV出力</td><td rowspan="2">Blob生成→ダウンロード。セルはCSVエスケープ処理</td><td>散布計画一覧のCSV</td></tr>
+  <tr><td>履歴CSV</td><td>作業履歴のCSV</td></tr>
+  <tr><td>処方GeoJSON</td><td>GeoJSONエクスポート</td><td>VRA処方マップのゾーン・施用量</td></tr>
+</table>
+
+<h2>9. 非機能要件・運用</h2>
+
+<h3>9.1 動作環境</h3>
+<ul>
+  <li>モダンブラウザ（ES2020+、MapLibre GL対応）。レスポンシブ対応（モバイルはクイックバー表示）。</li>
+  <li>アクセシビリティ: 主要領域に <code>aria-label</code>、トーストに <code>aria-live</code>、セグメント群に <code>role="group"</code> を付与。</li>
+</ul>
+
+<h3>9.2 ローカル起動</h3>
+<pre>python -m http.server 8080
+→ http://localhost:8080/ を開く（file:// 直接オープンは境界カタログ読込不可）</pre>
+
+<h3>9.3 デプロイ</h3>
+<ul>
+  <li>Cloudflare Pages プロジェクト名: <code>tonari-hatake-safety</code>。GitHubリポジトリはprivateだが、公開URLは誰でも閲覧可能。</li>
+  <li>デプロイ確認: <code>npx.cmd --yes wrangler@latest pages deployment list --project-name tonari-hatake-safety</code></li>
+  <li>疎通確認: <code>Invoke-WebRequest -UseBasicParsing -Uri "https://tonari-hatake-safety.pages.dev/"</code>（StatusCode 200）</li>
+</ul>
+
+<h3>9.4 検証手順（スモークテスト）</h3>
+<ul>
+  <li>構文チェック: <code>node --check js\main.js</code></li>
+  <li>ブラウザ確認対象: <code>/</code>、<code>/#map</code>、<code>/#history</code>、ロールを地域管理に切替後の <code>/#admin</code></li>
+  <li>変更後は <code>git status</code> → 構文チェック → コミット → プッシュ →（公開デモを変える場合）デプロイ、の順で実施。</li>
+</ul>
+
+<h3>9.5 開発・引継ぎルール（HANDOFF.md より）</h3>
+<ul>
+  <li>編集前に README.md と HANDOFF.md を読む。<code>git status</code> を先に実行し、未コミットの変更を上書きしない。</li>
+  <li>UIは既存の高密度業務ツール調に合わせる。ランディングページは追加しない。</li>
+  <li>地図・空間処理は vendor 同梱の MapLibre / Turf / shpjs を使う（新規CDN依存を追加しない）。</li>
+  <li>ユーザーが明示しない限り静的アプリのまま保つ（バックエンド・認証を勝手に追加しない）。</li>
+  <li>データ量の大きい機能追加時は Git サイズと Cloudflare Pages のアップロード上限を考慮する。</li>
+  <li>判断理由・未完了事項はコミットメッセージか HANDOFF.md に必ず残す（AI間の会話はリポジトリから参照できないため）。</li>
+</ul>
+
+<h2 class="pagebreak">10. 未実装事項・既知の制約・今後の課題</h2>
+
+<h3>10.1 V1で未実装の機能 <span class="badge red">未実装</span></h3>
+<table>
+  <tr><th>項目</th><th>現状の扱い</th></tr>
+  <tr><td>実認証（ログイン・ユーザー管理）</td><td>なし。ロールはUI上の切替のみで、誰でも全ロールを操作可能</td></tr>
+  <tr><td>バックエンドDB</td><td>なし。localStorage のみで端末・ブラウザ間の共有不可。「同じ地図を見る」体験は同一ブラウザ内デモに限定</td></tr>
+  <tr><td>LINE実送信</td><td>通知文の生成・コピーまで。実際の送信は手動</td></tr>
+  <tr><td>DIPS（ドローン情報基盤システム）連携</td><td>チェック項目として確認記録のみ。API連携は後続予定</td></tr>
+  <tr><td>ドローンメーカーSDK実連携</td><td>連携モック表示。サンプル飛行ログでの検証のみ（「SDK/API連携はV1では未接続」表記）</td></tr>
+  <tr><td>圃場台帳（農地台帳等）との本番連携</td><td>なし。筆ポリゴン2021のShapefileを静的同梱で代替</td></tr>
+  <tr><td>権限管理（RBAC）</td><td>なし。ロール別ナビ制御はUI表示上の制御のみ</td></tr>
+  <tr><td>監査ログ</td><td>なし</td></tr>
+  <tr><td>本番用の個人情報管理</td><td>なし。全データは匿名サンプル（匿名散布者・デモ連絡先等）で運用</td></tr>
+  <tr><td>気象の現地実測連携</td><td>Open-Meteoの予報値のみ自動取得。実測は手入力（予報は現地実測の代替ではないと明記）</td></tr>
+</table>
+
+<h3>10.2 既知のリスク・制約 <span class="badge amber">制約</span></h3>
+<ul>
+  <li><code>js/main.js</code> が単一巨大ファイル（約5,700行）。追加開発時は既存ヘルパーを使い、状態・描画ロジックの重複を避ける。</li>
+  <li>localStorage スキーマ変更で旧データと不整合が起こり得る。表示異常時はサンプル再読込か localStorage クリアで復旧。</li>
+  <li><code>file://</code> での完全動作は不可（境界カタログ・zipのfetchが失敗）。</li>
+  <li>境界zipが大きい（1市町村あたり約5MB）。市町村追加でGitサイズ・初期ロードが増える。</li>
+  <li>Shapefileの投影は <code>.prj</code> と shpjs に依存。取込ファイルは要個別検証。</li>
+  <li>GitHubはprivateだが公開デモURLは誰でも閲覧可能（URL秘匿性なし）。</li>
+  <li>管理画面はロールゲートあり。<code>#admin</code> 直接遷移はロールが admin でないとリダイレクトされることがある。</li>
+  <li>筆ポリゴン背景の表示は400筆に制限（パフォーマンス対策）。</li>
+  <li>写真メモはDataURLでlocalStorageに保存するため、大きな画像は容量上限に達しやすい。</li>
+</ul>
+
+<h3>10.3 今後の課題（提案済みの次作業）<span class="badge gray">TODO</span></h3>
+<ul>
+  <li>Python が無い環境向けのローカル起動スクリプトまたは代替手順の整備。</li>
+  <li>開発継続する場合の <code>js/main.js</code> のモジュール分割。</li>
+  <li>「デモデータ初期化（localStorage リセット）」ボタンの追加。</li>
+  <li>非対応の Shapefile / GeoJSON ジオメトリ取込時のバリデーションメッセージ追加。</li>
+  <li>ダッシュボード／マップ／管理／履歴の軽量ブラウザスモークテスト自動化。</li>
+  <li>大容量の公開筆ポリゴンデータを Git 管理のままにするか外部オブジェクトストレージへ移すかの判断。</li>
+</ul>
+
+<h2>11. 参照資料</h2>
+<ul>
+  <li>農林水産省：農薬の使用に伴う事故・被害 — https://www.maff.go.jp/j/press/syouan/nouyaku/260130.html</li>
+  <li>農林水産省：無人航空機による農薬等の空中散布 — https://www.maff.go.jp/j/syouan/syokubo/gaicyu/g_kouku_zigyo/muzinkoukuuki.html</li>
+  <li>茨城県：農業支援サービス事業 — https://www.pref.ibaraki.jp/nourinsuisan/sansin/shushi/nougyoushiennservice.html</li>
+  <li>Open-Meteo Forecast API — https://open-meteo.com/en/docs</li>
+  <li>国土地理院 地理院タイル — https://maps.gsi.go.jp/development/ichiran.html</li>
+  <li>MVP表示方針：法的な判定や原因断定ではなく、未確認・要確認・記録不足として表示する。</li>
+</ul>
+
+<p class="small" style="margin-top:18px; border-top:1px solid #9db4ae; padding-top:6px;">
+となりの畑セーフティ（仮称） MVP 基本仕様書 ／ 2026-07-07 作成 ／ 本書はリポジトリ内 <code>docs/basic-specification.html</code> から生成
+</p>
+
+</body>
+</html>
