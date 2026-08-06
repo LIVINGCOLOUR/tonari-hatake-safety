@@ -92,10 +92,10 @@ assert(landingDesktop.value.title.includes("となりの畑セーフティ（仮
 assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: ${landingDesktop.value.imageFailures.join(", ")}`);
 assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${landingDesktop.value.overflow}px`);
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");
-assert(landingDesktop.value.featureLinks.length === 2, "Only current and next-pilot capabilities should link to demos");
+assert(landingDesktop.value.featureLinks.length === 2, "Only capabilities with an available demo view should link to demos");
 assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?role=sprayer#")), "Capability links must open an available sprayer demo view");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "現在のデモ").length === 1, "Landing page must identify the currently available workflow");
-assert(landingDesktop.value.featureStatuses.filter((status) => status === "次の実証開発").length === 1, "Landing page must identify the DJI log-import pilot");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "実装中").length === 3, "Landing page must mark in-progress capabilities (log import, district posting, org account)");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "将来構想").length === 2, "Landing page must separate future drone capabilities");
 assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("実ファイルを入手して形式を検証してから対応")), "Landing page must not present DJI log import as implemented");
 assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("実証済みの機体から段階的に対応")), "Landing page must not imply universal live telemetry support");
