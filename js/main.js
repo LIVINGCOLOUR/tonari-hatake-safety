@@ -92,13 +92,28 @@ const MATERIAL_TERMS = {
   その他資材: "資材散布",
 };
 
+// 返信は事実を伝える形に限る（BUSINESS_MODEL.md §3）。日程変更の要求にあたる選択肢は置かない。
 const NOTICE_RESPONSE_OPTIONS = [
   "未回答",
   "確認しました",
-  "時間変更希望",
   "電話希望",
   "収穫日につき要相談",
 ];
+
+// 相談が必要な返信。散布者の対応キューと未対応件数の判定に使う。
+const CONSULTATION_RESPONSES = ["電話希望", "収穫日につき要相談"];
+
+// 旧「時間変更希望」は日程調整の要求にあたるため廃止し、1対1の相談へ寄せる。
+const LEGACY_RESPONSE_REPLACEMENTS = new Map([["時間変更希望", "電話希望"]]);
+
+function normalizeNotificationResponses(responses) {
+  const source = responses && typeof responses === "object" ? responses : {};
+  const next = {};
+  for (const [fieldId, response] of Object.entries(source)) {
+    next[fieldId] = LEGACY_RESPONSE_REPLACEMENTS.get(response) || response;
+  }
+  return next;
+}
 
 const DEFAULT_WEATHER_LOCATION = {
   latitude: 36.345,
@@ -160,7 +175,7 @@ const CHECK_ITEMS = [
   {
     id: "dips",
     title: "DIPS飛行計画を確認した",
-    detail: "V1では確認記録のみ。API連携は後続。",
+    detail: "確認した記録を残します。DIPSとの自動連携は実装中です。",
   },
   {
     id: "flightLog",
@@ -1268,12 +1283,18 @@ function renderRuleBanner() {
   const progress = checkProgress(plan);
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
   const notified = targets.filter((item) => item.notified).length;
-  $("#ruleBanner").innerHTML = `
+  // 確認進捗は散布者が自分の作業を振り返るための数値。
+  // 他ロールへ出すと散布者を採点しているように見えるため表示しない（BUSINESS_MODEL.md §8）。
+  const progressBlock = activeRole === "sprayer"
+    ? `
     <div>
       <span class="tag tag-green">確認進捗</span>
       <strong>${score.value} / 100</strong>
       <span>チェック ${progress.done}/${progress.total} / 通知 ${notified}/${targets.length} / 気象 ${weatherCheckSummary(plan)} / ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"} / 報告 ${report.doneDate ? "提出済み" : "未提出"}</span>
-    </div>
+    </div>`
+    : "";
+  $("#ruleBanner").innerHTML = `
+    ${progressBlock}
     <div class="rule-compact-note">
       <span>実証ルール案</span>
       <strong>${escapeHtml(rules.regionName)}</strong>
@@ -1523,7 +1544,6 @@ function renderNeighborNoticeCard(notice) {
       ${cancellation ? "" : `<label class="reply-note-label">相談内容（200字まで）<textarea maxlength="200" rows="2" data-reply-note="${escapeAttr(`${notice.plan.id}:${notice.id}`)}">${escapeHtml(replyNote)}</textarea></label>
       <div class="pill-line notice-actions">
         <button class="pill-button" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="確認しました" type="button">確認しました</button>
-        <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="時間変更希望" type="button">時間を相談</button>
         <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="電話希望" type="button" ${phone ? "" : "disabled"}>電話で相談</button>
         <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="収穫日につき要相談" type="button">収穫・作業あり</button>
       </div>`}
@@ -1564,7 +1584,7 @@ function nextActionsForSprayer(plan) {
       response: notificationResponse(plan, field.id),
       note: plan.notificationReplyNotes?.[field.id] || "",
     }))
-    .filter((reply) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(reply.response));
+    .filter((reply) => CONSULTATION_RESPONSES.includes(reply.response));
   return domainDashboard.buildSprayerNextActions({
     pendingReplies,
     unnotifiedRisks: riskItemsForPlan(plan).filter((item) => item.notifyTarget && !item.notified),
@@ -1870,7 +1890,7 @@ function sprayGoNoGo(plan) {
   const notifyComplete = notificationIsComplete(plan);
   const unresolvedRef = !planFieldResolution(plan).resolved;
   const unnotifiedHigh = riskItemsForPlan(plan).filter((r) => r.notifyTarget && r.level === "high" && !r.notified);
-  const replyCount = Object.values(plan.notificationResponses || {}).filter((response) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(response)).length;
+  const replyCount = Object.values(plan.notificationResponses || {}).filter((response) => CONSULTATION_RESPONSES.includes(response)).length;
   const factors = [
     { label: "気象条件", status: weather.level, detail: `${weather.label}（${weatherLabel(plan)}）` },
     { label: "降雨", status: rain ? "bad" : "good", detail: rainRiskLabel(w) },
@@ -6581,9 +6601,7 @@ function dashboardPlanFact(plan) {
       || Boolean(plan.droneLog?.imported && altitudeCheckCount(plan.droneLog) > 0)),
     hasInquiry: Boolean(report.inquiry && report.inquiry !== "なし"),
     unregisteredNear: risks.some((risk) => risk.unregistered || risk.type === "public"),
-    replyNeed: responses.filter(
-      (value) => ["時間変更希望", "電話希望", "収穫日につき要相談"].includes(value),
-    ).length,
+    replyNeed: responses.filter((value) => CONSULTATION_RESPONSES.includes(value)).length,
     cancelled: Boolean(plan.cancellation),
     readiness: readinessScore(plan).value,
   };
@@ -6999,7 +7017,6 @@ ${materialLine}：${plan.pesticide}
 予定飛行時間：${plan.timeWindow}
 散布者：${plan.operator}
 連絡先：${plan.contact}
-日時調整希望の連絡先：${plan.contact}
 
 周辺確認対象：
 ${risks || "・通知対象は登録されていません。"}
@@ -7874,14 +7891,14 @@ function createSampleState() {
       "water-channel-d": true,
     },
     notificationResponses: {
-      "organic-field-a": "時間変更希望",
+      "organic-field-a": "収穫日につき要相談",
       "no-chemical-field-b": "確認しました",
       "seedling-house-c": "確認しました",
       "preharvest-field-d": "確認しました",
       "water-channel-d": "未回答",
     },
     notificationReplyNotes: {
-      "organic-field-a": "収穫が近いので8時以降に変更いただけますか。",
+      "organic-field-a": "近く収穫を予定しています。電話で相談させてください。",
     },
     notificationAcks: {
       "organic-field-a": `${dateOffset(0)}T05:12:00+09:00`,
@@ -8304,7 +8321,7 @@ function normalizeState(input) {
     weather: { ...defaultWeather(), ...(plan.weather || {}) },
     checks: { ...defaultChecks(false), ...(plan.checks || {}) },
     notificationTargets: plan.notificationTargets || {},
-    notificationResponses: plan.notificationResponses || {},
+    notificationResponses: normalizeNotificationResponses(plan.notificationResponses),
     notificationAcks: plan.notificationAcks || {},
     notificationReplyNotes: plan.notificationReplyNotes || {},
     cancellation: plan.cancellation || null,

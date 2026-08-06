@@ -341,7 +341,7 @@ const notificationRepositories = await evaluate(`(async () => {
   const response = [...document.querySelectorAll("[data-notify-response]")]
     .find((select) => select.dataset.notifyResponse === fieldId);
   if (!response) return { missingResponse: true, fieldId };
-  response.value = "時間変更希望";
+  response.value = "電話希望";
   response.dispatchEvent(new Event("change", { bubbles: true }));
   await wait(100);
 
@@ -361,10 +361,10 @@ const notificationRepositories = await evaluate(`(async () => {
 assert(!notificationRepositories.missingTarget && !notificationRepositories.missingResponse,
   `notification UI target missing: ${JSON.stringify(notificationRepositories)}`);
 assert(notificationRepositories.record?.delivered
-  && notificationRepositories.record?.response === "時間変更希望",
+  && notificationRepositories.record?.response === "電話希望",
   `notification repository was not updated from UI: ${JSON.stringify(notificationRepositories)}`);
 assert(notificationRepositories.persistedDelivered === true
-  && notificationRepositories.persistedResponse === "時間変更希望",
+  && notificationRepositories.persistedResponse === "電話希望",
   `notification UI update was not persisted: ${JSON.stringify(notificationRepositories)}`);
 assert(notificationRepositories.repositoryRevision === notificationRepositories.envelopeRevision,
   `notification repository revision mismatch: ${JSON.stringify(notificationRepositories)}`);
@@ -1336,7 +1336,7 @@ const kasamaCase = await evaluate(`(async () => {
       && !adviceBeforeImport.includes("予定範囲外飛行の確認"),
     importedThroughRepository: Boolean(importedPlan?.droneLog?.imported),
     altitudeStayedHumanControlled: importedPlan?.checks?.altitude === false,
-    replyEvidence: outputs[1].includes("時間変更希望") && outputs[1].includes("8時以降"),
+    replyEvidence: outputs[1].includes("収穫日につき要相談") && outputs[1].includes("収穫を予定"),
     unimportedFlightIsBlank: outputs[3].includes("飛行ログが未取込")
       && !outputs[3].includes("<th>最大高度</th>")
       && !outputs[3].includes("<th>散布ON区間</th>")

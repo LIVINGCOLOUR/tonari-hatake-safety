@@ -384,7 +384,7 @@
                   </label>
                   <button class="ghost-button" id="resetBoundaryButton" type="button">市町村データに戻す</button>
                 </div>
-                <p class="small-note"><code>data/boundaries/</code> に市町村ごとの境界（GeoJSON / .prjを含むShapefile ZIP）を置き <code>index.json</code> に登録すると、上の一覧から選べます。座標はWGS84へ変換し、範囲を確認してから使用します。</p>
+                <p class="small-note">お手持ちのほ場境界データ（GeoJSON、または .prj を含むShapefile ZIP）を取り込めます。実証で対象地域を追加する場合はご相談ください。取り込んだ座標は範囲を確認したうえで使用します。</p>
               </article>
               <article class="panel">
                 <div class="panel-head">
@@ -508,7 +508,7 @@
           <div class="section-head">
             <div>
               <h3 id="droneTitle">ドローン連携・飛行ログ取込</h3>
-              <p>SDK/API連携は準備中として、V1ではサンプル飛行ログで散布ON/OFF・高度・予定範囲との差分を確認します。</p>
+              <p>機体メーカーとの自動連携は実装中です。現在はサンプルの飛行ログで、散布ON/OFF・高度・予定範囲との差分を確認できます。</p>
             </div>
             <div class="section-actions">
               <a class="rx-import-button" href="data/flight-logs/kasama-agras-sample.json" download>サンプルJSON取得</a>
@@ -525,8 +525,8 @@
             <article class="panel">
               <div class="panel-head">
                 <div>
-                  <span class="tag tag-blue">連携モック</span>
-                  <h4>機体・SDK連携状況</h4>
+                  <span class="tag tag-blue">連携状況</span>
+                  <h4>機体・連携の状況</h4>
                 </div>
               </div>
               <div class="drone-summary" id="droneSummary"></div>

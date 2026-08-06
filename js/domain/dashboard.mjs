@@ -280,7 +280,7 @@ export function buildNeighborDashboardMetrics({ notices = [], field = {} } = {})
   return [
     { label: "未返信通知", value: `${pending}件`, note: "通知インボックス", alert: pending > 0 },
     { label: "近日散布予定", value: `${notices.length}件`, note: "自分に関係", alert: notices.length > 0 },
-    { label: "時間変更・電話相談", value: `${consulting}件`, note: "返信履歴", alert: consulting > 0 },
+    { label: "相談中", value: `${consulting}件`, note: "返信履歴", alert: consulting > 0 },
     { label: "公開範囲", value: field.visibilityLevel === "private" ? "最小限" : field.visibilityLevel === "workspace" ? "地域管理者にも共有" : "通知対象に共有", note: "圃場情報", alert: false },
     {
       label: "通知希望",

@@ -256,17 +256,17 @@ test("notification repository saves delivery and marks a replied notice as deliv
     delivered: true,
     response: "未回答",
   });
-  assert.deepEqual(notifications.saveResponse("p1", "f2", "時間変更希望"), {
+  assert.deepEqual(notifications.saveResponse("p1", "f2", "電話希望"), {
     id: "p1:f2",
     planId: "p1",
     fieldId: "f2",
     delivered: true,
-    response: "時間変更希望",
+    response: "電話希望",
   });
   assert.equal(saves, 2);
   assert.equal(plan.notificationTargets.f1, true);
   assert.equal(plan.notificationTargets.f2, true);
-  assert.equal(plan.notificationResponses.f2, "時間変更希望");
+  assert.equal(plan.notificationResponses.f2, "電話希望");
 });
 
 test("notification repository validates plan and field identifiers", () => {

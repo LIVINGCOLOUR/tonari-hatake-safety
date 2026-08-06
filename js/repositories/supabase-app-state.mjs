@@ -23,16 +23,18 @@ const allowedPlanStatuses = new Set([
 const responseToCode = new Map([
   ["未回答", "unanswered"],
   ["確認しました", "confirmed"],
-  ["時間変更希望", "change_requested"],
   ["電話希望", "call_requested"],
   ["収穫日につき要相談", "harvest_consultation"],
+  // 旧語彙。新規には作らないが、移行前の端末から届いた値も保存できるようにする。
+  ["時間変更希望", "change_requested"],
 ]);
 const codeToResponse = new Map([
   ["unanswered", "未回答"],
   ["confirmed", "確認しました"],
-  ["change_requested", "時間変更希望"],
   ["call_requested", "電話希望"],
   ["harvest_consultation", "収穫日につき要相談"],
+  // 旧コードは1対1の相談へ寄せて読み込む（BUSINESS_MODEL.md §3）。
+  ["change_requested", "電話希望"],
 ]);
 
 function clone(value, fallback) {
