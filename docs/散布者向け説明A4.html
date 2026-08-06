@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>となりの畑セーフティ（仮称） 散布を行う方・受託事業者・JAの方へ</title>
+<style>
+  @page { size: A4 portrait; margin: 9mm 9mm 7mm; }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Yu Gothic", "YuGothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #1a2b2b;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  h2 {
+    font-size: 13.5px;
+    color: #14453d;
+    margin: 7px 0 4px;
+    padding-bottom: 2.5px;
+    border-bottom: 2px solid #1f4e46;
+    letter-spacing: .02em;
+  }
+  h2 .num {
+    display: inline-block;
+    border: 1.2px solid #1f4e46;
+    border-radius: 2px;
+    font-size: 10.5px;
+    padding: 0 4px;
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+
+  p { margin: 3px 0; }
+  ul { margin: 3px 0 0; padding-left: 15px; }
+  li { margin: 1.5px 0; }
+  strong { color: #14453d; }
+
+  .head {
+    border-bottom: 2.5px solid #1f4e46;
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+  }
+  .head h1 {
+    font-size: 22px;
+    margin: 0 0 3px;
+    letter-spacing: .04em;
+    color: #14453d;
+  }
+  .head .lead { font-size: 12.5px; line-height: 1.4; margin: 0 0 3px; }
+  .head .note { font-size: 9.8px; color: #5b736d; margin: 0; }
+
+  .cols { display: flex; gap: 9px; align-items: stretch; }
+  .cols > .c { flex: 1; min-width: 0; }
+  .cols > .c.wide { flex: 1.25; }
+
+  .box {
+    border: 1.2px solid #7f9c94;
+    border-radius: 3px;
+    padding: 5px 7px;
+    background: #f5f9f7;
+  }
+  .box .bt {
+    font-size: 11.3px;
+    font-weight: 700;
+    color: #14453d;
+    margin: 0 0 3px;
+  }
+  .box ul { padding-left: 14px; }
+
+  .flow { display: flex; gap: 5px; margin-top: 4px; }
+  .flow .s {
+    flex: 1;
+    border: 1.2px solid #7f9c94;
+    border-top: 3px solid #2d8c49;
+    border-radius: 3px;
+    padding: 4px 6px;
+    min-width: 0;
+  }
+  .flow .s b {
+    display: block;
+    color: #14453d;
+    font-size: 11.5px;
+    margin-bottom: 2px;
+  }
+
+  table { border-collapse: collapse; width: 100%; margin-top: 4px; }
+  th, td {
+    border: 1px solid #9db4ae;
+    padding: 3px 5px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #e6f0ec;
+    color: #14453d;
+    white-space: nowrap;
+    width: 21%;
+  }
+
+  .ask {
+    border: 2px solid #1f4e46;
+    border-radius: 3px;
+    padding: 6px 8px 7px;
+    background: #fbfdfc;
+  }
+  .ask .bt {
+    font-size: 13px;
+    font-weight: 700;
+    color: #14453d;
+    margin: 0 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #a8c0b9;
+  }
+  .ask ol { margin: 4px 0 0; padding-left: 16px; }
+  .ask li { margin: 2.5px 0; }
+
+  .url {
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 11.3px;
+    font-weight: 700;
+    color: #14453d;
+  }
+
+  .small { font-size: 9.6px; color: #5b736d; }
+
+  .demo { display: flex; align-items: center; gap: 8px; }
+  .demo .qr {
+    width: 34px;
+    height: 34px;
+    border: 1.2px solid #7f9c94;
+    border-radius: 2px;
+    flex: none;
+  }
+  .demo .txt { min-width: 0; }
+
+  footer {
+    margin-top: 7px;
+    border-top: 1.5px solid #1f4e46;
+    padding-top: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 10px;
+  }
+  footer .who { font-size: 12.5px; font-weight: 700; color: #14453d; }
+  footer .who span { font-size: 11px; font-weight: 400; margin-left: 8px; color: #1a2b2b; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>となりの畑セーフティ（仮称）</h1>
+  <p class="lead">農薬・液体肥料のドローン散布について、<strong>散布を行う方ご自身の記録づくり</strong>を出発点に、周辺の農家・自治体／JAと必要な範囲だけ共有するしくみ</p>
+  <p class="note">茨城県笠間市周辺を想定した、実証前のデモ版です（個人開発・開発中）</p>
+</div>
+
+<div class="cols">
+  <div class="c wide">
+    <h2><span class="num">1</span>考えていること</h2>
+    <p>散布を行う方は、天候を見極め、周囲に配慮しながら作業されています。それでも、何かが起きたとき——薬剤が本当に自分のものだったのか、適正な条件で撒いたのか——を<strong>後から示す記録がない</strong>のが実情ではないでしょうか。これは散布を行う方だけの問題ではなく、隣接する有機農家など、無関係な方が事実不明のまま損害を受けることもある、<strong>共通の課題</strong>だと考えています。</p>
+    <ul>
+      <li>回覧板・機関紙など<strong>一律の周知では、自分に関係する散布かどうか判断しにくい</strong></li>
+      <li>天候による延期・中止を、同じ相手にその都度伝え直すのが難しい</li>
+      <li>有機ほ場・養蜂・学校など、<strong>特に配慮が要る相手には個別に直接伝える</strong>必要がある</li>
+      <li>有機認証を持つ隣接ほ場では、飛散の有無が<strong>経営に直結するリスク</strong>になり得る（国のポジティブリスト制度・有機JAS規格による）</li>
+    </ul>
+  </div>
+  <div class="c">
+    <h2>このアプリが「しない」こと</h2>
+    <div class="box">
+      <ul>
+        <li>散布してよいかどうかを<strong>判定しません</strong></li>
+        <li>自治体・JAが散布を<strong>許可したように見せません</strong></li>
+        <li>被害の原因や責任の所在を決めません</li>
+        <li><strong>散布する方を監視・取り締まるためのものではありません</strong></li>
+        <li>日程調整や、合意形成の場にはしません（周知は一方向です）</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2><span class="num">2</span>しくみ</h2>
+<div class="flow">
+  <div class="s">
+    <b>① 計画する</b>
+    ほ場・日時・資材・機体を登録。気象の予報を取り込みます。
+  </div>
+  <div class="s">
+    <b>② 地区へ知らせる</b>
+    地区のLINEオープンチャットへ、アプリが作った文面を投稿するだけ。<strong>電話・訪問の手間を減らします。</strong>有機ほ場・養蜂など特に配慮が要る相手が近くにある場合は、計画時にその旨が表示され、通知文にも反映されます。周辺の農家はアプリを入れる必要がありません。
+  </div>
+  <div class="s">
+    <b>③ 実施し、記録が残る</b>
+    散布前のチェック、取込んだ飛行ログ（高度含む）、実施後の報告までを一件にまとめて保存。<strong>後から状況を説明する材料になります。</strong>
+  </div>
+  <div class="s">
+    <b>④ 必要な時に取り出せる</b>
+    期間・条件を絞って、記録を書類として出力できます。<strong>万が一、周辺農家等から賠償を求められた際や、保険会社への説明の際に、ご自身の主張を裏付ける材料になり得ます。</strong>
+  </div>
+</div>
+
+<h2><span class="num">3</span>それぞれの立場で使えること</h2>
+<table>
+  <tr>
+    <th>個人の散布者<br><span class="small">農家・個人事業主</span></th>
+    <td>計画の登録／地区への周知の手間削減／飛行ログと<strong>散布高度</strong>の記録／実施後の報告。<strong>無条件・無料</strong>でご利用いただけます。</td>
+  </tr>
+  <tr>
+    <th>受託事業者<br><span class="small">自社で散布を事業として行う立場</span></th>
+    <td>ご自身、または雇用・契約するオペレーターの実施記録を一つの事業として一元管理／発注者（JA・地主）に示せる<strong>信頼材料</strong>としての活用／万が一、周辺農家等から賠償を求められた際や保険会社への説明の際に、<strong>ご自身の主張を裏付ける材料</strong>になり得ます。</td>
+  </tr>
+  <tr>
+    <th>JA・防除受託法人<br><span class="small">会員の散布状況を把握する立場</span></th>
+    <td>同意いただいた会員（独立した個々の散布者）の実施状況を、本人の同意の範囲で把握／<strong>会員への苦情・問い合わせに、事実で答えるための一次窓口</strong>としての実務。自ら防除部隊を運営される場合は、上の「受託事業者」と同じ形でご利用いただけます。</td>
+  </tr>
+  <tr>
+    <th>自治体</th>
+    <td>市町村・日付ごとの予定と実績の把握／苦情や問い合わせを受けた際の事実確認／地域の傾向の把握。<strong>散布の可否は判定しません。</strong></td>
+  </tr>
+</table>
+<p class="small">農地のデータは農林水産省の筆ポリゴン、地図は国土地理院の航空写真を利用しています。</p>
+
+<div class="cols" style="margin-top:2px">
+  <div class="c">
+    <h2><span class="num">4</span>現在の段階</h2>
+    <div class="demo">
+      <img class="qr" alt="公開デモQRコード" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsAQMAAABDsxw2AAAABlBMVEX///8AAABVwtN+AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAB9ElEQVRoge2aPXKDQAyF5aFwyRF8FI7GHm2PwhFcUnhQpCdpwZmkXKCQCgeib6s3+l2Iw4ieG5npw8hcXuF7U2J9sQrPwDTxRjN/5OD6EM8g2GrH5sS6YyILL4OKBVlUvg0HFcNLYrfDoKlICU3r+CFK7HyM6MFFvLxIfps4sVOxlt9Eo0IQi2j6Pw0mdh3WWgJgTVNgh5YgsZ7YL9O0Zh2aYL+difXCTI1lsL9lZEt0VX7n5SkSvjWQErsHhmLEBymh4cQ+y4B/J3YGZu2xzjJuVcuNiOVFKLG+GGJCxeIaQ8oCsT5yRhszC5nE7oDBM++zjCAIKFQl8FjNJNYbEzVeyG9RZTDLtBDz9jix3piay4KiHw/rt1iJXYxJ4ywBtZCPlqrpKzyiMmEpkFhnTDLZ5ikNmG+P9UUPN00T64qxS4O4KaaR3aRYfhs3364kdj0WmmIJg6GmRZb+VwPvKH1ifTByLzC0x7EK+8pvifXHIBZ5e4z8NkTIsF8BJ3Y5ttvE1kXb1D9asjM2sc4YhxkW7TFe4tqr4Yn1wiqU8j2ktcerPZRwf117JXYl1u7r4T184gKrrXNI7BzsEe2x+tsqjK0YJXYOxva5l9d62hf6hRK7CQbpXFN00exfTfBxh59YVywsYmjf4esVMP/ZOSR2CfYDpeIBjMFxvV8AAAAASUVORK5CYII=">
+      <p class="txt">公開デモ（登録不要）<br><span class="url">https://tonari-hatake-safety.pages.dev/</span></p>
+    </div>
+    <p>笠間市周辺の架空のデータで、3つの立場の画面をお試しいただけます。飛行ログは取込んだサンプルでの表示です。<strong>ドローンメーカーとの自動連携、飛行中の位置の取得は、次の実証項目</strong>です。</p>
+    <p>現在は個人で開発しており、<strong>実際に散布を行っている方・事業者の方に、実情を伺っている段階</strong>です。行政からの委託や補助は受けていません。</p>
+  </div>
+  <div class="c">
+    <h2><span class="num">5</span>お伺いしたいこと</h2>
+    <div class="ask">
+      <p class="bt">実情を教えていただけないでしょうか</p>
+      <ol>
+        <li>散布の日程は、<strong>いつの時点で・誰が決めて</strong>いますか（数日前／前日／当日朝、ご自身の判断／JA・組合の一斉指示など）。</li>
+        <li>近隣への周知は、今どのように行われていますか。</li>
+        <li>この地域で、機体を<strong>個人で所有</strong>されている方はどのくらいいらっしゃいますか。多くは受託でしょうか。</li>
+        <li>ご本人としてお話を伺うか、他にドローンによる農薬散布をされている方・事業者の方を<strong>ご紹介いただく</strong>ことは可能でしょうか。</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div>
+    <div class="who">門田　誠 <span>080-4724-5900　makoto.monda@gmail.com</span></div>
+  </div>
+  <div class="small" style="text-align:right">
+    2026年8月<br>
+    参照：農林水産省「無人航空機による農薬等の空中散布」「残留農薬のポジティブリスト制度」
+  </div>
+</footer>
+
+</body>
+</html>
