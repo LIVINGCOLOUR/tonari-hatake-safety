@@ -352,6 +352,41 @@ Invoke-WebRequest -UseBasicParsing -Uri "https://tonari-hatake-safety.pages.dev/
 → ドローン連携で「同梱ログを取込」（高度グラフと追加確認が出る）→ 作業履歴（CSV/PDF）
 → ロール切替で周辺農家・地域管理。
 
+## Cloudflare Pagesへのデプロイ手順
+
+このプロジェクトは**Git連携ではなく手動アップロード**（`wrangler pages project list` の
+Git Provider は `No`）。pushしただけでは本番に反映されない。
+
+**作業フォルダをそのままアップロードしない。** 未追跡の作業用フォルダや、
+`BUSINESS_MODEL.md`（料金・戦略）、`docs/類似サービス比較A4.html`（配布しない資料）、
+`docs/紹介動画構成案.md` などの内部文書まで公開URLに載る。
+
+コミット済みのサイト資産だけを書き出してアップロードする。
+
+```powershell
+git status --branch --short          # 未コミットの変更がないか確認
+node --test tools\*.test.mjs
+Remove-Item -Recurse -Force .deploy-site -ErrorAction SilentlyContinue
+New-Item -ItemType Directory .deploy-site | Out-Null
+git archive HEAD index.html app.html css js vendor data assets | tar -x -C .deploy-site
+Remove-Item -Recurse -Force .deploy-site\assets\video -ErrorAction SilentlyContinue
+npx.cmd --yes wrangler@latest pages deploy .deploy-site --project-name tonari-hatake-safety --branch main --commit-dirty=true
+Remove-Item -Recurse -Force .deploy-site
+```
+
+**`assets\video` を必ず除外する。** 動画の制作素材（キーフレーム画像）が入っており、
+アプリの動作には不要。動画は限定公開の方針のため、素材が公開URLに載るのは避ける
+（`docs/紹介動画構成案.md` §9）。
+
+デプロイ後の確認:
+
+```powershell
+# 内部文書が公開されていないこと（HTMLのフォールバックが返れば未配信）
+curl.exe -s -o NUL -w "%{content_type}\n" https://tonari-hatake-safety.pages.dev/BUSINESS_MODEL.md
+```
+
+`.deploy-site/` は `.gitignore` 済み。
+
 ## 別のAI・担当者への引継ぎルール
 
 - 編集前に `README.md`、`FEATURE_MAP.md`、この文書を読む。
