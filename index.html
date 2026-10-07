@@ -8,7 +8,7 @@
     <meta property="og:title" content="となりの畑セーフティ（仮称）">
     <meta property="og:description" content="散布前に周辺を確認し、近隣へ知らせ、実施を記録する。農薬飛散被害と農家間のトラブルを未然に防ぐ地域アプリ。">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="assets/field-safety.png">
+    <meta property="og:image" content="assets/promo/hero-dawn.jpg">
     <title>となりの畑セーフティ（仮称） | 散布前の確認・近隣通知・記録で飛散トラブルを防ぐ</title>
     <link rel="stylesheet" href="css/landing.css?v=20260727-clear-copy">
     <script src="js/landing.js?v=20260717" defer></script>
@@ -27,10 +27,11 @@
       <nav class="site-nav" id="siteNav" aria-label="ページ内ナビゲーション">
         <a href="#why">解決する課題</a>
         <a href="#flow">仕組み</a>
-        <a href="#product">飛行ログ</a>
+        <a href="#intro-video">3分の動画</a>
         <a href="#features">開発段階</a>
         <a href="#roles">利用者別</a>
-        <a class="header-cta" href="app.html#dashboard">デモを試す</a>
+        <a class="header-cta" href="app.html?demo=1#dashboard">デモを試す</a>
+        <a class="header-cta" href="app.html?login=1">ログイン</a>
       </nav>
     </header>
 
@@ -42,12 +43,13 @@
           <p class="hero-kicker">農薬・肥料をまく前の、確認・連絡・記録アプリ</p>
           <h1 id="heroTitle">となりの畑<br>セーフティ<span class="hero-provisional">（仮称）</span></h1>
           <p class="hero-lead"><span class="seg">まく前に知らせて、</span><br class="desktop-only"><span class="seg">飛散トラブルを防ぐ。</span></p>
-          <p class="hero-body">散布する人は、周辺の畑と天気を確かめ、近隣へ予定を知らせ、実施を記録します。周辺の農家は、自分の畑に関係する予定を受け取り、返信できます。散布の実績は、機体の飛行ログと結び付けて残せるようにしていきます（実装中）。</p>
+          <p class="hero-body">散布する人は、知らせる相手を地図で確かめ、予定を伝え、延期になったら同じ相手にもう一度伝え、実施を記録します。周辺の農家や施設には、自分に関係する予定だけが届きます。</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="app.html#dashboard">デモを試す（登録不要）</a>
-            <a class="button button-on-dark" href="#flow">使い方を見る</a>
+            <a class="button button-primary" href="#intro-video">3分の動画を見る</a>
+            <a class="button button-on-dark" href="app.html?demo=1#dashboard">デモを試す（登録不要）</a>
+            <a class="text-link" href="app.html#dashboard">ログインして使う</a>
           </div>
-          <p class="hero-note">散布者・周辺農家・自治体・JAの3つの画面を、登録なしで試せます。</p>
+          <p class="hero-note">デモは笠間市周辺を想定したサンプルです。実在の農家の情報は含みません。</p>
         </div>
         <div class="hero-signal" aria-hidden="true">
           <span>散布計画</span><i></i><span>周辺確認</span><i></i><span>近隣通知</span><i></i><span>実施記録</span><i></i><span>作業履歴</span>
@@ -55,11 +57,11 @@
       </section>
 
       <section class="proof-strip" aria-label="実証版の開発状況">
-        <p><strong>実証版（開発中）</strong><span>散布の許可・承認は行わず、飛散被害を防ぐための確認・連絡・記録を支えます。</span></p>
+        <p><strong>作っている途中です</strong><span>散布の許可・承認は行いません。飛散トラブルを防ぐための確認・連絡・記録を支えます。</span></p>
         <dl>
           <div><dt>現在のデモ</dt><dd>計画・周辺確認・通知・記録</dd></div>
           <div><dt>実装中</dt><dd>飛行ログ取込・地区連絡網への投稿支援・組織アカウント</dd></div>
-          <div><dt>対象</dt><dd>散布者・周辺農家・自治体・JA</dd></div>
+          <div><dt>対象</dt><dd>散布者・周辺関係者・自治体・JA</dd></div>
         </dl>
       </section>
 
@@ -70,8 +72,8 @@
         </div>
         <div class="problem-copy">
           <p class="large-copy">行政の事故・研修資料には、事前周知が十分でないまま農薬が散布され、周辺圃場への飛散や住民とのトラブルにつながった事例が報告されています。</p>
-          <p>紙の広報だけでは、自分に関係する散布か分かりにくく、天候による延期・中止もすぐには伝えられません。一方で、隣接農家だけに知らせれば十分とも限りません。有機・農薬不使用の畑、住宅、学校、養蜂など、散布場所と状況に応じて知らせる相手を確認する必要があります。</p>
-          <p>散布計画と地図から通知候補を整理し、予定変更を同じ相手へ伝え、通知・返信・実施結果をひとつの記録に残します。散布者を取り締まるのではなく、必要な相手への連絡漏れを散布前に防ぐ仕組みです。</p>
+          <p>国のガイドラインは、周辺に有機のほ場や学校、家屋、蜜蜂の巣箱があるとき、散布の日時・目的・農薬の種類・連絡先を余裕をもって知らせ、日時が変われば改めて知らせることを求めています。けれど、隣のほ場が有機なのか、巣箱がどこにあるのかを散布する側が確かめる手段がなく、回覧や機関紙では同じ相手へその都度伝え直せません。</p>
+          <p>散布計画と地図から知らせる相手を出し、予定の変更を同じ相手へ伝え、通知・返信・実施結果をひとつの記録に残します。周知と記録は、散布する人を縛るものではなく、守るものです。</p>
         </div>
         <div class="before-after" aria-label="従来と導入後の比較">
           <div class="before-column">
@@ -85,7 +87,7 @@
           </div>
           <div class="change-mark" aria-hidden="true">→</div>
           <div class="after-column">
-            <span>となりの畑セーフティ（仮称）</span>
+            <span>このアプリ</span>
             <strong>地図で確認し、散布前に連絡し、記録を残す</strong>
             <ul>
               <li>圃場位置と周辺状況から通知候補を確認</li>
@@ -100,29 +102,31 @@
         <div class="section-intro flow-intro">
           <p class="section-label">使い方の流れ</p>
           <h2 id="flowTitle"><span class="seg">計画から記録まで、</span><span class="seg">ひと続きの</span><span class="seg">流れに。</span></h2>
-          <p>散布するかどうかは人が判断します。アプリは、確認・連絡・記録の抜けを防ぎます。現在のデモでは、次の流れを3つの利用者画面から確認できます。</p>
+          <p>散布するかどうかは人が判断します。アプリは、確認・連絡・記録の抜けを防ぎます。予定を登録すると、連絡から当日の確認、実施の記録までが、ひとつの案件として並びます。</p>
         </div>
         <ol class="flow-list">
           <li><span>01</span><div><strong>散布計画</strong><p>散布する人が、日時・畑・使う機体と、まく資材の種類（農薬・肥料・液体肥料）・使用量を登録します。</p></div></li>
           <li><span>02</span><div><strong>周辺と天気の確認</strong><p>航空写真で周辺の畑の状況を、予報で当日の天気を確かめます。現地で測った風向・風速は予報と分けて記録します。</p></div></li>
           <li><span>03</span><div><strong>近隣への連絡</strong><p>影響がありそうな農家へ散布前に知らせ、「確認しました」「収穫の予定があります」といった返信や、電話で相談した内容を記録します。</p></div></li>
-          <li><span>04</span><div><strong>実施後の報告</strong><p>実施日時、使用資材、気象、作業結果を計画に結び付けて記録します。現在のデモではサンプル飛行ログも確認できます（実機ログの取込は実装中）。</p></div></li>
+          <li><span>04</span><div><strong>実施後の報告</strong><p>実施日時、使用資材、気象、作業結果を計画に結び付けて記録します。省令が求める使用記録と、航空法が求める飛行の記録を同じ案件に残せるよう、機体からのログ取込を開発しています。</p></div></li>
           <li><span>05</span><div><strong>圃場別の作業履歴</strong><p>資材の種類・散布量・面積・日時が畑ごとに残ります。防除履歴を確認するときの控えとして使えます。</p></div></li>
         </ol>
       </section>
 
-      <section class="product-section" id="product" aria-labelledby="productTitle">
+      <section class="product-section" id="intro-video" aria-labelledby="productTitle">
         <div class="product-copy">
-          <p class="section-label">実装中の開発</p>
-          <h2 id="productTitle">飛行ログで、<br>散布実績を残す。</h2>
-          <p>お使いの機体から正規に出力した飛行ログを、散布計画と圃場に結び付け、飛行軌跡・高度・作業時刻・散布範囲を地図で確認できるようにします。特定メーカー専用のアプリにはせず、正規に出力できるログ形式から順次対応します（最初の対応候補はDJI AGRAS系）。</p>
-          <p><strong>現在はサンプルログによる画面検証の段階です。</strong> 実データ形式と取得項目を確認したうえで、自治体・JA・散布事業者との実証実験へ進みます。</p>
-          <a class="text-link" href="app.html?role=sprayer#drone">現在の飛行ログ確認デモを開く <span aria-hidden="true">→</span></a>
+          <p class="section-label">3分でわかる</p>
+          <h2 id="productTitle">課題と、<br>この道具。</h2>
+          <p>なぜ事前の周知が実行されないのか、国のガイドラインは何を求めているのか、そしてこのアプリで何ができるのかを、3分にまとめました。</p>
+          <p>前半の風景はAIで生成したイメージです。後半のアプリの画面は実際のものです。</p>
+          <a class="text-link" href="app.html?demo=1#map">地図の画面をデモで開く <span aria-hidden="true">→</span></a>
         </div>
-        <figure class="product-visual">
-          <div class="browser-bar" aria-hidden="true"><span></span><span></span><span></span><p>となりの畑セーフティ（仮称） / 飛行ログ確認デモ</p></div>
-          <img src="assets/app-dashboard.webp" alt="航空写真上に散布圃場と周辺圃場を表示した、となりの畑セーフティ（仮称）の圃場マップ画面" width="1440" height="960">
-          <figcaption>サンプルデータを使用した現在の実証版画面です。実機の飛行ログ取込は実装中です。</figcaption>
+        <figure class="product-visual video-visual">
+          <video controls preload="metadata" playsinline poster="assets/promo/intro-poster.jpg" width="1280" height="720">
+            <source src="assets/promo/intro-720p.mp4" type="video/mp4">
+            お使いのブラウザでは動画を再生できません。
+          </video>
+          <figcaption>約4分・音声あり。ナレーションも合成音声です。</figcaption>
         </figure>
       </section>
 
@@ -137,13 +141,13 @@
             <span class="feature-status status-current">現在のデモ</span>
             <h3>散布前の確認・近隣通知・実施記録</h3>
             <p>農薬・肥料の散布計画、航空写真による周辺確認、気象予報と現地実測の記録、近隣への通知・返信、実施後報告を一連の流れで試せます。</p>
-            <a href="app.html?role=sprayer#dashboard">散布者のデモを開く <span aria-hidden="true">→</span></a>
+            <a href="app.html?demo=1&amp;role=sprayer#dashboard">散布者のデモを開く <span aria-hidden="true">→</span></a>
           </article>
           <article class="feature-item">
             <span class="feature-status status-partial">実装中</span>
             <h3>機体の飛行ログ取込</h3>
             <p>機体メーカーが正規に出力する飛行ログを取り込み、計画した圃場と実際の飛行軌跡、高度、作業時刻、散布範囲を照合します。まずDJI AGRAS系から、実ファイルを入手して形式を検証してから対応します。</p>
-            <a href="app.html?role=sprayer#drone">サンプルログの確認画面を見る <span aria-hidden="true">→</span></a>
+            <a href="app.html?demo=1&amp;role=sprayer#drone">サンプルログの確認画面を見る <span aria-hidden="true">→</span></a>
           </article>
           <article class="feature-item">
             <span class="feature-status status-partial">実装中</span>
@@ -180,21 +184,21 @@
             <h3>きょう確認することが、順番に並ぶ。</h3>
             <p>散布計画から、周辺と天気の確認、近隣への連絡、散布後の報告まで、作業の順に並びます。適切に作業した記録をまとめて残せます。</p>
             <ul><li>まだ終わっていない作業を上に表示</li><li>天気を「予報」「自分の確認」「現地で測った値」に分けて記録</li><li>飛行記録・実施後報告・作業履歴をひとつに</li></ul>
-            <a href="app.html?role=sprayer#dashboard">散布者モードを試す <span aria-hidden="true">→</span></a>
+            <a href="app.html?demo=1&amp;role=sprayer#dashboard">散布者モードを試す <span aria-hidden="true">→</span></a>
           </article>
           <article class="role-card role-neighbor">
-            <p class="role-number">02 / 周辺農家</p>
+            <p class="role-number">02 / 周辺関係者</p>
             <h3>自分の畑に関係する予定だけが届く。</h3>
             <p>近くで予定されている散布と、まだ返事をしていない連絡が届きます。内容を確かめて、そのまま返信できます。</p>
             <ul><li>自分の畑の栽培方法（有機・農薬不使用など）を登録</li><li>「収穫の予定がある」「電話で相談したい」といった返信で事情を伝える</li><li>名前や畑の情報をどこまで見せるか、自分で設定</li></ul>
-            <a href="app.html?role=neighbor#dashboard">周辺農家モードを試す <span aria-hidden="true">→</span></a>
+            <a href="app.html?demo=1&amp;role=neighbor#dashboard">周辺関係者モードを試す <span aria-hidden="true">→</span></a>
           </article>
           <article class="role-card role-admin">
             <p class="role-number">03 / 自治体・JA（地域管理）</p>
             <h3>予定・実績と、未連絡・未報告をひと目で。</h3>
             <p>地域の散布予定と実績、連絡がまだ済んでいない計画、報告が未提出の計画を一覧で把握できます。散布の許可・承認を行う画面ではありません。</p>
             <ul><li>都道府県・市町村・日付で件数を集計</li><li>予定と実績を航空写真で確認</li><li>計画ごとの連絡・報告状況を確認</li></ul>
-            <a href="app.html?role=admin#dashboard">地域管理モードを試す <span aria-hidden="true">→</span></a>
+            <a href="app.html?demo=1&amp;role=admin#dashboard">地域管理モードを試す <span aria-hidden="true">→</span></a>
           </article>
         </div>
       </section>
@@ -233,11 +237,11 @@
         <div class="closing-shade" aria-hidden="true"></div>
         <div class="closing-inner">
           <p class="section-label">デモの案内</p>
-          <h2 id="closingTitle"><span class="seg">となりの畑を</span><span class="seg">知ることから、</span><br><span class="seg">安全な散布を</span><span class="seg">はじめよう。</span></h2>
-          <p>笠間市周辺を想定したサンプルデータで、散布者・周辺農家・地域管理の3つの画面をすぐに試せます。実在の農家の情報は含まれていません。</p>
+          <h2 id="closingTitle"><span class="seg">まく前に知らせて、</span><br><span class="seg">飛散トラブルを防ぐ。</span></h2>
+          <p>作っている途中です。散布している方、周辺で営農している方、自治体・JAの方、実情を聞かせてください。笠間市周辺を想定したサンプルで、散布者・周辺関係者・地域管理の画面をすぐに試せます。</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="app.html#dashboard">デモを開く（登録不要）</a>
-            <a class="button button-on-dark" href="app.html?role=admin#dashboard">自治体・JA向け画面を見る</a>
+            <a class="button button-primary" href="app.html?demo=1#dashboard">デモを開く（登録不要）</a>
+            <a class="button button-on-dark" href="app.html?demo=1&amp;role=admin#dashboard">自治体・JA向け画面を見る</a>
           </div>
         </div>
       </section>
@@ -246,7 +250,7 @@
     <footer class="site-footer">
       <div class="footer-brand"><span class="site-brand-mark" aria-hidden="true">田</span><strong>となりの畑セーフティ <span class="provisional-label">（仮称）</span></strong></div>
       <p>農薬・肥料の散布前の連絡・確認を支える、開発中の実証版サービス</p>
-      <div><a href="#why">解決する課題</a><a href="#features">提供機能</a><a href="#roles">利用者別</a><a href="app.html#dashboard">デモ</a></div>
+      <div><a href="#why">解決する課題</a><a href="#features">提供機能</a><a href="#roles">利用者別</a><a href="app.html?demo=1#dashboard">デモ</a></div>
       <small>© <span id="currentYear">2026</span> Tonari Hatake Safety</small>
     </footer>
   </body>

@@ -71,9 +71,10 @@ h1, h2, h3 { text-wrap: balance; }
 .nav-toggle span { display: block; height: 2px; margin: 4px 0; background: currentColor; }
 
 .hero { position: relative; display: grid; min-height: min(780px, 92vh); align-items: center; overflow: hidden; color: #fff; background: var(--forest-deep); }
-.hero-media, .closing-media { position: absolute; inset: 0; background: url("../assets/field-safety.webp") center / cover no-repeat; }
+.hero-media, .closing-media { position: absolute; inset: 0; background: url("../assets/promo/hero-dawn.jpg") center / cover no-repeat; }
+.closing-media { background-image: url("../assets/promo/hero-aerial.jpg"); }
 .hero-media { transform: scale(1.01); }
-.hero-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,29,22,.92) 0%, rgba(8,29,22,.72) 44%, rgba(8,29,22,.2) 72%, rgba(8,29,22,.06) 100%); }
+.hero-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,29,22,.86) 0%, rgba(8,29,22,.62) 44%, rgba(8,29,22,.18) 72%, rgba(8,29,22,.04) 100%); }
 .hero-inner { position: relative; z-index: 1; width: min(var(--content), calc(100% - 48px)); margin: 50px auto 0; }
 .hero-kicker, .section-label { margin: 0 0 16px; color: var(--leaf-bright); font-size: 12px; font-weight: 900; letter-spacing: .14em; }
 .hero h1 { max-width: 650px; margin: 0; font-size: clamp(52px, 7.2vw, 96px); line-height: 1.05; letter-spacing: 0; }
@@ -127,6 +128,9 @@ h1, h2, h3 { text-wrap: balance; }
 .browser-bar span:nth-child(3) { background: #5aae70; }
 .browser-bar p { margin: 0 0 0 8px; font-size: 10px; }
 .product-visual img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; object-position: top left; background: #e8eeeb; }
+.video-visual { background: #0b1410; }
+.video-visual video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+.product-visual.video-visual figcaption { padding: 10px 14px; font-size: 12px; color: #9fb3aa; background: #0b1410; }
 .product-visual figcaption { padding: 10px 14px; color: #566761; background: #fff; font-size: 11px; }
 
 .flow-intro { max-width: 760px; }
@@ -188,7 +192,7 @@ h1, h2, h3 { text-wrap: balance; }
 .tech-band span { color: #b9ced7; font-size: 12px; }
 
 .closing { position: relative; display: grid; min-height: 570px; align-items: center; overflow: hidden; color: #fff; }
-.closing-media { background-position: center 56%; }
+.closing-media { background-position: center 40%; }
 .closing-shade { position: absolute; inset: 0; background: rgba(8,31,23,.78); }
 .closing-inner { position: relative; z-index: 1; width: min(780px, calc(100% - 48px)); margin: 0 auto; padding: 90px 0; text-align: center; }
 .closing-inner .section-label { color: #82db94; }

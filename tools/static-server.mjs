@@ -13,8 +13,17 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
+  ".mp4": "video/mp4",
+  ".m4a": "audio/mp4",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".pdf": "application/pdf",
+  ".geojson": "application/geo+json",
+  ".zip": "application/zip",
 };
 
 const server = createServer(async (request, response) => {
@@ -28,9 +37,31 @@ const server = createServer(async (request, response) => {
     }
     const info = await stat(file);
     if (!info.isFile()) throw new Error("Not a file");
+    const type = contentTypes[extname(file).toLowerCase()] || "application/octet-stream";
+    // 動画・音声の再生には Range（部分取得）への応答が要る。Safari は 206 を返さないと再生しない
+    const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range || "");
+    if (range && (range[1] || range[2])) {
+      const start = range[1] ? Number(range[1]) : Math.max(0, info.size - Number(range[2]));
+      const end = range[1] && range[2] ? Math.min(Number(range[2]), info.size - 1) : info.size - 1;
+      if (start >= info.size || start > end) {
+        response.writeHead(416, { "Content-Range": `bytes */${info.size}` }).end();
+        return;
+      }
+      response.writeHead(206, {
+        "Cache-Control": "no-store",
+        "Content-Type": type,
+        "Accept-Ranges": "bytes",
+        "Content-Range": `bytes ${start}-${end}/${info.size}`,
+        "Content-Length": end - start + 1,
+      });
+      createReadStream(file, { start, end }).pipe(response);
+      return;
+    }
     response.writeHead(200, {
       "Cache-Control": "no-store",
-      "Content-Type": contentTypes[extname(file).toLowerCase()] || "application/octet-stream",
+      "Content-Type": type,
+      "Accept-Ranges": "bytes",
+      "Content-Length": info.size,
     });
     createReadStream(file).pipe(response);
   } catch {
