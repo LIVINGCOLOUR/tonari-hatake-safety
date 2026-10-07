@@ -1,182 +1,43 @@
-# となりの畑セーフティ（仮称） MVP
+# となりの畑セーフティ（仮称）
 
-農薬・液体肥料などのドローン散布について、散布者、周辺農家、自治体・JA担当者が同じ地図と確認状況を見ながら、散布前確認、近隣通知、飛行ログ確認、実施後報告を行うためのフロントエンドMVPです。
+農薬・液体肥料のドローン散布について、散布者・周辺農家・自治体/JAが
+事前確認、近隣周知、実施記録を共有するMVP。笠間市周辺想定の匿名サンプルです。
+散布の許可、被害原因や法的責任の判定は行いません。
 
-笠間市周辺を想定した匿名サンプルデモとして作成しています。実運用の判定システムではなく、飛散被害を未然に防ぐための確認・共有フローを検証する画面です。
+## 起動
 
-## 解決する課題
-
-農林水産省や自治体の資料では、事前周知不足が原因と考えられる農薬飛散事故や、事前周知のない散布に関する相談事例が報告されています。本MVPは、次の連絡上の課題を解決対象とします。
-
-- 散布予定が事前に通知されない、または必要な相手に届かない
-- 機関紙など広い地域への一律周知では、自分に関係する散布か判断しにくい
-- 天候による延期・中止・再開を、同じ対象者へタイムリーに再通知しにくい
-- 隣接農家だけでなく、有機・農薬不使用圃場、住宅、学校、養蜂などを含む通知候補の把握が難しい
-- 誰に知らせ、相手が確認・返信したかを散布計画と結び付けて残せない
-
-散布者を取り締まったり散布可否を自動判定したりするのではなく、圃場位置と地域ルールから通知候補を整理し、予定変更、返信、実施結果までを一つの案件として記録することを目指します。
-
-## デプロイ先
-
-Cloudflare Pages: https://tonari-hatake-safety.pages.dev/
-
-紹介ページは `/`、MVP本体は `/app.html` です。紹介ページから未登録デモの3ロールへ直接移動できます。
-
-GitHub: https://github.com/LIVINGCOLOUR/tonari-hatake-safety
-
-GitHubリポジトリはprivateです。Cloudflare PagesのURLは公開URLなので、URLを知っている人は閲覧できます。
-
-## ローカルでの開き方
-
-このMVPは `fetch()` で `data/boundaries/index.json` や境界データを読むため、`app.html` を `file://` で直接開くと市町村カタログが読み込めません。`index.html` はサービス紹介ページです。
-
-ローカル確認はHTTPサーバー経由で開いてください。
-
-```powershell
-python -m http.server 8080
+```sh
+node tools/static-server.mjs . 4177
 ```
 
-その後、ブラウザで以下を開きます。
+- 紹介: `http://127.0.0.1:4177/`
+- 通常画面: `http://127.0.0.1:4177/app.html`
+- 実証デモ: `http://127.0.0.1:4177/app.html?demo=1`
 
-```text
-http://localhost:8080/
-```
+`file://` は不可。通常画面も公開準備中で、デモ切替は表示のみです。
+未登録時は端末保存。ログイン後、利用者が明示的に移行した地域をSupabaseと同期します。
 
-未登録デモの入力はブラウザの `localStorage` に保存されます。保存キーは
-`tonariHatakeSafetyMvp.v3.coverage` です。ログイン後に利用者が明示的に移行した地域は、
-利用者IDと地域IDを含む専用キーへ分離し、端末保存を維持しながらSupabaseへ同期します。
-初回ログイン時だけデモ用端末データを選択地域へ移し、以後は地域・利用者を切り替えても
-別の端末データを表示・送信しません。
-ブラウザの保存領域が利用できない場合は、そのページを閉じるまでメモリへ退避します。
-メモリ退避へ切り替えた利用者・地域は、同じページ内で古い端末保存へ戻しません。
+## 開発資料
 
-## 主な機能
+エージェントは [AGENTS.md](AGENTS.md) から開始し、必要な文書だけ参照します。
 
-- トップダッシュボード
-- 散布前確認状況・追加確認項目の表示
-- 散布計画登録
-- 資材種別（農薬、液体肥料・葉面散布、その他資材）
-- 使用量・面積からの総量計算
-- 機体・操縦者・散布装置の既定値保存
-- 圃場マップ・周辺確認
-- MapLibre + 国土地理院航空写真タイル
-- GeoJSON / Shapefile zip の圃場境界取込
-- `data/boundaries/index.json` による市町村カタログ読込
-- 筆ポリゴンの背景表示と、地図タップによる自ほ場採用
-- 圃場ステータス登録
-- 近隣通知文生成、通知済み管理
-- Open-Meteo Forecast API による気象予報の自動取得
-- 散布前チェックリスト
-- ドローン連携モック
-- DJI AGRASを想定した実証用サンプルJSONの飛行ログ取込（実機ログ自動解析は未実装）
-- 散布カバレッジ表示と再生
-- 可変施肥（VRA）処方マップの取込・作成・編集・GeoJSON書き出し
-- 実施後報告
-- 作業履歴・防除履歴、CSV/PDF出力
-- 自治体向け地域管理画面
-- 散布予定・実績一覧、行クリック詳細、上空写真、作業詳細、気象確認状況
-- 管理者ロールでは、操作タブを `トップ` と `散布予定・実績` に限定
-- 案件共通バーと、計画・通知返信・散布前確認・飛行ログ・実施後報告・地域一覧のPDF印刷用ビュー
-- Magic Linkログイン、地域ワークスペース、3ロール所属
-- Supabaseへの圃場・計画・通知・報告の同期
-- 通信切断中の変更を端末へ保持し、起動時・再接続時に再送
-- 非公開Storageへの報告写真・飛行ログ保存
+| 知りたいこと | 正本 |
+| --- | --- |
+| 機能・ロール・実装状況 | [FEATURE_MAP.md](FEATURE_MAP.md) |
+| 通知方式・料金・閲覧権限 | [BUSINESS_MODEL.md](BUSINESS_MODEL.md) |
+| コードの所在・開発・検証 | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| 未完了事項・作業再開 | [HANDOFF.md](HANDOFF.md) |
+| 専門設計・運用・調査・配布資料 | [文書索引](docs/README.md) |
 
-## データ構成
+## 公開先
 
-- `BUSINESS_MODEL.md`: 事業方針の正本（優先順位、通知方式、料金・閲覧権限）
-- `docs/`: 県ヒアリング用資料（概要説明A4、類似サービス比較表、基本仕様書）
-- `index.html`: サービス紹介ページ
-- `app.html`: MVP画面構造
-- `css/landing.css`: 紹介ページのスタイル
-- `js/landing.js`: 紹介ページのナビゲーション
-- `css/styles.css`: UIスタイル
-- `js/main.js`: UI状態、描画、地図、気象取得、境界取込IO、VRA、CSV/PDF処理
-- `js/domain/flight-log.mjs`: 実証用サンプル飛行ログ形式の検証・正規化
-- `data/flight-logs/kasama-agras-sample.json`: DJI AGRASを想定した実証用サンプルログ
-- `js/domain/state.mjs`: 保存形式と圃場参照の移行
-- `js/domain/geometry.mjs`: WGS84形状、距離、方位、安定ハッシュ
-- `js/domain/import.mjs`: 圃場取込の正規化、来歴、外部参照、重複排除
-- `js/domain/sync.mjs`: アカウント・地域・端末の同期境界と遠隔同期ペイロード
-- `js/repositories/app-state.mjs`: 計画、圃場、通知、作業記録の保存契約
-- `js/repositories/supabase-app-state.mjs`: Supabase正規化テーブルとの同期アダプター
-- `js/services/supabase-auth.mjs`: Magic Link、プロフィール、地域所属
-- `js/services/supabase-storage.mjs`: 非公開写真・飛行ログ保存
-- `js/services/pending-sync.mjs`: 地域・利用者別のクラウド未送信状態
-- `js/services/device-state-context.mjs`: デモ、利用者、地域ごとの端末保存キー
-- `supabase/migrations/`: Postgres / PostGIS、RLS、監査、Storage
-- `SUPABASE_RUNBOOK.md`: Supabaseの反映、検証、FreeからProへの移行手順
-- `SYNC_CONFLICTS.md`: 複数端末で同時編集した場合の上書き防止と利用者の操作
-- `server/integrations/`: プロバイダーに依存しない読取専用BFFロジック
-- `worker/`: レート・同時実行制限を持つ外部連携専用Worker
-- `INTEGRATIONS.md`: xarvio/WAGRI連携の対応範囲、項目対応、認証境界
-- `SYNC_BOUNDARY.md`: 遠隔保存の同期範囲、権限前提、大容量資産の扱い
-- `vendor/maplibre-gl/`: MapLibre GL JS
-- `vendor/turf/`: Turf.js
-- `vendor/shpjs/`: Shapefile読込
-- `data/boundaries/index.json`: 市町村境界カタログ
-- `data/boundaries/*.geojson`: 軽量デモ境界
-- `data/boundaries/*-fude.zip`: 筆ポリゴンShapefile zip
+- [公開デモ](https://tonari-hatake-safety.pages.dev/)
+- [GitHub](https://github.com/LIVINGCOLOUR/tonari-hatake-safety)（private）
 
-## 境界データの追加
+Pagesは手動アップロードです。pushのみでは反映されません。
+公開URLは誰でも閲覧可能。公開資産の選別・デモ準備は [運用手順](docs/DEMO_AND_DEPLOY.md) を参照。
 
-`data/boundaries/` に GeoJSON または Shapefile zip を配置し、`data/boundaries/index.json` に登録すると、圃場マップの「対象市町村」から選べます。
+## 課題の根拠
 
-```json
-{
-  "code": "08216",
-  "name": "笠間市（筆ポリゴン2021）",
-  "file": "kasama-fude.zip"
-}
-```
-
-多数の筆ポリゴンは背景レイヤーとして表示し、地図上で筆をクリックして「散布ほ場にする」「周辺ほ場に追加」を選ぶ運用です。少数のポリゴンは管理対象ほ場として直接読み込まれます。
-
-## 設計方針
-
-法的な判定や原因断定ではなく、散布前後の確認状況を「未確認」「要確認」「記録済み」として扱います。目的は、散布者、周辺農家、JA、自治体が同じ情報を見て、農薬・資材の飛散リスクを事前に下げることです。
-
-xarvio/WAGRIは、公開仕様で確認できる圃場境界だけをプロバイダー別アダプターで正規化します。API認証情報はフロントエンドへ保存せず、本接続時はバックエンドまたはBFFで扱います。詳細は `INTEGRATIONS.md` を参照してください。
-
-## V1で未実装のもの
-
-DIPS連携、ドローンメーカーSDK実連携、圃場台帳との本番連携、
-本番用の個人情報運用は未実装です。
-通知の実配信は方針変更（2026-07-30）により、自前のLINE・メール送信基盤ではなく
-地区単位のLINEオープンチャットへ通知文を投稿する運用を先に実証します
-（[BUSINESS_MODEL.md](BUSINESS_MODEL.md) 参照）。
-
-認証、バックエンドDB、RLS、監査イベント、非公開StorageはFree開発環境へ実装済みです。
-実利用者を受け入れる前にProへ移行し、バックアップ、復旧、監査保持、退会・削除手順を
-運用として確定します。
-
-気象情報はOpen-Meteoの予報値を取得しますが、散布直前の現地実測の代替ではありません。
-
-## デプロイ
-
-Cloudflare Pages のプロジェクト名は `tonari-hatake-safety` です。
-
-```powershell
-npx.cmd --yes wrangler@latest pages deployment list --project-name tonari-hatake-safety
-```
-
-最新の本番反映状況は以下で確認できます。
-
-```powershell
-Invoke-WebRequest -UseBasicParsing -Uri "https://tonari-hatake-safety.pages.dev/" | Select-Object -ExpandProperty StatusCode
-```
-
-## 引継ぎ
-
-別AI・別スレッドへ渡す場合は [HANDOFF.md](HANDOFF.md) を先に読ませてください。Claude Codeなど他AIとの会話そのものはこのリポジトリからは参照できないため、判断理由や未完了事項は必ずコミットメッセージか `HANDOFF.md` に残します。
-
-## 参照リンク
-
-- 農林水産省：農薬の使用に伴う事故・被害  
-  https://www.maff.go.jp/j/press/syouan/nouyaku/260130.html
-- 農林水産省：無人航空機による農薬等の空中散布  
-  https://www.maff.go.jp/j/syouan/syokubo/gaicyu/g_kouku_zigyo/muzinkoukuuki.html
-- 茨城県：農業支援サービス事業  
-  https://www.pref.ibaraki.jp/nourinsuisan/sansin/shushi/nougyoushiennservice.html
-- Open-Meteo Forecast API  
-  https://open-meteo.com/en/docs
+事前周知不足や変更時の再連絡、通知対象の把握を支援します。調査時点と原文の記録は
+[RULES_AND_GUIDELINES.md](RULES_AND_GUIDELINES.md) §2・§11 にまとめています。

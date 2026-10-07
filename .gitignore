@@ -8,3 +8,6 @@ supabase/.temp/
 *.log
 verify_*.png
 .deploy-site/
+assets/video/out/
+.DS_Store
+.playwright-mcp/

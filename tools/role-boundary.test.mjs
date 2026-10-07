@@ -92,3 +92,21 @@ test("近接時のみ設定は重点距離の外では通知しない", () => {
 test("農薬散布のみ設定は肥料散布を通知しない", () => {
   assert.equal(notifyPreferenceAllows({ pref: "agrochemicalOnly", isAgrochemical: false, distance: 120 }), false);
 });
+
+
+test("兼務者は選択地域の有効な所属だけを切り替えられる", async () => {
+  const { switchableRoles, selectAvailableRole } = await import("../js/domain/disclosure.mjs");
+  const memberships = [
+    { workspace_id: "a", role: "sprayer", status: "active" },
+    { workspace_id: "a", role: "neighbor", status: "active" },
+    { workspace_id: "a", role: "admin", status: "inactive" },
+    { workspace_id: "b", role: "admin", status: "active" },
+  ];
+  const roles = switchableRoles({ signedIn: true, workspaceId: "a", memberships });
+  assert.deepEqual(roles, ["sprayer", "neighbor"]);
+  assert.equal(selectAvailableRole(roles, "neighbor", "sprayer"), "neighbor");
+  assert.equal(selectAvailableRole(roles, "admin", "sprayer"), "sprayer");
+  assert.deepEqual(switchableRoles({ signedIn: true, workspaceId: "c", memberships }), []);
+  assert.equal(selectAvailableRole([], "admin", "sprayer"), null);
+  assert.deepEqual(switchableRoles({ signedIn: false }), ["sprayer", "neighbor", "admin"]);
+});

@@ -265,13 +265,15 @@ export function notificationToRow(plan, fieldClientRef, context) {
     target_key: `field:${required(fieldClientRef, "通知対象圃場")}`,
     channel: String(context?.channel || "line"),
     delivery_status: delivered ? "delivered" : "pending",
-    delivered_at: delivered ? context?.syncedAt || new Date().toISOString() : null,
+    delivered_at: delivered ? plan?.noticeDeliveryRecords?.[fieldClientRef]?.at || context?.syncedAt || new Date().toISOString() : null,
     response_code: responseToCode.get(response) || "other",
     response_message: responseToCode.has(response) ? "" : response,
     responded_at: response !== "未回答" ? context?.syncedAt || new Date().toISOString() : null,
     response_by: response !== "未回答" ? context?.userId || null : null,
     notification_data: {
       clientFieldRef: fieldClientRef,
+      noticeRevision: Number(plan?.noticeRevision || 0),
+      deliveryRecord: plan?.noticeDeliveryRecords?.[fieldClientRef] || null,
       replyNote: String(plan?.notificationReplyNotes?.[fieldClientRef] || ""),
       acknowledgedAt: plan?.notificationAcks?.[fieldClientRef] || null,
     },
@@ -313,7 +315,8 @@ function mergeRelatedRows(plans, related) {
   arrayValue(related.notifications).forEach((row) => {
     const plan = byUuid.get(String(row.plan_id));
     const fieldRef = String(row.notification_data?.clientFieldRef || "").trim();
-    if (!plan || !fieldRef) return;
+    if (!plan || !fieldRef || Number(row.notification_data?.noticeRevision || 0) !== Number(plan.noticeRevision || 0)) return;
+    plan.noticeDeliveryRecords = { ...(plan.noticeDeliveryRecords || {}), [fieldRef]: row.notification_data?.deliveryRecord || null };
     plan.notificationTargets = {
       ...(plan.notificationTargets || {}),
       [fieldRef]: ["sent", "delivered"].includes(row.delivery_status),
@@ -330,7 +333,7 @@ function mergeRelatedRows(plans, related) {
     };
     plan.notificationAcks = {
       ...(plan.notificationAcks || {}),
-      ...(row.notification_data?.acknowledgedAt ? { [fieldRef]: row.notification_data.acknowledgedAt } : {}),
+      [fieldRef]: row.notification_data?.acknowledgedAt || null,
     };
   });
   arrayValue(related.reports).forEach((row) => {

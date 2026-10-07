@@ -22,7 +22,7 @@
   h2 {
     font-size: 11.5px;
     color: #14453d;
-    margin: 9px 0 5px;
+    margin: 8px 0 5px;
     padding-bottom: 2.5px;
     border-bottom: 2px solid #1f4e46;
     letter-spacing: .02em;
@@ -39,7 +39,7 @@
 
   p { margin: 3px 0; }
   ul { margin: 3px 0 0; padding-left: 15px; }
-  li { margin: 1.5px 0; }
+  li { margin: 1.2px 0; }
   strong { color: #14453d; }
 
   /* ---- ヘッダー ---- */
@@ -77,6 +77,23 @@
   }
   .box ul { padding-left: 14px; }
 
+  /* ---- ガイドラインの要求（背景の起点） ---- */
+  .rule {
+    border: 1.2px solid #1f4e46;
+    border-left: 3.5px solid #1f4e46;
+    border-radius: 3px;
+    padding: 4px 8px 4px;
+    background: #f2f7f5;
+    margin: 3px 0 5px;
+  }
+  .rule b {
+    display: block;
+    font-size: 9.8px;
+    color: #14453d;
+    margin-bottom: 2px;
+  }
+  .rule .src { color: #5b736d; font-size: 8.4px; }
+
   /* ---- 流れ 4ステップ ---- */
   .flow { display: flex; gap: 6px; margin-top: 5px; }
   .flow .s {
@@ -109,11 +126,11 @@
     width: 21%;
   }
 
-  /* ---- お伺いしたいこと（この紙の主役） ---- */
+  /* ---- 開発にあたっての課題（この紙の主役） ---- */
   .ask {
     border: 2px solid #1f4e46;
     border-radius: 3px;
-    padding: 7px 9px 8px;
+    padding: 6px 9px 6px;
     background: #fbfdfc;
   }
   .ask .bt {
@@ -125,7 +142,7 @@
     border-bottom: 1px solid #a8c0b9;
   }
   .ask ol { margin: 4px 0 0; padding-left: 17px; }
-  .ask li { margin: 3px 0; }
+  .ask li { margin: 2px 0; }
 
   .url {
     font-family: "Consolas", "Courier New", monospace;
@@ -160,10 +177,14 @@
 <div class="cols">
   <div class="c wide">
     <h2><span class="num">1</span>背景と課題</h2>
-    <p>農林水産省や自治体の資料では、事前の周知が不足していたと考えられる農薬飛散の事故や、事前の連絡がない散布についての相談事例が報告されています。連絡と記録の面で、次の課題があると考えています。</p>
+    <div class="rule">
+      <b>国のガイドラインは、すでに事前の周知を求めています</b>
+      散布区域の周辺に<strong>有機農業のほ場・学校や病院等・家屋・蜜蜂の巣箱</strong>がある場合、実施主体はその農家・管理者・居住者・養蜂家へ、<strong>①日時 ②使用目的 ③使用農薬の種類 ④実施主体の連絡先</strong>を十分な時間的余裕をもって知らせ、<strong>天候等で日時が変わった場合は改めて知らせる</strong>。
+      <span class="src">農水省「無人マルチローターによる農薬の空中散布に係る安全ガイドライン」（令和元年 元消安第1388号）第2の2。原文の語は「情報提供」。罰則を伴う法律上の義務ではありません。</span>
+    </div>
+    <p><strong>問題は、この周知が実際にどう行われているかを確かめる手段がないことです。</strong>実施状況を示す統計はなく、一方で農林水産省や自治体の資料には、周知が不足していたと考えられる飛散事故や、連絡のない散布についての相談事例が報告されています。次の課題があります。</p>
     <ul>
-      <li>散布の予定が、事前に必要な相手へ届かない</li>
-      <li>回覧や機関紙など一律の周知では、<strong>自分に関係する散布か判断しにくい</strong></li>
+      <li>回覧や機関紙など一律の周知では、<strong>必要な相手へ届いたかが分からず</strong>、受け取る側も自分に関係する散布か判断しにくい</li>
       <li>天候による延期・再開を、同じ相手へその都度伝えにくい</li>
       <li><strong>有機・農薬不使用のほ場、養蜂、学校・住宅など、配慮すべき対象の把握が難しい</strong></li>
       <li>誰に知らせ、相手がどう答えたかが、記録として残らない</li>
@@ -223,21 +244,20 @@
 
 <div class="cols" style="margin-top:2px">
   <div class="c">
-    <h2><span class="num">4</span>現在の段階と、費用の考え方</h2>
+    <h2><span class="num">4</span>現在の段階</h2>
     <p>公開デモ（登録不要）　<span class="url">https://tonari-hatake-safety.pages.dev/</span></p>
     <p>笠間市周辺の架空のデータで、3つの立場の画面をお試しいただけます。ドローンメーカーとのデータ連携、飛行中の位置の取得は未実装です。</p>
-    <p>費用は、<strong>散布する農家の方は無料</strong>とすることを前提に、地域の状況を把握される自治体・JA側にご負担いただく形を検討しています。</p>
     <p>将来的には、<strong>いま地域のどこで散布が行われているかを、関係する方が地図の上で共有できる状態</strong>を目指しています。問い合わせを受けた際に、どこの作業かがすぐ分かるようにすることが目標です。</p>
   </div>
   <div class="c">
-    <h2><span class="num">5</span>お伺いしたいこと</h2>
+    <h2><span class="num">5</span>開発にあたっての課題</h2>
     <div class="ask">
-      <p class="bt">本日は、県の実情を教えていただきたく参りました</p>
+      <p class="bt">実証に入る前に、確かめなければならないことが残っています</p>
       <ol>
-        <li>事前の連絡がない農薬散布に関する<strong>相談や苦情は、県にはどの程度寄せられている</strong>でしょうか。近年の傾向はいかがでしょうか。</li>
-        <li>現在、散布の事前の周知は<strong>どのような方法</strong>で行われ、有機ほ場・養蜂・学校など<strong>配慮が必要な対象はどのように把握</strong>されているのでしょうか。</li>
-        <li>こうしたしくみがあるとすれば、<strong>どの立場の方が使う姿が現実的</strong>とお考えでしょうか。</li>
-        <li>実態を学ばせていただくため、<strong>笠間市周辺でドローン散布をされている事業者やJAの方をご紹介いただくことは可能</strong>でしょうか。</li>
+        <li><strong>実態が分かっていない。</strong>散布の前にどれだけ周知が行われているかを示す統計はなく、散布されている方に直接伺うほかありません。難しさの原因が手間なのか、<strong>そもそも周辺に誰がいるかを知る手立てがない</strong>ことなのかで、作るべきものが変わります。</li>
+        <li><strong>知らせが本当に届くか。</strong>周辺の農家に新しくアプリを入れていただかずに済む形を選びましたが、スマートフォンをお使いでない方への届け方と、投稿が実際に読まれたかを確かめる方法が残っています。</li>
+        <li><strong>どこまで伝え、どこから伏せるか。</strong>配慮の必要な事情は、ほ場の持ち主ご自身に登録していただく前提です。散布者には名前や持ち主を伏せ、<strong>種別・方向・距離だけ</strong>をお伝えする想定ですが、この線の引き方は地域で確かめる必要があります。</li>
+        <li><strong>誰が運用の主体になるか。</strong>地区・JA・自治体のうち、どこが記録を持ち、問い合わせを受けたときに答える立場になるのか。まずは一つの地区で試し、確かめたいと考えています。</li>
       </ol>
     </div>
   </div>
@@ -245,7 +265,7 @@
 
 <footer>
   <div>
-    <div class="who">門田　誠 <span>080-4724-5900　makoto.monda@gmail.com</span></div>
+    <div class="who"><span style="margin-left:0">makoto.monda@gmail.com</span></div>
   </div>
   <div class="small" style="text-align:right">
     2026年8月<br>

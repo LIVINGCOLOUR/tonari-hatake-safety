@@ -27,6 +27,7 @@ export function rankNeighborNotices(notices = [], { limit = Number.POSITIVE_INFI
 }
 
 export function buildSprayerNextActions({
+  logsEnabled = true,
   pendingReplies = [],
   unnotifiedRisks = [],
   checks = {},
@@ -74,7 +75,7 @@ export function buildSprayerNextActions({
       view: "checklist",
     });
   }
-  if (!droneImported) {
+  if (logsEnabled && !droneImported) {
     actions.push({
       title: "散布後にドローンログ取込",
       detail: "飛行ルート、高度、散布ON/OFFログを記録に紐付けます。",
@@ -92,6 +93,7 @@ export function buildSprayerNextActions({
 }
 
 export function buildSprayerWorkflowModel({
+  logsEnabled = true,
   plan = {},
   progress = { done: 0, total: 0, percent: 0 },
   riskCount = 0,
@@ -136,12 +138,12 @@ export function buildSprayerWorkflowModel({
       },
     ],
     postSteps: [
-      {
+      ...(logsEnabled ? [{
         title: "飛行ログ",
         detail: droneSummary,
         done: Boolean(plan.droneLog?.imported),
         view: "drone",
-      },
+      }] : []),
       {
         title: "実施後報告",
         detail: plan.report?.doneDate ? "提出済み" : "未提出",
@@ -182,12 +184,12 @@ export function buildNeighborTimeline({ field = {}, notices = [] } = {}) {
       detail: `${field.name || ""} / ${field.cultivation || "未登録"} / ${field.notifyPreference || "通知未確認"}`,
     },
     { title: "公開範囲", detail: visibility },
-    { title: "未返信通知", detail: `${count(notices, (notice) => notice.response === "未回答")}件` },
+    { title: "確認記録なし", detail: `${count(notices, (notice) => notice.response === "未回答")}件` },
     { title: "次の操作", detail: "通知への返信、連絡方法、公開範囲を確認します。" },
   ];
 }
 
-export function buildAdminTimeline({ prefecture = "", municipality = "", summary = {} } = {}) {
+export function buildAdminTimeline({ logsEnabled = true, prefecture = "", municipality = "", summary = {} } = {}) {
   return [
     { title: "地域条件", detail: `${prefecture} ${municipality}`.trim() },
     {
@@ -196,7 +198,7 @@ export function buildAdminTimeline({ prefecture = "", municipality = "", summary
     },
     {
       title: "確認キュー",
-      detail: `通知未完了 ${summary.notifyIncomplete || 0}件 / 報告未提出 ${summary.reportMissing || 0}件 / ドローンログ未取込 ${summary.droneMissing || 0}件`,
+      detail: `通知未完了 ${summary.notifyIncomplete || 0}件 / 報告未提出 ${summary.reportMissing || 0}件${logsEnabled ? ` / ドローンログ未取込 ${summary.droneMissing || 0}件` : ""}`,
     },
     { title: "航空写真表示", detail: "黄が散布予定、緑が実施済み、赤が追加確認対象です。" },
     { title: "位置づけ", detail: "散布の許可・承認ではなく、記録状況と追加確認対象の一覧です。" },
@@ -204,6 +206,7 @@ export function buildAdminTimeline({ prefecture = "", municipality = "", summary
 }
 
 export function summarizeAdminDashboard({
+  logsEnabled = true,
   date,
   today,
   dayPlans = [],
@@ -215,7 +218,7 @@ export function summarizeAdminDashboard({
   const notifyIncomplete = count(dayPlans, (plan) => !plan.notificationComplete);
   const organicNear = count(dayPlans, (plan) => plan.organicNear);
   const windNeed = count(dayPlans, (plan) => !plan.cancelled && plan.windNeedsAttention);
-  const droneMissing = count(dayPlans, (plan) => !plan.cancelled && !plan.droneImported);
+  const droneMissing = logsEnabled ? count(dayPlans, (plan) => !plan.cancelled && !plan.droneImported) : 0;
   const altitudeNeed = count(dayPlans, (plan) => !plan.cancelled && plan.altitudeNeedsAttention);
   const inquiry = count(regionPlans, (plan) => plan.hasInquiry);
   const unregisteredNear = count(dayPlans, (plan) => plan.unregisteredNear);
@@ -229,6 +232,7 @@ export function summarizeAdminDashboard({
     planned,
     done,
     attention,
+    attentionPlans: count(dayPlans, plan => plan.highRisk || !plan.notificationComplete || plan.hasInquiry || (!plan.cancelled && (plan.windNeedsAttention || plan.altitudeNeedsAttention || (logsEnabled && !plan.droneImported) || (plan.date <= today && !plan.reportDone)))),
     notifyIncomplete,
     organicNear,
     windNeed,
@@ -278,7 +282,7 @@ export function buildNeighborDashboardMetrics({ notices = [], field = {} } = {})
     (notice) => notice.response !== "未回答" && notice.response !== "確認しました",
   );
   return [
-    { label: "未返信通知", value: `${pending}件`, note: "通知インボックス", alert: pending > 0 },
+    { label: "確認記録なし", value: `${pending}件`, note: "確認・返信は任意", alert: false },
     { label: "近日散布予定", value: `${notices.length}件`, note: "自分に関係", alert: notices.length > 0 },
     { label: "相談中", value: `${consulting}件`, note: "返信履歴", alert: consulting > 0 },
     { label: "公開範囲", value: field.visibilityLevel === "private" ? "最小限" : field.visibilityLevel === "workspace" ? "地域管理者にも共有" : "通知対象に共有", note: "圃場情報", alert: false },
@@ -291,14 +295,14 @@ export function buildNeighborDashboardMetrics({ notices = [], field = {} } = {})
   ];
 }
 
-export function buildAdminDashboardMetrics({ summary, organicRadius } = {}) {
+export function buildAdminDashboardMetrics({ logsEnabled = true, summary, organicRadius } = {}) {
   return [
     { label: "対象日の散布予定", value: `${summary.planned}件`, note: summary.date, alert: false },
     { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣通知", alert: summary.notifyIncomplete > 0 },
     { label: "風向・風速要確認", value: `${summary.windNeed}件`, note: "気象条件", alert: summary.windNeed > 0 },
     { label: "実施後報告未提出", value: `${summary.reportMissing}件`, note: "散布者控え", alert: summary.reportMissing > 0 },
     { label: `有機ほ場${organicRadius}m以内`, value: `${summary.organicNear}件`, note: "周辺確認", alert: summary.organicNear > 0 },
-    { label: "ドローンログ未取込", value: `${summary.droneMissing}件`, note: "飛行ログ", alert: summary.droneMissing > 0 },
+    ...(logsEnabled ? [{ label: "ドローンログ未取込", value: `${summary.droneMissing}件`, note: "飛行ログ", alert: summary.droneMissing > 0 }] : []),
     { label: "高度要確認", value: `${summary.altitudeNeed}件`, note: "作業軌跡", alert: summary.altitudeNeed > 0 },
     { label: "問い合わせあり", value: `${summary.inquiry}件`, note: "実施後報告", alert: summary.inquiry > 0 },
     { label: "追加確認が必要な予定", value: `${summary.attention}件`, note: "管理者確認", alert: summary.attention > 0 },
@@ -314,5 +318,15 @@ export function buildAdminQueueItems(summary) {
     { key: "altitudeNeed", label: "高度要確認", count: summary.altitudeNeed },
     { key: "inquiry", label: "問い合わせあり", count: summary.inquiry },
     { key: "unregisteredNear", label: "未登録圃場近接", count: summary.unregisteredNear },
+  ];
+}
+
+
+export function buildCaseSteps({ view, planSaved = false, notificationComplete = false, weatherRecorded = false, checksRecorded = false, reportDone = false } = {}) {
+  return [
+    { view: "plans", label: "1 予定を登録", recorded: planSaved, active: view === "plans" },
+    { view: "notify", label: "2 近隣へ連絡", recorded: notificationComplete, active: ["notify", "map"].includes(view) },
+    { view: "weather", label: "3 当日の確認", recorded: weatherRecorded && checksRecorded, active: ["weather", "checklist"].includes(view) },
+    { view: "report", label: "4 実施を記録", recorded: reportDone, active: view === "report" },
   ];
 }

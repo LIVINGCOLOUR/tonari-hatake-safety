@@ -2,8 +2,8 @@
   "municipalities": [
     { "code": "082163b", "name": "友部エリア（デモ・軽量）", "file": "tomobe.geojson" },
     { "code": "082163", "name": "笠間市（デモ・軽量）", "file": "kasama.geojson" },
-    { "code": "08216", "name": "笠間市（筆ポリゴン2021）", "file": "kasama-fude.zip" },
-    { "code": "08201", "name": "水戸市（筆ポリゴン2021）", "file": "mito-fude.zip" },
-    { "code": "08205", "name": "石岡市（筆ポリゴン2021）", "file": "ishioka-fude.zip" }
+    { "code": "08216", "name": "笠間市（農水省・筆ポリゴン2021）", "file": "kasama-fude.zip", "version": "2021", "license": "農林水産省 筆ポリゴン利用規約" },
+    { "code": "08201", "name": "水戸市（農水省・筆ポリゴン2021）", "file": "mito-fude.zip", "version": "2021", "license": "農林水産省 筆ポリゴン利用規約" },
+    { "code": "08205", "name": "石岡市（農水省・筆ポリゴン2021）", "file": "ishioka-fude.zip", "version": "2021", "license": "農林水産省 筆ポリゴン利用規約" }
   ]
 }

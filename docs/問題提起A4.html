@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>ドローンによる農薬散布の事前周知をめぐる課題</title>
+<style>
+  @page { size: A4 portrait; margin: 13mm 14mm 11mm; }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Yu Gothic", "YuGothic", "Meiryo", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: 9.6px;
+    line-height: 1.66;
+    color: #1c1c1c;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .head {
+    border-bottom: 2px solid #1c1c1c;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+  }
+  .head h1 {
+    font-size: 17px;
+    margin: 0 0 3px;
+    letter-spacing: .03em;
+  }
+  .head .sub {
+    font-size: 10.4px;
+    margin: 0;
+    color: #3a3a3a;
+  }
+
+  h2 {
+    font-size: 11px;
+    margin: 11px 0 5px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #9aa5a9;
+    letter-spacing: .02em;
+  }
+  h2 .n {
+    display: inline-block;
+    background: #2c3e46;
+    color: #fff;
+    font-size: 8.6px;
+    padding: .5px 4.5px;
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+
+  p { margin: 0 0 4px; }
+  strong { font-weight: 700; }
+
+  ul, ol { margin: 4px 0 5px; padding-left: 16px; }
+  li { margin: 2.5px 0; }
+
+  /* ガイドラインの引用 */
+  .quote {
+    border: 1px solid #2c3e46;
+    border-left: 4px solid #2c3e46;
+    padding: 7px 10px 6px;
+    background: #f4f6f7;
+    margin: 6px 0 7px;
+  }
+  .quote .t {
+    font-weight: 700;
+    font-size: 10px;
+    margin: 0 0 4px;
+  }
+  .quote .items {
+    list-style: none;
+    padding: 0;
+    margin: 5px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+  }
+  .quote .items li {
+    margin: 0;
+    font-weight: 700;
+  }
+
+  /* 3つの断絶 */
+  .gaps {
+    counter-reset: gap;
+    list-style: none;
+    padding: 0;
+    margin: 5px 0;
+  }
+  .gaps li {
+    counter-increment: gap;
+    display: grid;
+    grid-template-columns: 15px 1fr;
+    gap: 7px;
+    margin: 4px 0;
+  }
+  .gaps li::before {
+    content: counter(gap);
+    display: block;
+    border: 1.2px solid #2c3e46;
+    color: #2c3e46;
+    font-weight: 700;
+    font-size: 8.4px;
+    text-align: center;
+    line-height: 13px;
+    height: 14px;
+    margin-top: 1px;
+  }
+
+  /* 中核の主張 */
+  .core {
+    border-top: 2px solid #2c3e46;
+    border-bottom: 2px solid #2c3e46;
+    padding: 7px 0 6px;
+    margin: 7px 0;
+  }
+  .core p { margin: 0; }
+  .core .lead { font-weight: 700; font-size: 10.4px; }
+
+  /* 確認事項 */
+  .scope {
+    background: #eef1f2;
+    border-left: 3px solid #2c3e46;
+    padding: 5px 9px;
+    margin: 0 0 6px;
+    font-size: 9.2px;
+  }
+
+  .ask {
+    border: 1.5px solid #1c1c1c;
+    padding: 7px 10px 7px;
+  }
+  .ask ol { margin: 0; padding-left: 17px; }
+  .ask li { margin: 3px 0; }
+
+  .note {
+    background: #f2f2f2;
+    padding: 6px 9px;
+    margin: 8px 0 0;
+    font-size: 9.2px;
+  }
+
+  footer {
+    margin-top: 9px;
+    border-top: 1px solid #9aa5a9;
+    padding-top: 5px;
+    font-size: 8.1px;
+    line-height: 1.55;
+    color: #4a4a4a;
+  }
+  footer b { color: #1c1c1c; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>ドローンによる農薬散布の事前周知をめぐる課題</h1>
+  <p class="sub">国のガイドラインが求めていることと、現場で実行できていないこと</p>
+</div>
+
+<h2><span class="n">1</span>分かっていること、分かっていないこと</h2>
+<p>農林水産省や自治体の資料には、<strong>ドローン（無人マルチローター）による農薬の空中散布</strong>について、事前の周知が不足していたと考えられる<strong>飛散の事故</strong>や、事前の連絡がない散布についての相談事例が報告されています。</p>
+<p>一方で、<strong>事前の周知がどの程度行われているかを示す統計は、全国のどこにも見当たりません。</strong>農薬事故統計にも、公害苦情調査にも、都道府県への空中散布計画書の提出記録にも、「周知を行った割合」を集計した資料はありません。特定の自治体の取り組みが不足しているという話ではなく、<strong>そもそも測る仕組みがない</strong>ということです。</p>
+<p>周知が行われているのか、行われていないとすれば何が障害なのかが、分からないまま残されています。</p>
+
+<h2><span class="n">2</span>国のガイドラインが求めていること</h2>
+<div class="quote">
+  <p class="t">ドローン散布について、周辺に配慮すべき対象がある場合、事前に知らせることとされています</p>
+  <p>散布区域の周辺に<strong>有機農業が行われているほ場、学校・病院等の公共施設、家屋、蜜蜂の巣箱</strong>がある場合、実施主体はその農家・管理者・利用者・居住者・養蜂家へ、次の4点を<strong>十分な時間的余裕をもって</strong>知らせることとされています。</p>
+  <ul class="items">
+    <li>① 散布の日時</li>
+    <li>② 使用目的</li>
+    <li>③ 使用農薬の種類</li>
+    <li>④ 実施主体の連絡先</li>
+  </ul>
+  <p>さらに、<strong>天候等により日時に変更が生じた場合は、その変更について改めて知らせる</strong>ことも求められています。</p>
+</div>
+<p>これは消費・安全局長通知によるガイドラインで、罰則を伴う法律上の義務ではありません。<strong>守るための手段があるかどうかが、実行の可否を分けます。</strong></p>
+
+<h2><span class="n">3</span>求められていることを、実行する手段がない</h2>
+<ol class="gaps">
+  <li><div><strong>周辺に誰がいるかを知る手段がない。</strong>隣のほ場が有機なのか、蜜蜂の巣箱がどこにあるのかを、散布する側が事前に確かめる方法がありません。<strong>対象を知らなければ、この条項は実行できません。</strong></div></li>
+  <li><div><strong>変わったことを伝え直す手段がない。</strong>農薬散布は天候に左右され、延期と再開が繰り返されます。回覧や機関紙では、同じ相手へその都度伝え直すことができません。</div></li>
+  <li><div><strong>届いたかを確かめる手段がない。</strong>地区一律の周知では、必要な相手に届いたかが分からず、受け取る側も自分に関係する散布かどうかを判断しにくい状態にあります。</div></li>
+</ol>
+
+<h2><span class="n">4</span>記録が残らないことが、双方を不利にしている</h2>
+<p>土壌や作物から農薬の残留が確認されたとき、<strong>周辺で散布した方の手元には、いつ・どこで・どのような条件で散布したかを示す記録がないことが多くあります。</strong>疑いを向けられた側が、自分の作業を説明する材料を持っていません。</p>
+<p>一方、有機農業に取り組む農家にとって、近隣からの飛散は経営上のリスクです。ポジティブリスト制度では基準の定めのない農薬に一律基準0.01ppmが適用され、これを超えれば出荷が止まりうる。有機JAS規格は、隣接ほ場からの飛散混入を前提に<strong>緩衝地帯の設置を義務付けています。</strong></p>
+<div class="core">
+  <p class="lead">記録が残らないことが、散布する側と周辺の側を、等しく不利な位置に置いています。</p>
+  <p>どちらかに責任があるという話ではありません。<strong>事実が残る仕組みがないことが、双方から説明する手段を奪っています。</strong>周知と記録は、散布する方を縛るものではなく、後から疑いを向けられたときに<strong>その方を守るもの</strong>として設計されるべきものです。</p>
+</div>
+
+<h2><span class="n">5</span>確認事項</h2>
+<div class="scope"><b>新たな規制や、散布される方への新たな負担は、農業の発展を阻害します。可能な限り避けるべきものと考えています。</b>そのうえで、まず現状を把握し、解決策の検討につなげたいと考えています。特定の事業者や製品の導入を求めるものではありません。<b>「行っていない」「把握していない」という回答自体が、必要な情報になります。</b></div>
+<div class="ask">
+  <ol>
+    <li>ドローンによる農薬散布について、<strong>市に寄せられる相談や問い合わせは年間どの程度</strong>か。近年の傾向はどうか。</li>
+    <li>市内で空中散布を行っている実施主体（農家・防除受託事業者・JA）を、市はどの程度把握しているか。<strong>県への散布計画書の提出状況は、市に共有されている</strong>か。</li>
+    <li>ガイドラインが求める事前の周知と、日時が変わったときの伝え直しが実際に行われているかを、<strong>市が把握する手段はある</strong>か。</li>
+    <li>オーガニックビレッジ宣言に基づき、<strong>市は有機農業に取り組む農地をどのように把握している</strong>か。</li>
+    <li><strong>散布される方が、周辺に配慮の必要な対象（有機ほ場・養蜂・学校等）があることを事前に知るための情報を、市は提供している</strong>か。</li>
+  </ol>
+</div>
+
+<div class="note">
+  <strong>なお、</strong>この課題は人手や乗用機械による散布にも共通します。ただしドローン散布には国が定めた明確なガイドラインがあり、何を行うべきかが具体的に示されています。<strong>そのため、今回はドローンによる散布に焦点を当てています。</strong>
+</div>
+
+<footer>
+  <b>出典</b>　農林水産省「無人マルチローターによる農薬の空中散布に係る安全ガイドライン」（令和元年7月30日付け元消安第1388号 消費・安全局長通知）第2の2(1)(2)／
+  農林水産省「農薬の使用に伴う事故・被害」「無人航空機による農薬等の空中散布」／
+  厚生労働省「食品中に残留する農薬等に関するポジティブリスト制度」Q&amp;A／
+  農林水産省・FAMIC「有機農産物の検査認証制度ハンドブック」
+</footer>
+
+</body>
+</html>

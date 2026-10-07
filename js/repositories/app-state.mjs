@@ -281,12 +281,6 @@ export function createPlanNotificationRepository({
         ...(plan.notificationResponses || {}),
         [targetId]: nextResponse,
       };
-      if (nextResponse !== "未回答") {
-        plan.notificationTargets = {
-          ...(plan.notificationTargets || {}),
-          [targetId]: true,
-        };
-      }
       persistPlan(plan);
       return recordFor(plan, targetId);
     },

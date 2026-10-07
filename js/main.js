@@ -1,3 +1,5 @@
+// Explicit demo tools; this is a presentation mode, not an authorization boundary.
+const DEMO_TOOLS_ENABLED = new URLSearchParams(location.search).get("demo") === "1";
 const STORAGE_KEY = "tonariHatakeSafetyMvp.v3.coverage";
 const MAGIC_LINK_COOLDOWN_KEY = "tonariHatakeSafety.magicLinkCooldownUntil";
 const MAGIC_LINK_COOLDOWN_MS = 60_000;
@@ -5,7 +7,7 @@ const ACTIVE_WORKSPACE_KEY = "tonariHatakeSafety.activeWorkspaceId";
 const CLOUD_SYNC_KEY_PREFIX = "tonariHatakeSafety.cloudSync.";
 
 const VIEW_META = {
-  profile: ["初期設定・プロフィール", "利用区分、対象市町村、公開範囲"],
+  profile: ["初期設定・プロフィール", "利用区分・対象地域・基本情報"],
   dashboard: ["トップダッシュボード", "地域内の散布予定と確認状況"],
   plans: ["散布計画登録", "散布前に必要な情報を記録"],
   map: ["圃場マップ", "散布ほ場・周辺圃場・飛行ログ"],
@@ -27,9 +29,9 @@ const ROLE_META = {
     note: "未完了タスクと次に必要な対応を先に確認します。",
   },
   neighbor: {
-    label: "周辺農家",
+    label: "周辺関係者",
     title: "あなたに関係する散布通知",
-    note: "自分の圃場、未返信通知、公開範囲を確認します。",
+    note: "自分の圃場、確認記録なし、公開範囲を確認します。",
   },
   admin: {
     label: "地域管理",
@@ -40,7 +42,7 @@ const ROLE_META = {
 
 const PROFILE_ROLE_LABELS = {
   sprayer: "散布者",
-  neighbor: "周辺農家",
+  neighbor: "周辺関係者",
   admin: "地域管理",
 };
 
@@ -405,31 +407,32 @@ const ADMIN_DASHBOARD_COLORS = {
   surrounding: "#7b8d8b",
 };
 
-// 添付の航空写真で見える谷筋の畑境界に合わせたデモ圃場。geo は実座標、geoShape は旧データ用の保険。
+// 地理院航空写真を北上・zoom 18で確認し、畦・道路・建物に沿ってトレースした概略図。
+// 実際の所有・栽培種別を示すデータではない。取込済みの境界は上書きしない。
 const SAMPLE_FIELD_GEOMETRY = {
   "spray-field-a": {
     x: 40, y: 38, w: 20, h: 12,
-    geo: [[140.312185, 36.387676], [140.313201, 36.387447], [140.313059, 36.386499], [140.312043, 36.386695]],
+    geo: [[140.31210015, 36.38608946], [140.31265536, 36.38665519], [140.31313548, 36.386517], [140.31288872, 36.38586922]],
     geoShape: [[38, 48], [48, 47], [47, 57], [38, 58]],
   },
   "no-chemical-field-b": {
     x: 39, y: 52, w: 21, h: 14,
-    geo: [[140.312043, 36.386532], [140.313059, 36.386303], [140.312937, 36.385159], [140.311881, 36.385388]],
+    geo: [[140.3132374, 36.38633346], [140.31355927, 36.38715398], [140.31420568, 36.38701363], [140.3142325, 36.38693158], [140.313916, 36.3868085], [140.31375775, 36.38658394], [140.31356195, 36.38624277]],
     geoShape: [[39, 59], [49, 58], [48, 68], [40, 70]],
   },
   "organic-field-a": {
     x: 25, y: 26, w: 23, h: 13,
-    geo: [[140.311434, 36.388755], [140.312591, 36.388526], [140.312449, 36.387644], [140.311312, 36.387856]],
+    geo: [[140.31271974, 36.38671997], [140.31328032, 36.38721444], [140.31340638, 36.38717126], [140.31317035, 36.38655587]],
     geoShape: [[49, 48], [58, 47], [57, 59], [48, 58]],
   },
   "seedling-house-c": {
     x: 32, y: 84, w: 36, h: 6,
-    geo: [[140.311779, 36.383393], [140.313587, 36.383524], [140.313668, 36.383033], [140.311881, 36.382903]],
+    geo: [[140.31399647, 36.38656666], [140.31407157, 36.38655803], [140.3140528, 36.38643927], [140.31397769, 36.3864479]],
     geoShape: [[27, 74], [39, 74], [39, 79], [28, 79]],
   },
   "preharvest-field-d": {
     x: 58, y: 20, w: 22, h: 19,
-    geo: [[140.313059, 36.38905], [140.314155, 36.388804], [140.313952, 36.387415], [140.312855, 36.387693]],
+    geo: [[140.31192312, 36.38733752], [140.31224499, 36.38778448], [140.312304, 36.38778232], [140.31257222, 36.38754696], [140.31202773, 36.3870417], [140.31200895, 36.38712159]],
     geoShape: [[50, 32], [59, 31], [57, 44], [49, 45]],
   },
   "water-channel-d": {
@@ -439,10 +442,13 @@ const SAMPLE_FIELD_GEOMETRY = {
   },
   "facility-e": {
     x: 66, y: 70, w: 23, h: 10,
-    geo: [[140.313708, 36.384652], [140.314846, 36.384472], [140.314683, 36.383671], [140.313546, 36.383818]],
+    geo: [[140.31376043, 36.38638528], [140.31395355, 36.38633562], [140.31391064, 36.38623198], [140.31371484, 36.38627948]],
     geoShape: [[61, 52], [67, 52], [66, 59], [60, 60]],
   },
 };
+
+// 旧デモ図形との完全一致だけを移行対象にする。独自の取込境界は保持。
+const LEGACY_DEMO_RINGS = {"spray-field-a": [[140.312185, 36.387676], [140.313201, 36.387447], [140.313059, 36.386499], [140.312043, 36.386695]], "no-chemical-field-b": [[140.312043, 36.386532], [140.313059, 36.386303], [140.312937, 36.385159], [140.311881, 36.385388]], "organic-field-a": [[140.311434, 36.388755], [140.312591, 36.388526], [140.312449, 36.387644], [140.311312, 36.387856]], "seedling-house-c": [[140.311779, 36.383393], [140.313587, 36.383524], [140.313668, 36.383033], [140.311881, 36.382903]], "preharvest-field-d": [[140.313059, 36.38905], [140.314155, 36.388804], [140.313952, 36.387415], [140.312855, 36.387693]], "water-channel-d": [[140.310764, 36.390717], [140.311109, 36.390717], [140.312998, 36.382249], [140.312612, 36.382183]], "facility-e": [[140.313708, 36.384652], [140.314846, 36.384472], [140.314683, 36.383671], [140.313546, 36.383818]]};
 
 let domainState;
 let domainGeometry;
@@ -451,6 +457,10 @@ let domainSpray;
 let domainPrescription;
 let domainCoverage;
 let domainDashboard;
+let domainLifecycle;
+let formDrafts;
+let renderedDraftContext = "";
+let lastSaveFailed = false;
 let domainDisclosure;
 let domainFlightLog;
 let weatherService;
@@ -482,6 +492,7 @@ const volatileDeviceState = new Map();
 const volatileDeviceStateContexts = new Set();
 let supabaseSyncState = { status: "local", message: "端末だけに保存しています。" };
 let supabaseConflictData = null;
+let workspaceCreationFeedback = null;
 let suppressRemoteSync = false;
 let stateRepository;
 let planRepository;
@@ -492,6 +503,25 @@ let state = null;
 let activeRole = "sprayer";
 let activeView = "dashboard";
 let noticeChannel = "line";
+let noticeRecipient = "";
+let textDraftStore;
+let pendingFieldPositionId = null;
+
+function textDraftContext(plan = activePlan()) {
+  return `${activeDeviceStateContext.id}:${plan?.id}:${plan?.noticeRevision || 0}`;
+}
+
+function restoreTextDrafts() {
+  textDraftStore ||= formDrafts?.createTextDraftStore(sessionStorage);
+  const notice = $("#noticeText");
+  const value = textDraftStore?.get(textDraftContext(), `notice:${noticeChannel}:${noticeRecipient}`);
+  if (notice && value !== undefined) notice.value = value;
+  $$("[data-reply-note]").forEach(input => {
+    const plan = allPlans().find(item => input.dataset.replyNote.startsWith(`${item.id}:`));
+    const draft = textDraftStore?.get(textDraftContext(plan), input.dataset.replyNote);
+    if (draft !== undefined) input.value = draft;
+  });
+}
 let mapLayer = "risk";
 let historyFilters = { field: "all", material: "all", status: "all" };
 let adminDashboardFilters = { prefecture: "茨城県", municipality: "笠間市", date: "" };
@@ -529,16 +559,31 @@ function profileIsRegistered() {
   return Boolean(activeProfile().registered && ROLE_META[activeProfile().role]);
 }
 
+function availableRoles() {
+  return domainDisclosure.switchableRoles({
+    signedIn: Boolean(supabaseSession?.user?.id),
+    workspaceId: activeSupabaseMembership()?.workspace_id || "",
+    memberships: supabaseMemberships,
+  });
+}
+
 function currentNavigationRole() {
-  return profileRole(state) || activeRole || "sprayer";
+  return domainDisclosure.selectAvailableRole(availableRoles(), activeRole, profileRole(state));
+}
+
+function restoreSelectedRole() {
+  activeRole = domainDisclosure.selectAvailableRole(availableRoles(), state.role, profileRole(state));
+  state.role = activeRole;
 }
 
 function allowedViewsForCurrentMode() {
-  return domainDisclosure.allowedViewsForRole(currentNavigationRole());
+  if (!currentNavigationRole()) return ["profile"];
+  return domainDisclosure.allowedViewsForRole(currentNavigationRole())
+    .filter((view) => DEMO_TOOLS_ENABLED || view !== "drone");
 }
 
 function currentOwnerUserId() {
-  return state?.profile?.registered && supabaseSession?.user?.id ? supabaseSession.user.id : "local-demo-user";
+  return supabaseSession?.user?.id || "local-demo-user";
 }
 
 function isSelfOwned(field) {
@@ -572,7 +617,9 @@ function notifyPreferenceKeyFromLabel(value) {
 }
 
 async function init() {
-  const magicLinkReturn = new URLSearchParams(location.search).get("auth") === "magic-link";
+  // メールのマジックリンクとGoogle認証、どちらの戻りもプロフィール画面へ着地させる。
+  const authReturnParam = new URLSearchParams(location.search).get("auth");
+  const magicLinkReturn = authReturnParam === "magic-link" || authReturnParam === "google";
   // app.htmlのmain.js?v=…と同様に版を付け、デプロイ後に新main.jsと旧モジュールが混在しないようにする。
   [domainState, domainGeometry, domainImport, domainSpray, domainPrescription, domainCoverage, domainDashboard, domainDisclosure, domainFlightLog, weatherService, boundaryIOService, exportIOService, repositoryService, supabaseRepositoryModule, remoteSyncModule, pendingSyncModule, deviceStateContextModule, domainSync, supabaseStorageModule, supabaseClientService, supabaseAuthModule, accountOperationsService] = await Promise.all([
     import("./domain/state.mjs?v=20260721-phase3"),
@@ -581,25 +628,26 @@ async function init() {
     import("./domain/spray.mjs?v=20260723-phase6"),
     import("./domain/prescription.mjs?v=20260723-phase6"),
     import("./domain/coverage.mjs?v=20260723-phase6"),
-    import("./domain/dashboard.mjs?v=20260723-phase7-workflow"),
-    import("./domain/disclosure.mjs?v=20260726-role-boundary-final"),
+    import("./domain/dashboard.mjs?v=20260908-critical-review"),
+    import("./domain/disclosure.mjs?v=20260907-role-switch-final"),
     import("./domain/flight-log.mjs?v=20260728-kasama-case"),
     import("./services/weather.mjs?v=20260723-weather-service"),
     import("./services/boundary-io.mjs?v=20260723-boundary-service"),
     import("./services/export-io.mjs?v=20260723-export-service"),
-    import("./repositories/app-state.mjs?v=20260723-repository-bundle"),
-    import("./repositories/supabase-app-state.mjs?v=20260724-supabase-data"),
+    import("./repositories/app-state.mjs?v=20260908-critical-review"),
+    import("./repositories/supabase-app-state.mjs?v=20260908-critical-review"),
     import("./services/remote-sync.mjs?v=20260725-offline-retry"),
     import("./services/pending-sync.mjs?v=20260725-offline-guard"),
     import("./services/device-state-context.mjs?v=20260725-context-state"),
     import("./domain/sync.mjs?v=20260724-supabase-data"),
     import("./services/supabase-storage.mjs?v=20260724-supabase-data"),
     import("./services/supabase-client.mjs?v=20260724-supabase-auth"),
-    import("./services/supabase-auth.mjs?v=20260725-magic-link"),
+    import("./services/supabase-auth.mjs?v=20260908-google"),
     import("./services/account-operations.mjs?v=20260725-account-operations"),
   ]);
+  [domainLifecycle, formDrafts] = await Promise.all([import("./domain/plan-lifecycle.mjs?v=20260908"), import("./services/form-drafts.mjs?v=20260908")]);
   supabaseRuntime = supabaseClientService.createSupabaseRuntime({
-    config: window.__TONARI_SUPABASE__ || {},
+    config: DEMO_TOOLS_ENABLED ? {} : window.__TONARI_SUPABASE__ || {},
     library: window.supabase,
     storage: localStorage,
   });
@@ -608,6 +656,7 @@ async function init() {
     supabaseAuthService = supabaseAuthModule.createSupabaseAuthService({
       client: supabaseRuntime.client,
       redirectUrl: supabaseAuthModule.magicLinkRedirectUrl(location.href),
+      oauthRedirect: supabaseAuthModule.oauthRedirectUrl(location.href),
     });
     await refreshSupabaseSession({ render: false });
     supabaseAuthUnsubscribe = supabaseAuthService.onAuthStateChange(({ session }) => {
@@ -619,6 +668,7 @@ async function init() {
     window.addEventListener("pagehide", () => supabaseAuthUnsubscribe?.(), { once: true });
   }
   await switchDeviceStateContext({ migrateDemo: true });
+  seedDemoExperience();
   const repositories = repositoryService.createAggregateRepositoryBundle({
     getAggregate: () => state,
   });
@@ -630,31 +680,73 @@ async function init() {
   await loadRemoteStateWhenEnabled();
   const searchParams = new URLSearchParams(location.search);
   const requestedRole = searchParams.get("role");
-  if (!profileRole(state) && ROLE_META[requestedRole]) {
+  if (requestedRole && availableRoles().includes(requestedRole)) {
     state.role = requestedRole;
   }
   const requestedPlan = searchParams.get("plan");
   if (requestedPlan && planRepository.get(requestedPlan)) {
     state.activePlanId = requestedPlan;
   }
-  activeRole = profileRole(state) || state.role || "sprayer";
+  restoreSelectedRole();
   state.role = activeRole;
   saveState();
 
   bindEvents();
+  $("#loginMethods").append($("#supabaseSignedOutPanel"));
   renderAll();
   const initialView = location.hash.replace("#", "");
-  switchView(magicLinkReturn ? "profile" : (VIEW_META[initialView] ? initialView : "dashboard"));
+  switchView(!DEMO_TOOLS_ENABLED && supabaseSession && (!profileIsRegistered() || state.profileSetup?.step === "fields") ? "profile"
+    : magicLinkReturn || searchParams.has("login") ? "dashboard" : (VIEW_META[initialView] ? initialView : "dashboard"));
   if (magicLinkReturn) {
-    history.replaceState(null, "", `${location.pathname}#profile`);
+    history.replaceState(null, "", `${location.pathname}#${activeView}`);
   }
   restoreMagicLinkCooldown();
+  restoreProfileDraft();
   document.documentElement.dataset.appReady = "true";
   initBoundaries();
 }
 
 function bindEvents() {
+  ["input", "change"].forEach(type => $("#profileForm").addEventListener(type, () => queueMicrotask(saveProfileDraft)));
+  $("#profileForm").elements.preferredContactMethod.addEventListener("change", renderContactFields);
+  window.addEventListener("beforeunload", event => {
+    if ($$("form[data-dirty='true']").length || lastSaveFailed) { event.preventDefault(); event.returnValue = ""; }
+  });
+  document.addEventListener("input", (event) => {
+    textDraftStore ||= formDrafts.createTextDraftStore(sessionStorage);
+    if (event.target.id === "noticeText") textDraftStore.set(textDraftContext(), `notice:${noticeChannel}:${noticeRecipient}`, event.target.value);
+    if (event.target.matches("[data-reply-note]")) {
+      const key = event.target.dataset.replyNote;
+      const plan = allPlans().find(item => key.startsWith(`${item.id}:`));
+      textDraftStore.set(textDraftContext(plan), key, event.target.value);
+    }
+    const form = event.target.closest("form");
+    if (form) form.dataset.dirty = "true";
+  });
+  document.addEventListener("change", (event) => {
+    const form = event.target.closest("form");
+    if (form) form.dataset.dirty = "true";
+  });
   document.body.addEventListener("click", (event) => {
+    const setupAction = event.target.closest("[data-setup-action]");
+    if (setupAction) { handleProfileSetup(setupAction.dataset.setupAction, setupAction.dataset.id); return; }
+    if (event.target.closest("[data-open-participants]")) {
+      if (switchView("profile") === false) return;
+      $("#workspaceParticipantsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (event.target.closest("#issueWorkspaceInvite")) { issueWorkspaceInvite(); return; }
+    if (event.target.closest("#loadWorkspaceParticipants")) { loadWorkspaceParticipants(); return; }
+    const addRoleButton = event.target.closest("[data-add-own-role]");
+    if (addRoleButton) { addOwnWorkspaceRole(addRoleButton); return; }
+    const positionButton = event.target.closest("[data-register-field-position]");
+    if (positionButton) {
+      if (!confirmLeaveInputs()) return;
+      pendingFieldPositionId = positionButton.dataset.registerFieldPosition;
+      switchView("map");
+      showToast("境界データを表示し、畑の筆をクリックして採用してください。");
+      return;
+    }
     const scrollTarget = event.target.closest("[data-scroll-target]");
     if (scrollTarget) {
       document.getElementById(scrollTarget.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -672,7 +764,9 @@ function bindEvents() {
       const form = $("#profileForm");
       if (form) {
         form.elements.role.value = profileRoleButton.dataset.profileRole;
+        form.dataset.dirty = "true";
         renderProfileRoleOptions(profileRoleButton.dataset.profileRole);
+        saveProfileDraft();
       }
       return;
     }
@@ -707,7 +801,9 @@ function bindEvents() {
 
     const noticeTarget = event.target.closest("[data-notice-target]");
     if (noticeTarget) {
-      $("#noticeText").value = buildNoticeText(activePlan(), noticeChannel, noticeTarget.dataset.noticeTarget);
+      noticeRecipient = noticeTarget.dataset.noticeTarget;
+      $("#noticeText").value = buildNoticeText(activePlan(), noticeChannel, noticeRecipient);
+      restoreTextDrafts();
       $$("[data-notice-target]").forEach((button) => button.classList.toggle("active", button === noticeTarget));
       return;
     }
@@ -781,17 +877,37 @@ function bindEvents() {
       return;
     }
 
+    const openCase = event.target.closest("[data-open-case]");
+    if (openCase) {
+      if (activeRole !== "sprayer" || !confirmLeaveInputs()) return;
+      const plan = planRepository.get(openCase.dataset.openCase);
+      if (!plan) return;
+      state.activePlanId = plan.id;
+      saveState();
+      renderAll();
+      switchView(workRecordForPlan(plan).doneDate ? "report" : "plans");
+      return;
+    }
+    if (event.target.closest("[data-save-weather-next]")) {
+      if (!$("#weatherForm").reportValidity()) return;
+      const before = structuredClone(state);
+      updateWeatherFromForm();
+      if (!finishMutation(before, ["weatherForm"])) return;
+      switchView("checklist");
+      showToast("気象の記録を保存しました。");
+      return;
+    }
     const target = event.target.closest("[data-view-target]");
     if (target) {
       switchView(target.dataset.viewTarget);
     }
   });
 
-  $$(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.viewTarget));
-  });
-
   $("#activePlanSelect").addEventListener("change", (event) => {
+    if (!confirmLeaveInputs()) {
+      event.target.value = state.activePlanId;
+      return;
+    }
     state.activePlanId = event.target.value;
     resetCoveragePlayback();
     saveState();
@@ -807,7 +923,11 @@ function bindEvents() {
   $("#newPlanButton")?.addEventListener("click", createNewPlan);
 
   function createNewPlan() {
+    if (activeRole !== "sprayer" || !confirmLeaveInputs()) return;
     const plan = createBlankPlan();
+    if (!DEMO_TOOLS_ENABLED) {
+      Object.assign(plan, { pesticide: "", pesticideRegistration: "", preHarvestDays: "", operator: "", contact: "", ...profilePlanDefaults() });
+    }
     planRepository.save(plan, { position: "start" });
     state.activePlanId = plan.id;
     saveState();
@@ -817,28 +937,38 @@ function bindEvents() {
   }
 
   $("#duplicatePlanButton").addEventListener("click", () => {
+    if (!confirmLeaveInputs()) return;
+    const before = structuredClone(state);
     const current = activePlan();
-    const copy = {
-      ...structuredClone(current),
-      id: uniqueId("plan"),
-      date: dateOffset(1),
-      timeWindow: current.timeWindow || "06:00-07:30",
-      notificationTargets: {},
-      report: defaultReport(),
-    };
+    const copy = { ...createBlankPlan(), ...domainLifecycle.copyPlanSettings(current), id: uniqueId("plan"), date: dateOffset(1), weather: { ...defaultWeather(), actualSpeed: "", measuredAt: "", measuredPlace: "", measuredBy: "" }, checks: defaultChecks(false) };
     planRepository.save(copy, { position: "start" });
     state.activePlanId = copy.id;
-    saveState();
-    renderAll();
+    if (!finishMutation(before)) return;
     showToast("散布計画を複製しました。");
+  });
+
+  $("#planFieldSelect").addEventListener("change", (event) => {
+    const field = fieldRepository.get(event.target.value);
+    if (!field || !isSelfOwned(field)) return;
+    const form = $("#planForm");
+    form.elements.fieldName.value = field.name;
+    if (field.district || field.municipality) form.elements.district.value = field.district || field.municipality;
+    if (field.crop) form.elements.crop.value = field.crop;
+    form.dataset.dirty = "true";
   });
 
   $("#planForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    const plan = updatePlanFromForm();
+    const before = structuredClone(state);
+    const previous = structuredClone(activePlan());
+    let plan = updatePlanFromForm();
+    if (domainLifecycle.noticeContentChanged(previous, plan)) {
+      if (previous.report?.doneDate) { state = normalizeState(before); showToast("実施記録がある予定は変更できません。新しい予定を追加してください。"); return; }
+      plan = domainLifecycle.revisePlan(previous, plan, "変更");
+    }
     planRepository.save(plan);
-    saveState();
-    renderAll();
+    if (!finishMutation(before, ["planForm"])) return;
+    if (event.submitter?.dataset.nextStep) switchView(event.submitter.dataset.nextStep);
     showToast("散布計画を保存しました。");
   });
 
@@ -852,9 +982,10 @@ function bindEvents() {
   $("#applyProfileToPlanButton")?.addEventListener("click", applyProfileToActivePlan);
 
   $("#saveWeatherButton").addEventListener("click", () => {
+    if (!$("#weatherForm").reportValidity()) return;
+    const before = structuredClone(state);
     updateWeatherFromForm();
-    saveState();
-    renderAll();
+    if (!finishMutation(before, ["weatherForm"])) return;
     showToast("気象メモを保存しました。");
   });
   $("#fetchWeatherButton").addEventListener("click", async () => {
@@ -864,15 +995,23 @@ function bindEvents() {
 
   $("#weatherForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    updateWeatherFromForm();
+    $("#saveWeatherButton").click();
   });
 
   $("#profileForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await saveProfileFromForm();
+    await saveProfileFromForm({ chooseFields: event.submitter?.dataset.chooseFields === "true" });
   });
 
   $("#resetProfileButton")?.addEventListener("click", resetProfileToDemoMode);
+  $("#googleSignInButton")?.addEventListener("click", signInWithGoogleAccount);
+  $("#headerAccountButton")?.addEventListener("click", () => {
+    document.body.dataset.accountOpen = "true";
+    if (switchView("profile") === false) return;
+    $("#supabaseAccountPanel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = supabaseSession?.user?.id ? $("#supabaseAccountTitle") : $("#googleSignInButton");
+    if (target) { target.tabIndex = target.tagName === "BUTTON" ? 0 : -1; target.focus({ preventScroll: true }); }
+  });
   $("#sendMagicLinkButton")?.addEventListener("click", sendSupabaseMagicLink);
   $("#supabaseSignOutButton")?.addEventListener("click", signOutSupabase);
   $("#exportAccountDataButton")?.addEventListener("click", exportAccountData);
@@ -898,20 +1037,21 @@ function bindEvents() {
 
   $("#reportForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    updateReportFromForm();
+    if (!updateReportFromForm()) return;
+    if (event.submitter?.dataset.nextStep) switchView(event.submitter.dataset.nextStep);
   });
 
   $("#photoInput").addEventListener("change", handlePhotoInput);
 
   $("#clearReportPhotoButton").addEventListener("click", () => {
+    const before = structuredClone(state);
     const plan = activePlan();
     saveWorkRecord(plan, {
       photoData: "",
       photoName: "",
     });
     $("#photoInput").value = "";
-    saveState();
-    renderReport();
+    if (!finishMutation(before)) return;
     showToast("写真メモを外しました。");
   });
 
@@ -951,10 +1091,11 @@ function bindEvents() {
     showToast("自分の圃場を追加しました。");
   });
   $("#saveFieldStatusButton").addEventListener("click", () => {
+    const before = structuredClone(state);
+    if (!$("#fieldStatusForm").reportValidity()) return;
     const field = updateFieldStatusFromForm();
     fieldRepository.save(field);
-    saveState();
-    renderAll();
+    if (!finishMutation(before, ["fieldStatusForm"])) return;
     showToast("圃場ステータスを保存しました。");
   });
   $("#loadDroneLogButton").addEventListener("click", loadBundledFlightLog);
@@ -963,6 +1104,17 @@ function bindEvents() {
     event.target.value = "";
   });
   $("#autoFillReportButton").addEventListener("click", () => {
+    if (!DEMO_TOOLS_ENABLED) {
+      const plan = activePlan();
+      const form = $("#reportForm");
+      const values = { doneDate: plan.date, doneTime: plan.timeWindow, doneField: plan.fieldName, donePesticide: plan.pesticide, doneArea: plan.sprayArea, actualAmount: plan.amount };
+      Object.entries(values).forEach(([key, value]) => {
+        if (!form.elements[key].value) form.elements[key].value = value || "";
+      });
+      form.dataset.dirty = "true";
+      showToast("計画から補完しました。実際の内容を確認して保存してください。");
+      return;
+    }
     autoFillReportFromPlan();
     saveState();
     renderAll();
@@ -1008,6 +1160,7 @@ function bindEvents() {
 
   $$(".segment[data-map-layer]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (!DEMO_TOOLS_ENABLED && button.dataset.mapLayer !== "risk") return;
       mapLayer = button.dataset.mapLayer;
       if (mapLayer !== "coverage") stopCoveragePlayback();
       $$(".segment[data-map-layer]").forEach((item) => item.classList.toggle("active", item === button));
@@ -1039,15 +1192,12 @@ function bindEvents() {
   });
 
   document.body.addEventListener("change", (event) => {
-    const targetMunicipality = event.target.closest("input[name='targetMunicipality']");
+    const targetMunicipality = event.target.closest("select[name='targetMunicipality']");
     if (targetMunicipality) {
-      const profile = activeProfile();
-      profile.targetMunicipalities = $$("input[name='targetMunicipality']:checked", $("#profileForm")).map((input) => input.value);
-      if (targetMunicipality.checked && !profile.boundaryLoadStatus[targetMunicipality.value]) {
-        profile.boundaryLoadStatus[targetMunicipality.value] = "notLoaded";
-      }
-      targetMunicipality.closest(".municipality-chip")?.classList.toggle("selected", targetMunicipality.checked);
+      const profile = { ...activeProfile(), targetMunicipalities: [targetMunicipality.value] };
+      $("#profileForm").dataset.dirty = "true";
       renderBoundaryStatus(profile);
+      renderProfileSetup();
       return;
     }
 
@@ -1065,6 +1215,7 @@ function bindEvents() {
 }
 
 function loadSampleData() {
+  if (!DEMO_TOOLS_ENABLED) return;
   if (cloudSyncEnabled()) {
     showToast("クラウドへ移行済みの地域ではサンプルで置き換えられません。ログアウトしてからお試しください。");
     return;
@@ -1081,6 +1232,7 @@ function loadSampleData() {
 }
 
 function resetDemoData() {
+  if (!DEMO_TOOLS_ENABLED) return;
   if (cloudSyncEnabled()) {
     showToast("クラウドへ移行済みの地域では実行できません。ログアウトしてからお試しください。");
     return;
@@ -1105,12 +1257,49 @@ function resetDemoData() {
   }
 }
 
+function finishMutation(before, savedForms = []) {
+  if (!saveState()) {
+    state = normalizeState(before);
+    return false;
+  }
+  savedForms.forEach(id => { const form = document.getElementById(id); if (form) delete form.dataset.dirty; });
+  renderAll();
+  return true;
+}
+
+function clearDirtyForms() { $$("form[data-dirty]").forEach(form => delete form.dataset.dirty); }
+
 function renderAll() {
+  renderLoginScreen();
+  const context = `${activeDeviceStateContext.id}:${state.activePlanId}:${state.role}`;
+  const drafts = context === renderedDraftContext ? formDrafts?.captureFormDrafts(document) || [] : [];
+  restoreSelectedRole();
+  document.documentElement.dataset.demoTools = String(DEMO_TOOLS_ENABLED);
   document.body.dataset.role = activeRole;
   document.body.dataset.profileRegistered = profileIsRegistered() ? "true" : "false";
   renderRoleSwitcher();
   renderProfileModeBanner();
   renderPlanSelect();
+  document.body.dataset.emptyWorkspace = String(!allPlans().length);
+  if (!allPlans().length) {
+    $("#caseBar").innerHTML = "";
+    $("#ruleBanner").innerHTML = "";
+    $("#roleActionPanel").innerHTML = '<article class="panel"><h3>この地域の予定はまだありません</h3><p>最初に畑の境界を登録してください。サンプルは実利用の地域に入りません。</p><button class="primary-button" data-view-target="map" type="button">地図で畑を登録</button><button class="ghost-button" data-view-target="profile" type="button">プロフィール・参加者の設定</button></article>';
+    renderMapView();
+    renderFieldStatus();
+    renderSupabaseAccount();
+    renderProfileForm();
+    renderRoleNavigation();
+    renderCaseList();
+    renderCaseWorkflow();
+    renderPrimaryNavigation();
+    clearDirtyForms();
+    formDrafts?.restoreFormDrafts(document, drafts);
+    renderedDraftContext = context;
+    renderSaveStatus();
+    renderMunicipalFeed();
+    return;
+  }
   renderCaseBar();
   renderRuleBanner();
   renderRoleActionPanel();
@@ -1130,16 +1319,42 @@ function renderAll() {
   renderProfileForm();
   renderSources();
   renderRoleNavigation();
+  renderCaseList();
+  renderCaseWorkflow();
+  renderPrimaryNavigation();
+  clearDirtyForms();
+  formDrafts?.restoreFormDrafts(document, drafts);
+  restoreTextDrafts();
+  renderedDraftContext = context;
+  renderSaveStatus();
+  renderMunicipalFeed();
+}
+
+function confirmLeaveInputs() {
+  if (!$$("form[data-dirty='true']").length) return true;
+  if (!confirm("保存していない入力があります。入力を破棄して移動しますか？")) return false;
+  clearDirtyForms();
+  renderAll();
+  return true;
 }
 
 function switchView(viewName) {
+  if (!allPlans().length && !["dashboard", "profile", "map", "fields"].includes(viewName)) viewName = "dashboard";
+  if (viewName === activeView && $$("form[data-dirty='true']").length) return false;
+  if (viewName !== activeView && !confirmLeaveInputs()) return false;
   if (!roleAllowsView(viewName)) {
     viewName = roleAllowsView("dashboard") ? "dashboard" : "profile";
   }
   activeView = viewName;
+  if (viewName === "dashboard") queueMicrotask(renderMunicipalFeed);
+  renderProfileSetup();
+  document.body.dataset.view = viewName;
   $$(".view").forEach((view) => view.classList.toggle("active", view.dataset.view === viewName));
   $$("[data-view-target]").forEach((item) => item.classList.toggle("active", item.dataset.viewTarget === viewName));
-  const meta = VIEW_META[viewName] || VIEW_META.dashboard;
+  renderCaseWorkflow();
+  renderPrimaryNavigation();
+  const meta = !DEMO_TOOLS_ENABLED && activeRole === "sprayer" && viewName === "dashboard"
+    ? ["予定・記録", "散布の予定と実施記録"] : VIEW_META[viewName] || VIEW_META.dashboard;
   $("#currentCrumb").textContent = meta[0];
   $("#currentTitle").textContent = meta[1];
   if (location.hash !== `#${viewName}`) {
@@ -1163,22 +1378,21 @@ function switchView(viewName) {
 }
 
 function setRole(role) {
-  if (!ROLE_META[role]) return;
-  if (profileIsRegistered()) {
-    showToast("プロフィール登録後は利用区分が固定されています。変更する場合はプロフィール設定を更新してください。");
-    return;
-  }
+  if (!availableRoles().includes(role) || role === activeRole) return;
+  state.roleContexts ||= {};
+  state.roleContexts[activeRole] = { planId: state.activePlanId, view: activeView, adminFilters: { ...adminFilters }, drafts: formDrafts.captureFormDrafts(document) };
+  clearDirtyForms();
+  const previous = state.roleContexts[role];
+  if (previous?.planId && planRepository.get(previous.planId)) state.activePlanId = previous.planId;
+  if (role === "admin" && previous?.adminFilters) adminFilters = { ...previous.adminFilters };
   activeRole = role;
   state.role = role;
   if (role === "admin") adminSelectedId = state.activePlanId;
   saveState();
   renderAll();
-  if (!roleAllowsView(activeView)) {
-    switchView("dashboard");
-  } else {
-    switchView(activeView);
-  }
-  showToast(`${ROLE_META[role].label}モードに切り替えました。`);
+  switchView(previous?.view || "dashboard");
+  if (previous?.planId === state.activePlanId) formDrafts.restoreFormDrafts(document, previous.drafts || []);
+  showToast(`${ROLE_META[role].label}に切り替えました。`);
 }
 
 function roleAllowsView(viewName) {
@@ -1186,11 +1400,13 @@ function roleAllowsView(viewName) {
 }
 
 function renderRoleSwitcher() {
-  const switcher = $("#roleSwitcher");
-  if (switcher) switcher.classList.toggle("role-switcher-locked", profileIsRegistered());
+  const roles = availableRoles();
   $$("#roleSwitcher [data-role]").forEach((button) => {
     button.classList.toggle("active", button.dataset.role === activeRole);
-    button.disabled = profileIsRegistered();
+    const available = roles.includes(button.dataset.role);
+    button.hidden = !available;
+    button.disabled = !available;
+    button.setAttribute("aria-pressed", String(button.dataset.role === activeRole));
   });
 }
 
@@ -1213,9 +1429,9 @@ function renderProfileModeBanner() {
   if (!profile.registered) {
     banner.innerHTML = `
       <div>
-        <span class="tag tag-attention">未登録デモモード</span>
-        <strong>ロール切替で各画面を確認できます。</strong>
-        <span>現在の利用区分に必要なタブだけ表示しています。プロフィール登録後は選択した利用区分で固定されます。</span>
+        <span class="tag tag-attention">${supabaseSession ? "プロフィール未登録" : "体験モード"}</span>
+        <strong>${DEMO_TOOLS_ENABLED ? "ロール切替で各画面を確認できます。" : "利用区分と連絡先を登録してください。"}</strong>
+        <span>現在の利用区分に必要なタブだけ表示しています。画面上部の立場を選ぶと切り替えられます。</span>
       </div>
       <button class="secondary-button" data-view-target="profile" type="button">プロフィール登録</button>
     `;
@@ -1223,9 +1439,9 @@ function renderProfileModeBanner() {
   }
   banner.innerHTML = `
     <div>
-      <span class="tag tag-green">${escapeHtml(PROFILE_ROLE_LABELS[profile.role] || "登録済み")}</span>
+      <span class="tag tag-green">${escapeHtml(PROFILE_ROLE_LABELS[currentNavigationRole()] || "所属する立場なし")}</span>
       <strong>${escapeHtml(profile.name || profile.organizationName || "プロフィール登録済み")}</strong>
-      <span>${escapeHtml(profile.municipality || "対象市町村未設定")} / ${escapeHtml(profile.district || "地区未設定")}。この表示は本番認証ではなく、localStorage上のUI制御です。</span>
+      <span>${escapeHtml(activeSupabaseMembership()?.workspaces?.name || profile.municipality || "対象市町村未設定")} / ${escapeHtml(profile.district || "地区未設定")} · ${supabaseSession ? "ログイン済み" : "体験用プロフィール"}</span>
     </div>
     <button class="ghost-button" data-view-target="profile" type="button">プロフィール設定</button>
   `;
@@ -1248,7 +1464,7 @@ function renderCaseBar() {
     ? "記録状況を確認します。散布の許可・承認を行う画面ではありません。"
     : activeRole === "neighbor"
       ? "あなたの圃場に関係する予定と返信状況を確認します。"
-      : "計画から通知、飛行ログ、実施後報告まで同じ案件として記録します。";
+      : "計画から通知、当日の確認、実施後報告まで同じ案件として記録します。";
   const neighborNotice = activeRole === "neighbor"
     ? neighborRelevantNotices().find((notice) => notice.plan.id === plan.id)
     : null;
@@ -1259,7 +1475,7 @@ function renderCaseBar() {
     `
     : `
       <span class="pill ${notificationIsComplete(plan) ? "green" : "amber"}">通知 ${escapeHtml(notificationLabel(plan))}</span>
-      <span class="pill ${plan.droneLog?.imported ? "green" : "amber"}">ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"}</span>
+      <span data-demo-only class="pill ${plan.droneLog?.imported ? "green" : "amber"}">ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"}</span>
       <span class="pill ${report.doneDate ? "green" : "amber"}">報告 ${report.doneDate ? "提出済み" : "未提出"}</span>
     `;
   bar.innerHTML = `
@@ -1273,6 +1489,77 @@ function renderCaseBar() {
       <small>${escapeHtml(roleNote)}</small>
     </div>
   `;
+}
+
+function renderPrimaryNavigation() {
+  const simple = !DEMO_TOOLS_ENABLED && activeRole === "sprayer";
+  document.body.dataset.simpleSprayer = String(simple);
+  $$(".nav-list [data-view-target], .mobile-quickbar [data-view-target]").forEach(item => {
+    const view = item.dataset.viewTarget;
+    const label = { dashboard: "予定・記録", map: "畑", profile: profileIsRegistered() ? "設定" : "プロフィール登録" }[view];
+    const labelNode = item.querySelector("span:last-child");
+    if (!item.dataset.originalLabel) item.dataset.originalLabel = item.textContent;
+    if (item.classList.contains("nav-item") && labelNode) {
+      labelNode.dataset.originalLabel ||= labelNode.textContent;
+      labelNode.textContent = view === "profile" ? (profileIsRegistered() ? "設定" : "プロフィール登録") : simple && label ? label : labelNode.dataset.originalLabel;
+    } else {
+      const textNode = [...item.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+      if (textNode) {
+        item.dataset.originalText ||= textNode.textContent;
+        textNode.textContent = view === "profile" ? (profileIsRegistered() ? "設定" : "プロフィール登録") : simple && label ? label : item.dataset.originalText;
+      }
+    }
+  });
+  const group = ["map", "profile"].includes(activeView) ? activeView : "dashboard";
+  if (simple) $("#dashboardTitle").textContent = "予定・記録";
+  if (simple) $$(".nav-list [data-view-target], .mobile-quickbar [data-view-target]").forEach(item => {
+    item.classList.toggle("active", item.dataset.viewTarget === group);
+  });
+}
+
+function renderCaseList() {
+  const container = $("#caseList");
+  if (!container) return;
+  container.innerHTML = `<div class="form-actions">
+    <button class="primary-button" data-action="new-plan" type="button">散布予定を追加</button>
+    <button class="ghost-button" data-view-target="history" type="button">履歴・記録の出力</button>
+  </div><p>予定を選ぶと、登録から連絡・実施記録まで進められます。</p>
+  <div class="case-list">${allPlans().slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map(plan => {
+    const report = workRecordForPlan(plan);
+    const status = plan.cancellation?.state === "cancelled" ? "中止" : plan.cancellation?.state === "postponed" ? "延期" : report.doneDate ? "実施記録あり" : "予定";
+    return `<button class="case-list-item" type="button" data-open-case="${escapeAttr(plan.id)}">
+      <span>${escapeHtml(plan.date || "日付未入力")} ${escapeHtml(plan.timeWindow || "")}</span>
+      <strong>${escapeHtml(plan.fieldName || "畑を選んでください")}</strong>
+      <span>${escapeHtml(plan.pesticide || "使用資材未入力")} / ${status}</span>
+      <span>${escapeHtml(notificationLabel(plan))} → 開く</span>
+    </button>`;
+  }).join("") || '<p class="empty-state">散布予定を追加して始めましょう。</p>'}</div>`;
+}
+
+function renderCaseWorkflow() {
+  const container = $("#caseWorkflow");
+  if (!container) return;
+  const plan = activePlan();
+  const views = ["plans", "notify", "weather", "checklist", "report", "map"];
+  container.hidden = DEMO_TOOLS_ENABLED || activeRole !== "sprayer" || !views.includes(activeView) || !plan;
+  if (container.hidden) return;
+  const steps = domainDashboard.buildCaseSteps({
+    view: activeView,
+    planSaved: Boolean(plan.date && plan.fieldName && plan.pesticide && plan.purpose && plan.contact),
+    notificationComplete: notificationIsComplete(plan),
+    weatherRecorded: Boolean(plan.checks?.weatherEnv && plan.checks?.wind),
+    checksRecorded: checkProgress(plan).done === checkProgress(plan).total,
+    reportDone: Boolean(workRecordForPlan(plan).doneDate),
+  });
+  container.innerHTML = `<button class="ghost-button" data-view-target="dashboard" type="button">← 予定・記録へ戻る</button>
+    <nav class="case-steps" aria-label="この散布の作業手順">${steps.map(step => `
+      <button type="button" data-view-target="${step.view}" ${step.active ? 'aria-current="step"' : ''}>
+        <strong>${step.label}</strong><span>${step.recorded ? "記録あり" : "未完了"}</span>
+      </button>`).join("")}</nav>
+    ${["weather", "checklist"].includes(activeView) ? '<div class="form-actions"><button type="button" class="ghost-button" data-view-target="weather">風向・風速の記録</button><button type="button" class="ghost-button" data-view-target="checklist">散布前チェック</button></div>' : ""}
+    ${plan.cancellation ? `<p class="case-change-note">${plan.cancellation.state === "cancelled" ? "中止" : "延期"}の記録があります。変更の連絡状況：${escapeHtml(notificationLabel(plan))}</p>` : ""}
+    ${renderCancellationForm(plan)}`;
+  renderRoleNavigation();
 }
 
 function renderRuleBanner() {
@@ -1290,16 +1577,22 @@ function renderRuleBanner() {
     <div>
       <span class="tag tag-green">確認進捗</span>
       <strong>${score.value} / 100</strong>
-      <span>チェック ${progress.done}/${progress.total} / 通知 ${notified}/${targets.length} / 気象 ${weatherCheckSummary(plan)} / ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"} / 報告 ${report.doneDate ? "提出済み" : "未提出"}</span>
+      <span>チェック ${progress.done}/${progress.total} / 通知 ${notified}/${targets.length} / 気象 ${weatherCheckSummary(plan)}${DEMO_TOOLS_ENABLED ? ` / ログ ${plan.droneLog?.imported ? "取込済み" : "未取込"}` : ""} / 報告 ${report.doneDate ? "提出済み" : "未提出"}</span>
     </div>`
     : "";
   $("#ruleBanner").innerHTML = `
     ${progressBlock}
     <div class="rule-compact-note">
-      <span>実証ルール案</span>
+      <span>地域の抽出条件</span>
       <strong>${escapeHtml(rules.regionName)}</strong>
-      <span>重点確認 ${escapeHtml(rules.organicRadius)}m / 通知候補 ${escapeHtml(rules.notifyRadius)}m / 距離は実証用仮設定です。</span>
+      <span>重点確認 ${escapeHtml(rules.organicRadius)}m / 通知候補 ${escapeHtml(rules.notifyRadius)}m。国のガイドラインに全国一律の通知距離はなく、この距離は地域で確認するための設定です。</span>
     </div>
+    <details class="guideline-note">
+      <summary>国のガイドラインで確認する周辺対象</summary>
+      <p>住宅、学校・病院等の公共施設、水道水源、養蜂、有機農業の圃場、収穫時期の近い農作物などを確認し、該当する関係者へ日時・目的・農薬の種類・連絡先を時間に余裕をもって知らせます。日時変更時も再度知らせます。</p>
+      <p>距離判定は候補の抽出支援であり、国の基準への適合や通知不要を判定するものではありません。</p>
+      <a href="https://www.maff.go.jp/j/syouan/syokubo/gaicyu/g_kouku_zigyo/muzinkoukuuki.html" target="_blank" rel="noreferrer">農林水産省の現行資料を確認</a>
+    </details>
   `;
 }
 
@@ -1331,6 +1624,7 @@ function renderSprayerWorkflow(plan) {
   const progress = checkProgress(plan);
   const actions = nextActionsForSprayer(plan);
   const workflow = domainDashboard.buildSprayerWorkflowModel({
+    logsEnabled: DEMO_TOOLS_ENABLED,
     plan: { ...plan, report: workRecordForPlan(plan), replyNeed: dashboardPlanFact(plan).replyNeed },
     progress,
     riskCount: riskItemsForPlan(plan).length,
@@ -1358,7 +1652,7 @@ function renderSprayerWorkflow(plan) {
       <div class="next-action-primary">
         <span class="tag tag-attention">次に必要な対応</span>
         <strong>${escapeHtml(actions[0]?.title || "未完了タスクはありません")}</strong>
-        <span>${escapeHtml(actions[0]?.detail || "散布後は実施後報告とドローンログを残してください。")}</span>
+        <span>${escapeHtml(actions[0]?.detail || "散布後は実施結果を記録してください。")}</span>
         <button class="primary-button" data-view-target="${escapeAttr(actions[0]?.view || "report")}" type="button">${escapeHtml(actions[0]?.title ? "この対応を開く" : "報告画面を開く")}</button>
       </div>
       <div class="next-action-list">
@@ -1374,24 +1668,13 @@ function renderSprayerWorkflow(plan) {
                   `,
                 )
                 .join("")
-            : `<div class="next-action-row is-static"><span>次の記録に進めます</span><small>散布後はログ取込と実施後報告を残してください。</small></div>`
+            : `<div class="next-action-row is-static"><span>次の記録に進めます</span><small>散布後は実施結果を記録してください。</small></div>`
         }
       </div>
       <div class="form-actions compact-actions">
         <button class="ghost-button" data-action="new-plan" type="button">別の散布計画を追加</button>
       </div>
-      <details class="plan-cancellation-panel" ${plan.cancellation ? "open" : ""}>
-        <summary>散布を中止・延期にする</summary>
-        <form class="cancellation-form">
-          <label>区分<select name="state"><option value="cancelled" ${plan.cancellation?.state === "cancelled" ? "selected" : ""}>中止</option><option value="postponed" ${plan.cancellation?.state === "postponed" ? "selected" : ""}>延期</option></select></label>
-          <label>理由<select name="reason">${["強風", "降雨", "機体不調", "その他"].map((reason) => `<option ${plan.cancellation?.reason === reason ? "selected" : ""}>${reason}</option>`).join("")}</select></label>
-          <label>補足<input name="reasonDetail" maxlength="120" value="${escapeAttr(plan.cancellation?.reasonDetail || "")}"></label>
-          <label>新しい予定日<input name="newDate" type="date" value="${escapeAttr(plan.cancellation?.newDate || "")}"></label>
-          <label>新しい時間帯<input name="newTimeWindow" value="${escapeAttr(plan.cancellation?.newTimeWindow || "")}"></label>
-          <button class="danger-button" data-action="save-cancellation" type="button">中止・延期を記録</button>
-          ${plan.cancellation ? '<button class="ghost-button" data-action="clear-cancellation" type="button">中止・延期を取り消す</button>' : ""}
-        </form>
-      </details>
+      ${DEMO_TOOLS_ENABLED ? renderCancellationForm(plan) : ""}
     </div>
     <details class="workflow-section" open>
       <summary class="workflow-section-head"><strong>散布前タスク</strong><span>周辺確認、通知、気象、チェックを先に確認します。</span></summary>
@@ -1404,56 +1687,61 @@ function renderSprayerWorkflow(plan) {
   `;
 }
 
+function renderCancellationForm(plan) {
+  return `      <details class="plan-cancellation-panel" ${plan.cancellation ? "open" : ""}>
+        <summary>日程の変更・中止・再開</summary>
+        <form class="cancellation-form" id="cancellationForm">
+          <label>区分<select name="state"><option value="cancelled" ${plan.cancellation?.state === "cancelled" ? "selected" : ""}>中止</option><option value="postponed" ${plan.cancellation?.state === "postponed" ? "selected" : ""}>延期</option></select></label>
+          <label>理由<select name="reason">${["強風", "降雨", "機体不調", "その他"].map((reason) => `<option ${plan.cancellation?.reason === reason ? "selected" : ""}>${reason}</option>`).join("")}</select></label>
+          <label>補足<input name="reasonDetail" maxlength="120" value="${escapeAttr(plan.cancellation?.reasonDetail || "")}"></label>
+          <label>新しい予定日<input name="newDate" type="date" value="${escapeAttr(plan.cancellation?.newDate || plan.date || "")}"></label>
+          <label>新しい時間帯<input name="newTimeWindow" value="${escapeAttr(plan.cancellation?.newTimeWindow || plan.timeWindow || "")}"></label>
+          <button class="danger-button" data-action="save-cancellation" type="button">中止・延期を記録</button>
+          ${plan.cancellation ? '<button class="ghost-button" data-action="clear-cancellation" type="button">入力した日程で再開する</button>' : ""}
+        </form>
+      </details>`;
+}
+
 function savePlanCancellation(form) {
-  if (!form) return;
-  const plan = activePlan();
-  const kind = form.elements.state.value === "postponed" ? "postponed" : "cancelled";
-  if (!confirm(kind === "cancelled" ? "この散布を中止として記録しますか？" : "この散布を延期として記録しますか？")) return;
-  const previous = { status: plan.status, cancellation: plan.cancellation };
+  if (!form || !form.reportValidity()) return;
+  const before = structuredClone(state);
   try {
-    plan.cancellation = {
-      state: kind,
-      reason: form.elements.reason.value,
-      reasonDetail: form.elements.reasonDetail.value.trim(),
-      decidedAt: new Date().toISOString(),
-      newDate: kind === "postponed" ? form.elements.newDate.value : "",
-      newTimeWindow: kind === "postponed" ? form.elements.newTimeWindow.value.trim() : "",
-      notifiedFieldIds: [],
-    };
-    plan.status = kind;
+    const plan = domainLifecycle.changeSchedule(activePlan(), {
+      kind: form.elements.state.value === "postponed" ? "延期" : "中止",
+      date: form.elements.newDate.value, timeWindow: form.elements.newTimeWindow.value.trim(),
+      reason: form.elements.reason.value, reasonDetail: form.elements.reasonDetail.value.trim(),
+    });
     planRepository.save(plan);
-    saveState();
-    renderAll();
-    showToast(kind === "cancelled" ? "中止を記録しました。周辺農家の通知にも表示します。" : "延期を記録しました。周辺農家の通知にも表示します。");
-  } catch {
-    plan.status = previous.status;
-    plan.cancellation = previous.cancellation;
-    showToast("中止・延期として記録できませんでした。電話で直接ご連絡ください。");
-  }
+    if (!finishMutation(before, ["cancellationForm"])) return;
+    switchView("notify");
+    showToast("変更を保存しました。新しい内容の連絡が必要です。");
+  } catch (error) { state = normalizeState(before); showToast(error.message); }
 }
 
 function clearPlanCancellation() {
-  const plan = activePlan();
-  if (!plan.cancellation || !confirm("中止・延期の記録を取り消し、散布予定に戻しますか？")) return;
-  plan.cancellation = null;
-  plan.status = "planned";
-  planRepository.save(plan);
-  saveState();
-  renderAll();
-  showToast("散布予定に戻しました。必要に応じて周辺へ変更を通知してください。");
+  const form = $("#cancellationForm");
+  if (!form || !activePlan().cancellation) return;
+  const before = structuredClone(state);
+  try {
+    const plan = domainLifecycle.changeSchedule(activePlan(), { kind: "再開", date: form.elements.newDate.value, timeWindow: form.elements.newTimeWindow.value.trim() });
+    planRepository.save(plan);
+    if (!finishMutation(before, ["cancellationForm"])) return;
+    switchView("notify");
+    showToast("再開する日程を保存しました。再開の連絡が必要です。");
+  } catch (error) { state = normalizeState(before); showToast(error.message); }
 }
 
 function renderNeighborHome(plan) {
   const notices = neighborRelevantNotices();
   const field = activeField();
-  const ownFields = allFields().filter((item) => item.type !== "spray" && isSelfOwned(item));
+  const ownFields = allFields().filter((item) => isSelfOwned(item));
   const profile = activeProfile();
   const pending = notices.filter((notice) => notice.response === "未回答").length;
   const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました").length;
   return `
     <div class="neighbor-inbox-summary">
       <article>
-        <span>未返信通知</span>
+        <span>確認記録なし</span>
         <strong>${pending}件</strong>
       </article>
       <article>
@@ -1504,7 +1792,7 @@ function renderNeighborHome(plan) {
 function renderNeighborNoticeCard(notice) {
   const wind = noticeWindSummary(notice);
   const reason = notificationReason(notice);
-  const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
+  const responseClass = notice.response === "未回答" ? "blue" : notice.response === "確認しました" ? "green" : "blue";
   const distanceClass = notice.level === "high" ? "red" : notice.level === "medium" ? "amber" : "green";
   const cancellation = notice.plan.cancellation;
   const phone = String(notice.plan.contact || "").replace(/[^0-9+]/g, "");
@@ -1517,7 +1805,7 @@ function renderNeighborNoticeCard(notice) {
           <strong>${escapeHtml(notice.plan.date)} ${escapeHtml(notice.plan.timeWindow)}</strong>
           <span>${escapeHtml(notice.plan.fieldName)} / ${escapeHtml(notice.plan.pesticide)}</span>
         </div>
-        <span class="pill ${responseClass}">${escapeHtml(notice.response)}</span>
+        <span class="pill ${responseClass}">${escapeHtml(notice.response === "未回答" ? "確認記録なし" : notice.response)}</span>
       </div>
       <div class="notice-operator"><span>散布者</span><strong>${escapeHtml(notice.plan.operator || "未登録")}</strong><span>連絡先：${phone ? `<a href="tel:${escapeAttr(phone)}">${escapeHtml(notice.plan.contact)}</a>` : "未登録"}</span></div>
       <div class="notice-card-metrics">
@@ -1541,12 +1829,12 @@ function renderNeighborNoticeCard(notice) {
       </div>
       <span class="small-note">通知理由：${escapeHtml(reason)}</span>
       <span class="small-note">${escapeHtml(wind.detail)}</span>
-      ${cancellation ? "" : `<label class="reply-note-label">相談内容（200字まで）<textarea maxlength="200" rows="2" data-reply-note="${escapeAttr(`${notice.plan.id}:${notice.id}`)}">${escapeHtml(replyNote)}</textarea></label>
+      <p class="small-note">確認・返信は任意です。散布の承諾ではありません。${notice.notified ? "散布者による連絡記録あり" : "散布者による連絡記録なし"}</p><label class="reply-note-label">相談内容（200字まで）<textarea maxlength="200" rows="2" data-reply-note="${escapeAttr(`${notice.plan.id}:${notice.id}`)}">${escapeHtml(replyNote)}</textarea></label>
       <div class="pill-line notice-actions">
         <button class="pill-button" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="確認しました" type="button">確認しました</button>
         <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="電話希望" type="button" ${phone ? "" : "disabled"}>電話で相談</button>
         <button class="pill-button amber" data-notify-plan="${escapeAttr(notice.plan.id)}" data-notify-action="${escapeAttr(notice.id)}" data-response="収穫日につき要相談" type="button">収穫・作業あり</button>
-      </div>`}
+      </div>
     </div>
   `;
 }
@@ -1586,6 +1874,7 @@ function nextActionsForSprayer(plan) {
     }))
     .filter((reply) => CONSULTATION_RESPONSES.includes(reply.response));
   return domainDashboard.buildSprayerNextActions({
+    logsEnabled: DEMO_TOOLS_ENABLED,
     pendingReplies,
     unnotifiedRisks: riskItemsForPlan(plan).filter((item) => item.notifyTarget && !item.notified),
     checks: plan.checks,
@@ -1608,7 +1897,7 @@ function weatherCheckSummary(plan) {
 
 function neighborRelevantNotices() {
   const since = dateOffset(-7);
-  const myFieldIds = new Set(allFields().filter((field) => field.type !== "spray" && isSelfOwned(field)).map((field) => field.id));
+  const myFieldIds = new Set(allFields().filter((field) => isSelfOwned(field)).map((field) => field.id));
   const notices = allPlans()
     .filter((plan) => plan.date >= since || plan.id === state.activePlanId)
     .flatMap((plan) =>
@@ -1636,8 +1925,8 @@ function privacyScopeCard(field) {
       <div>
         <span class="tag tag-blue">公開範囲</span>
         <strong>${escapeHtml(scope)}</strong>
-        <span>農薬不使用ほ場が近くにあることと方向・距離は、飛散を防ぐため常に散布者へ伝わります。圃場名・栽培理由・お名前は設定に従って伏せられます。</span>
-        <button class="ghost-button" data-view-target="profile" type="button">公開範囲を変更する</button>
+        <span>登録だけで相手へ自動通知されることはありません。下表は端末内サンプルでの表示範囲です。クラウドで非公開の畑の方向・距離を共有する機能は準備中です。</span>
+        <button class="ghost-button" data-view-target="fields" type="button">この畑の公開範囲を変更する</button>
       </div>
       <details class="privacy-scope-detail">
         <summary>公開範囲を確認</summary>
@@ -1714,6 +2003,7 @@ function adminDashboardSummary() {
   const regionPlans = adminRegionPlans();
   const today = dateOffset(0);
   return domainDashboard.summarizeAdminDashboard({
+    logsEnabled: DEMO_TOOLS_ENABLED,
     date,
     today,
     dayPlans: plans.map(dashboardPlanFact),
@@ -1736,6 +2026,7 @@ function renderAdminHome() {
     <div class="admin-disclaimer">
       この画面は散布の許可・承認を行うものではありません。散布計画、近隣通知、気象確認、実施後報告の記録状況を一覧化するための実証用画面です。
     </div>
+    <button class="secondary-button" data-open-participants type="button">参加者・兼務・招待を管理</button>
     <div class="admin-filter-grid">
       <label>都道府県
         <select name="prefecture" data-admin-dashboard-filter>
@@ -1782,7 +2073,7 @@ function renderAdminHome() {
 }
 
 function adminQueueItems(summary) {
-  return domainDashboard.buildAdminQueueItems(summary);
+  return domainDashboard.buildAdminQueueItems(summary).filter((item) => DEMO_TOOLS_ENABLED || item.key !== "droneMissing");
 }
 
 function adminAttentionReasons(plan) {
@@ -1830,7 +2121,7 @@ function adminAttentionReasons(plan) {
   if (!plan.cancellation && !plan.checks.weatherEnv) {
     reasons.push({ level: "amber", title: "散布者の気象確認未記録", detail: weatherCheckSummary(plan) });
   }
-  if (!plan.cancellation && !plan.droneLog?.imported) {
+  if (DEMO_TOOLS_ENABLED && !plan.cancellation && !plan.droneLog?.imported) {
     reasons.push({ level: "amber", title: "ドローンログ未取込", detail: "散布ON/OFF・高度・軌跡が未連携です。" });
   }
   const altitudeIssues = plan.droneLog?.imported ? altitudeCheckCount(plan.droneLog) : 0;
@@ -1953,20 +2244,20 @@ function renderGoNoGo() {
   if (!card) return;
   if (activeRole === "admin") {
     const summary = adminDashboardSummary();
-    const hasAttention = summary.attention || summary.notifyIncomplete || summary.reportMissing;
+    const hasAttention = summary.attentionPlans > 0;
     card.className = `gonogo-card gonogo-${hasAttention ? "caution" : "go"}`;
     card.innerHTML = `
       <div class="gonogo-verdict">
         <span class="gonogo-icon">▦</span>
         <div>
-          <strong>本日確認が必要な案件 ${escapeHtml(String(summary.attention + summary.notifyIncomplete + summary.reportMissing + summary.droneMissing + summary.altitudeNeed))}件</strong>
+          <strong>対象日に確認が必要な予定 ${escapeHtml(String(summary.attentionPlans))}件</strong>
           <span>${escapeHtml(adminDashboardFilters.prefecture)} ${escapeHtml(adminDashboardFilters.municipality)} / ${escapeHtml(summary.date)}。この画面は散布の許可・承認を行うものではありません。</span>
         </div>
       </div>
       <div class="gonogo-factors">
         <div class="gonogo-factor ${summary.inquiry ? "warn" : "good"}"><span>問い合わせあり</span><b>${summary.inquiry}件</b></div>
         <div class="gonogo-factor ${summary.reportMissing ? "warn" : "good"}"><span>報告未提出</span><b>${summary.reportMissing}件</b></div>
-        <div class="gonogo-factor ${summary.droneMissing ? "warn" : "good"}"><span>ログ未取込</span><b>${summary.droneMissing}件</b></div>
+        <div data-demo-only class="gonogo-factor ${summary.droneMissing ? "warn" : "good"}"><span>ログ未取込</span><b>${summary.droneMissing}件</b></div>
         <div class="gonogo-factor ${summary.notifyIncomplete ? "warn" : "good"}"><span>通知未完了</span><b>${summary.notifyIncomplete}件</b></div>
         <div class="gonogo-factor ${summary.altitudeNeed ? "warn" : "good"}"><span>高度要確認</span><b>${summary.altitudeNeed}件</b></div>
       </div>
@@ -1981,11 +2272,11 @@ function renderGoNoGo() {
     const pending = notices.filter((notice) => notice.response === "未回答");
     const consulting = notices.filter((notice) => notice.response !== "未回答" && notice.response !== "確認しました");
     const headline = pending.length
-      ? "未返信の散布通知があります"
+      ? "確認記録のない散布予定があります"
       : consulting.length
-        ? "未返信はありません。相談中の案件があります"
-        : "現在の通知状況：未返信なし";
-    card.className = `gonogo-card gonogo-${pending.length ? "caution" : "go"}`;
+        ? "相談中の予定があります"
+        : "関係する散布予定の確認状況";
+    card.className = `gonogo-card gonogo-go`;
     card.innerHTML = `
       <div class="gonogo-verdict">
         <span class="gonogo-icon">通</span>
@@ -1995,7 +2286,7 @@ function renderGoNoGo() {
         </div>
       </div>
       <div class="gonogo-factors">
-        <div class="gonogo-factor ${pending.length ? "warn" : "good"}"><span>未返信通知</span><b>${pending.length}件</b></div>
+        <div class="gonogo-factor good"><span>確認記録なし</span><b>${pending.length}件</b></div>
         <div class="gonogo-factor ${notices.length ? "warn" : "good"}"><span>近日散布予定</span><b>${notices.length}件</b></div>
         <div class="gonogo-factor ${consulting.length ? "warn" : "good"}"><span>相談中</span><b>${consulting.length}件</b></div>
         <div class="gonogo-factor good"><span>公開範囲</span><b>${escapeHtml(visibilityLabelForField(activeField()))}</b></div>
@@ -2119,7 +2410,7 @@ function renderDashboardChrome() {
       mapButtonTitle: "圃場マップを開く",
     },
     neighbor: {
-      title: "周辺農家ダッシュボード",
+      title: "周辺関係者ダッシュボード",
       description: "自分の圃場に関係する散布通知、返信状況、公開範囲を確認します。",
       mapTag: "関係する散布通知",
       mapButtonTarget: "map",
@@ -2197,14 +2488,14 @@ function renderNeighborDashboardContent() {
         .slice(0, 5)
         .map((notice) => {
           const wind = noticeWindSummary(notice);
-          const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
+          const responseClass = notice.response === "未回答" ? "blue" : notice.response === "確認しました" ? "green" : "blue";
           return `
             <button class="priority-row" type="button" data-view-target="notify">
               <span>
                 <strong>${escapeHtml(notice.plan.date)} ${escapeHtml(notice.plan.timeWindow)} ${escapeHtml(notice.plan.fieldName)}</strong>
                 <span>${escapeHtml(notice.plan.pesticide)} / 距離 ${escapeHtml(notice.distanceLabel)} / ${escapeHtml(wind.label)}</span>
               </span>
-              <span class="pill ${responseClass}">${escapeHtml(notice.response)}</span>
+              <span class="pill ${responseClass}">${escapeHtml(notice.response === "未回答" ? "確認記録なし" : notice.response)}</span>
             </button>
           `;
         })
@@ -2219,14 +2510,14 @@ function renderNeighborDashboardContent() {
     ? notices
         .map((notice) => {
           const wind = noticeWindSummary(notice);
-          const responseClass = notice.response === "未回答" ? "amber" : notice.response === "確認しました" ? "green" : "blue";
+          const responseClass = notice.response === "未回答" ? "blue" : notice.response === "確認しました" ? "green" : "blue";
           return `
             <tr>
               <td>${escapeHtml(notice.plan.date)}<br><span class="small-note">${escapeHtml(notice.plan.timeWindow)}</span></td>
               <td>${escapeHtml(notice.plan.fieldName)}<br><span class="small-note">距離 ${escapeHtml(notice.distanceLabel)}</span></td>
               <td>${escapeHtml(notice.plan.method)}<br><span class="small-note">${escapeHtml(notice.plan.pesticide)}</span></td>
               <td><span class="pill ${wind.className}">${escapeHtml(wind.label)}</span></td>
-              <td><span class="pill ${responseClass}">${escapeHtml(notice.response)}</span></td>
+              <td><span class="pill ${responseClass}">${escapeHtml(notice.response === "未回答" ? "確認記録なし" : notice.response)}</span></td>
             </tr>
           `;
         })
@@ -2279,6 +2570,7 @@ function renderAdminDashboardContent() {
   });
 
   $("#timeline").innerHTML = domainDashboard.buildAdminTimeline({
+    logsEnabled: DEMO_TOOLS_ENABLED,
     prefecture: adminDashboardFilters.prefecture,
     municipality: adminDashboardFilters.municipality,
     summary,
@@ -2305,7 +2597,20 @@ function renderAdminDashboardContent() {
 
 function renderPlanForm() {
   const plan = activePlan();
+  const select = $("#planFieldSelect");
+  const fields = allFields().filter(field => isSelfOwned(field) && normalizedFieldGeometry(field));
+  select.innerHTML = '<option value="">畑を選択（未登録の場合は「畑」で追加）</option>' + fields.map(field => `<option value="${escapeAttr(field.id)}">${escapeHtml(field.name)} / ${escapeHtml(field.district || field.municipality || "")}</option>`).join("");
+  select.value = plan.fieldId || "";
+  select.required = !DEMO_TOOLS_ENABLED && activeRole === "sprayer";
   const form = $("#planForm");
+  if (!form.elements.shareWithRegion) {
+    const label = document.createElement("label");
+    label.className = "wide-field";
+    label.innerHTML = '<input type="checkbox" name="shareWithRegion">散布場所と日時・地区・実施状況を地域の利用者に表示する（連絡先は公開しません）';
+    form.prepend(label);
+  }
+  form.elements.shareWithRegion.checked = plan.shareWithRegion === true;
+  form.elements.fieldName.readOnly = !DEMO_TOOLS_ENABLED;
   Object.entries({
     date: plan.date,
     timeWindow: plan.timeWindow,
@@ -2414,6 +2719,15 @@ function renderMapView() {
   updateGisMap(mapLibreMap);
 
   const plan = activePlan();
+  if (!plan) {
+    $("#mapDashMetrics").innerHTML = "";
+    $("#mapStatusLabel").textContent = "畑の境界を登録";
+    $("#mapRiskList").innerHTML = "";
+    $("#mapWindCard").innerHTML = "散布予定を登録すると、周辺情報を確認できます。";
+    renderGisLegend($("#mapLegend"));
+    renderBoundarySelector();
+    return;
+  }
   const metrics = mapWeatherMetrics(plan);
   $("#mapDashMetrics").innerHTML = metrics
     .map((item) => `<div class="dash-metric"><span>${escapeHtml(item.label)}</span><b>${escapeHtml(item.value)}</b><small>${escapeHtml(item.note)}</small></div>`)
@@ -2432,6 +2746,7 @@ function renderMapView() {
           </div>
           <strong>${escapeHtml(item.name)}</strong>
           <span>${escapeHtml(item.message)}</span>
+          <small>国ガイドラインの確認区分：${escapeHtml(item.guidelineCategory || "周辺の農地・施設")}</small>
           <small>確認理由：${escapeHtml(riskReasonLabel(item))}</small>
         </div>
       `,
@@ -2496,12 +2811,12 @@ function renderDashboardMapReadouts() {
     $("#dashboardMapCardTitle").textContent = "関係する散布通知";
     $("#dashboardMapDate").textContent = nextPlan ? nextPlan.date : "近日予定なし";
     const decisionEl = $("#dashboardMapDecision");
-    decisionEl.textContent = pending.length ? "未返信あり" : notices.length ? "確認済み" : "通知なし";
+    decisionEl.textContent = pending.length ? "確認記録なし" : notices.length ? "確認済み" : "通知なし";
     decisionEl.className = pending.length ? "status-amber" : "status-green";
     $("#dashboardMapWind").textContent = `${notices.length}件 予定`;
     $("#dashboardMapRain").textContent = `風下要確認 ${windAttention.length}件 / 相談中 ${consulting.length}件`;
     $("#dashboardMapMetrics").innerHTML = [
-      { label: "未返信", value: `${pending.length}件`, note: "通知返信", level: pending.length ? "warn" : "good" },
+      { label: "確認記録なし", value: `${pending.length}件`, note: "確認・返信は任意", level: "good" },
       { label: "近日予定", value: `${notices.length}件`, note: "関係通知", level: notices.length ? "warn" : "good" },
       { label: "風下確認", value: `${windAttention.length}件`, note: "風向確認", level: windAttention.length ? "warn" : "good" },
       { label: "公開範囲", value: visibilityLabelForField(field), note: "圃場情報", level: "good" },
@@ -2581,12 +2896,26 @@ function renderGisLegend(container, mode = "field") {
   container.innerHTML = items
     .map(([label, color]) => `<span><i style="background:${color}"></i>${escapeHtml(label)}</span>`)
     .join("");
+  if (allFields().some(field => field.provenance?.source === "aerial-demo")) {
+    container.insertAdjacentHTML("beforeend", `<small class="boundary-source-note">航空写真に沿った概略境界・名称と栽培種別はデモです（水路は位置未確認のため非表示）</small>`);
+  }
+}
+
+function createMapSafely(options) {
+  if (options.container.dataset.mapUnavailable) return null;
+  try { return new maplibregl.Map(options); }
+  catch (error) {
+    options.container.dataset.mapUnavailable = "true";
+    options.container.textContent = "この環境では地図を表示できません。予定や畑の一覧から操作できます。地図を使う場合は別のブラウザーで開いてください。";
+    options.container.setAttribute("role", "status");
+    return null;
+  }
 }
 
 function initDashboardMapLibre() {
   const container = $("#dashboardMapLibreCanvas");
   if (!container || dashboardMapLibreMap || !window.maplibregl) return;
-  dashboardMapLibreMap = new maplibregl.Map({
+  dashboardMapLibreMap = createMapSafely({
     container,
     style: rasterMapStyle("photo"),
     center: DEFAULT_MAP_VIEW.center,
@@ -2597,6 +2926,7 @@ function initDashboardMapLibre() {
     touchPitch: false,
     scrollZoom: false,
   });
+  if (!dashboardMapLibreMap) return;
   dashboardMapLibreMap.on("load", () => {
     dashboardMapLibreReady = true;
     setupGisMapLayers(dashboardMapLibreMap);
@@ -2692,7 +3022,7 @@ function setupGisMapLayers(map) {
       source: "fields",
       paint: {
         "fill-color": ["get", "color"],
-        "fill-opacity": ["case", ["==", ["get", "level"], "high"], 0.76, ["==", ["get", "notify"], 1], 0.66, 0.54],
+        "fill-opacity": ["case", ["==", ["get", "level"], "high"], 0.30, ["==", ["get", "notify"], 1], 0.24, 0.18],
       },
     });
     map.addLayer({
@@ -2822,8 +3152,31 @@ function updateGisMap(map, options = {}) {
   if (!map || !map.getStyle()?.layers?.length) return;
   setupGisMapLayers(map);
   if (!map.__tonariGisReady) return;
+  if (!map.getSource("regional-schedule")) {
+    map.addSource("regional-schedule", {type:"geojson",data:emptyFeatureCollection()});
+    map.addLayer({id:"regional-schedule-fill",type:"fill",source:"regional-schedule",paint:{"fill-color":"#e99c22","fill-opacity":0.4}});
+    map.addLayer({id:"regional-schedule-outline",type:"line",source:"regional-schedule",paint:{"line-color":"#b66a00","line-width":2}});
+  }
+  setGeoJsonSource(map,"regional-schedule", {type:"FeatureCollection",features:activeRole === "neighbor" && state.profileSetup?.step !== "fields" ? municipalScheduleRows.filter(row=>row.geometry).map(row=>({type:"Feature",geometry:row.geometry,properties:{}})) : []});
+  const selection = { type: "FeatureCollection", features: (document.body.dataset.profileSetup === "true" ? state.profileSetup?.fields || [] : []).map(field => ({ type: "Feature", geometry: field.geometry, properties: {} })) };
+  if (!map.getSource("setup-selection")) {
+    map.addSource("setup-selection", { type: "geojson", data: selection });
+    map.addLayer({ id: "setup-selection-fill", type: "fill", source: "setup-selection", paint: { "fill-color": "#20b55a", "fill-opacity": 0.45 } });
+    map.addLayer({ id: "setup-selection-line", type: "line", source: "setup-selection", paint: { "line-color": "#fff", "line-width": 3 } });
+  } else setGeoJsonSource(map, "setup-selection", selection);
   setGeoJsonSource(map, "parcels", parcelData || emptyFeatureCollection());
+  const choosingFields = !options.dashboard && document.body.dataset.profileSetup === "true";
+  map.setPaintProperty("parcels-outline", "line-width", choosingFields ? 1.5 : 0.6);
+  map.setPaintProperty("parcels-outline", "line-opacity", choosingFields ? 1 : 0.55);
+  if (choosingFields) {
+    ["fields", "risk-buffer", "wind-zone", "flight-lines", "flight-points", "coverage-grid", "drone-marker", "prescription-zones"].forEach(id => setGeoJsonSource(map, id, emptyFeatureCollection()));
+    return;
+  }
   setGeoJsonSource(map, "fields", options.adminDashboard ? adminDashboardFieldFeatureCollection() : fieldFeatureCollection());
+  if (!activePlan()) {
+    ["risk-buffer", "wind-zone", "flight-lines", "flight-points", "coverage-grid", "drone-marker", "prescription-zones"].forEach(id => setGeoJsonSource(map, id, emptyFeatureCollection()));
+    return;
+  }
   setGeoJsonSource(map, "risk-buffer", riskBufferFeatureCollection());
   setGeoJsonSource(map, "wind-zone", windZoneFeatureCollection(activePlan()));
   setGeoJsonSource(map, "flight-lines", flightLineFeatureCollection());
@@ -2878,7 +3231,7 @@ function applyGisLayerVisibility(map, options = {}) {
   const coverage = !adminDashboard && !always && mapLayer === "coverage";
   const showRisk = adminDashboard ? false : always || mapLayer === "risk";
   const showWind = adminDashboard ? false : always || mapLayer === "risk";
-  const showDrone = adminDashboard ? false : always || mapLayer === "drone" || coverage;
+  const showDrone = DEMO_TOOLS_ENABLED && !adminDashboard && (always || mapLayer === "drone" || coverage);
   const visibility = {
     "risk-buffer-fill": showRisk,
     "risk-buffer-line": showRisk,
@@ -2905,7 +3258,7 @@ function fieldFeatureCollection() {
   const risks = new Map(riskItemsForPlan(plan).map((item) => [item.id, item]));
   return {
     type: "FeatureCollection",
-    features: allFields().map((field, index) => {
+    features: allFields().filter(field => !field.mapGeometryUnverified).map((field, index) => {
       const risk = risks.get(field.id);
       return {
         type: "Feature",
@@ -2939,7 +3292,7 @@ function adminDashboardFieldFeatureCollection() {
   });
   return {
     type: "FeatureCollection",
-    features: allFields().map((field, index) => {
+    features: allFields().filter(field => !field.mapGeometryUnverified).map((field, index) => {
       const matches = byField.get(field.id) || [];
       const status = adminDashboardFieldStatus(matches);
       return {
@@ -3013,6 +3366,7 @@ function normalizedFieldGeometry(field, index = 0) {
   if (!field) return null;
   const stored = domainGeometry?.normalizeGeometry(field.geometry);
   if (stored) return stored;
+  if (field.positionUnregistered) return null;
   const legacy = legacyFieldPolygonCoordinates(field, index);
   return domainGeometry?.polygonFromRing(legacy) || null;
 }
@@ -3326,7 +3680,7 @@ function showMapFieldPopup(container, field) {
 function initMapLibre() {
   const container = $("#mapLibreCanvas");
   if (!container || mapLibreMap || !window.maplibregl) return;
-  mapLibreMap = new maplibregl.Map({
+  mapLibreMap = createMapSafely({
     container,
     style: rasterMapStyle("photo"),
     center: DEFAULT_MAP_VIEW.center,
@@ -3337,6 +3691,8 @@ function initMapLibre() {
     touchPitch: false,
     cooperativeGestures: true,
   });
+  if (!mapLibreMap) return;
+  mapLibreMap.addControl(new window.maplibregl.NavigationControl({showCompass:false}), "top-right");
   mapLibreMap.on("load", () => {
     mapLibreReady = true;
     setupGisMapLayers(mapLibreMap);
@@ -3405,7 +3761,7 @@ function renderFieldStatus() {
 
   const list = $("#fieldStatusList");
   if (!list) return;
-  const editableFields = allFields().filter((field) => field.type !== "spray" && isSelfOwned(field));
+  const editableFields = allFields().filter((field) => isSelfOwned(field));
   list.innerHTML = editableFields.length ? editableFields
     .map(
       (field) => `
@@ -3416,6 +3772,7 @@ function renderFieldStatus() {
             <span class="pill blue">${escapeHtml(field.visibilityLevel === "private" ? "最小限" : field.visibilityLevel === "workspace" ? "地域管理者にも共有" : "通知対象に共有")}</span>
           </div>
           <strong>${escapeHtml(field.name)}</strong>
+          ${field.positionUnregistered ? '<span class="tag tag-attention">位置未登録：地図で境界を選択してください</span><button class="ghost-button" data-register-field-position="' + escapeAttr(field.id) + '" type="button">地図で位置を登録</button>' : ''}
           <span>${escapeHtml(field.crop || "作物未登録")} / ${escapeHtml(field.avoidReason || "理由未登録")}</span>
           <button class="ghost-button mini-button" data-field-edit="${escapeAttr(field.id)}" type="button">この圃場を編集</button>
         </div>
@@ -3470,6 +3827,7 @@ function updateFieldStatusFromForm() {
   const form = $("#fieldStatusForm");
   const target = activeField();
   if (!target || !form) return null;
+  const originalType = target.type;
   ["name", "municipality", "district", "crop", "cultivation", "chemicalUse", "organicJas", "notifyPreference", "visibilityLevel", "contactMethod", "harvestWindow", "avoidReason"].forEach((name) => {
     target[name] = form.elements[name].value.trim();
   });
@@ -3491,6 +3849,7 @@ function updateFieldStatusFromForm() {
     target.type = "public";
     target.short = "未確";
   }
+  if (originalType === "spray") target.type = originalType;
   target.updatedAt = dateOffset(0);
   return target;
 }
@@ -3533,7 +3892,9 @@ function metricCard(label, value) {
 
 function renderNotification() {
   const plan = activePlan();
-  $("#noticeText").value = buildNoticeText(plan, noticeChannel);
+  $("#noticeText").value = buildNoticeText(plan, noticeChannel, noticeRecipient || undefined);
+  restoreTextDrafts();
+  $("#noticeHistory").innerHTML = `<p>${escapeHtml(plan.noticeKind || "予定")}のお知らせ：${escapeHtml(plan.date)} ${escapeHtml(plan.timeWindow)}。連絡・確認はこの内容についての記録です。</p>` + ((plan.noticeHistory || []).length ? `<details><summary>変更前の連絡履歴（${plan.noticeHistory.length}件）</summary>${plan.noticeHistory.map(entry => `<p>${escapeHtml(entry.kind)} / ${escapeHtml(entry.schedule.date)} ${escapeHtml(entry.schedule.timeWindow)} / 連絡記録 ${Object.values(entry.deliveries || {}).filter(Boolean).length}件・確認記録 ${Object.values(entry.acknowledgements || {}).filter(Boolean).length}件</p>`).join("")}</details>` : "");
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
   const rows = targets.length
     ? targets
@@ -3564,7 +3925,7 @@ function renderNotification() {
         .join("")
     : `<div class="empty-state">通知対象はありません。</div>`;
   $("#notifyTargetList").innerHTML = `
-    <p class="small-note">返信は本来、周辺農家の画面から登録されます。ここでの変更は実証デモ用の代理入力です。</p>
+    <p class="small-note">電話などで実際に受けた返答を記録できます。相手が画面で確認した記録とは区別されます。</p>
     ${rows}
   `;
 }
@@ -3575,7 +3936,7 @@ function renderChecklist() {
   $("#checkProgressHero").textContent = `${progress.done} / ${progress.total}`;
   $("#checkDonut").style.background = `conic-gradient(var(--green) ${progress.percent * 3.6}deg, #dce6e2 0deg)`;
   $("#checkDonut span").textContent = `${progress.percent}%`;
-  $("#checklistItems").innerHTML = CHECK_ITEMS.map(
+  $("#checklistItems").innerHTML = activeCheckItems().map(
     (item) => `
       <label class="check-item">
         <input type="checkbox" data-check-id="${escapeAttr(item.id)}" ${plan.checks[item.id] ? "checked" : ""}>
@@ -3590,13 +3951,13 @@ function renderChecklist() {
 
   $$("[data-check-id]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
+      const before = structuredClone(state);
       activePlan().checks[checkbox.dataset.checkId] = checkbox.checked;
-      saveState();
-      renderAll();
+      if (!finishMutation(before)) checkbox.checked = Boolean(activePlan().checks[checkbox.dataset.checkId]);
     });
   });
 
-  const missing = CHECK_ITEMS.filter((item) => !plan.checks[item.id]);
+  const missing = activeCheckItems().filter((item) => !plan.checks[item.id]);
   $("#missingChecklist").innerHTML = missing.length
     ? missing
         .map(
@@ -3703,7 +4064,7 @@ function renderReport() {
       <span>分類：${escapeHtml(report.reportType || "通常報告")} / 問い合わせ：${escapeHtml(report.inquiry || "未入力")}</span>
       ${report.inquiryDetail ? `<span>${escapeHtml(report.inquiryDetail)}</span>` : ""}
     </div>
-    <div class="risk-row">
+    <div class="risk-row" data-demo-only>
       <strong>ドローンログ概要</strong>
       <span>${escapeHtml(droneLogLabel())} / 高度要確認：${escapeHtml(report.altitudeNotes || altitudeCheckLabel())}</span>
     </div>
@@ -4222,7 +4583,7 @@ function renderHistory() {
     ["実施済み散布", `${doneCount}件`, "報告が提出された記録"],
     ["対象圃場", `${new Set(records.map((record) => record.field)).size}圃場`, "履歴に含まれる圃場数"],
     ["農薬／肥料等", `${agroCount}／${records.length - agroCount}`, "資材種別の内訳"],
-    ["飛行ログ連携", `${logCount}件`, "散布位置・カバー率を確認可能"],
+    ...(DEMO_TOOLS_ENABLED ? [["飛行ログ連携", `${logCount}件`, "散布位置・カバー率を確認可能"]] : []),
   ];
   $("#historyKpiGrid").innerHTML = kpis
     .map(
@@ -4392,7 +4753,7 @@ function renderAdminDetail() {
 function initAdminMapLibre() {
   const container = $("#adminDetailMap");
   if (!container || adminMapLibreMap || !window.maplibregl) return;
-  adminMapLibreMap = new maplibregl.Map({
+  adminMapLibreMap = createMapSafely({
     container,
     style: rasterMapStyle("photo"),
     center: DEFAULT_MAP_VIEW.center,
@@ -4402,6 +4763,7 @@ function initAdminMapLibre() {
     dragRotate: false,
     scrollZoom: false,
   });
+  if (!adminMapLibreMap) return;
   adminMapLibreMap.on("load", () => {
     setupGisMapLayers(adminMapLibreMap);
     updateGisMap(adminMapLibreMap, { dashboard: true });
@@ -4452,7 +4814,7 @@ function activeSupabaseMembership() {
 function currentDeviceStateContext() {
   return deviceStateContextModule.deviceStateContext({
     userId: supabaseSession?.user?.id,
-    workspaceId: activeSupabaseMembership()?.workspace_id,
+    workspaceId: activeSupabaseMembership()?.workspace_id || (supabaseSession ? "onboarding" : ""),
   });
 }
 
@@ -4526,25 +4888,12 @@ async function performDeviceStateContextSwitch(
   if (stateRepository && activeDeviceStateContext.id === target.id) return false;
 
   const previousState = state;
-  const previousContext = activeDeviceStateContext;
   const repository = createDeviceStateRepository(target);
   const stored = repository.load();
   let nextState = stored?.data || null;
-  let migratedDemo = false;
-
-  if (!nextState && target.id !== deviceStateContextModule.DEMO_STATE_CONTEXT && migrateDemo) {
-    if (previousContext.id === deviceStateContextModule.DEMO_STATE_CONTEXT && previousState) {
-      nextState = structuredClone(previousState);
-    } else {
-      const demoRepository = createDeviceStateRepository(
-        deviceStateContextModule.deviceStateContext(),
-      );
-      nextState = demoRepository.load()?.data || null;
-    }
-    migratedDemo = Boolean(nextState);
-  }
-  if (!nextState || !Array.isArray(nextState.plans) || !nextState.plans.length) {
-    nextState = createSampleState();
+  if (!nextState || !Array.isArray(nextState.plans)) {
+    nextState = target.id === deviceStateContextModule.DEMO_STATE_CONTEXT ? createSampleState()
+      : { realWorkspace: true, fields: [], plans: [], profile: defaultProfile(), roleContexts: {} };
   }
 
   if (
@@ -4573,16 +4922,14 @@ async function performDeviceStateContextSwitch(
   }
   stateRepository = repository;
   activeDeviceStateContext = target;
+  municipalScheduleRows = [];
+  municipalFeedSequence++;
+  pendingFieldPositionId = null;
+  noticeRecipient = "";
+  $("#issuedWorkspaceInvite").value = "";
+  $("#workspaceParticipantsList").innerHTML = "";
 
-  if (migratedDemo) {
-    const demoRepository = createDeviceStateRepository(
-      deviceStateContextModule.deviceStateContext(),
-    );
-    demoRepository.load();
-    demoRepository.save(normalizeState(createSampleState()));
-  }
-
-  activeRole = profileRole(state) || state.role || "sprayer";
+  restoreSelectedRole();
   state.role = activeRole;
   if (render) {
     renderAll();
@@ -4602,6 +4949,7 @@ function cloudSyncEnabled(workspaceId = activeSupabaseMembership()?.workspace_id
 function setSupabaseSyncState(status, message) {
   supabaseSyncState = { status, message };
   renderSupabaseSyncControls();
+  renderSaveStatus();
 }
 
 function configureRemoteSync() {
@@ -4796,9 +5144,12 @@ async function refreshSupabaseSession({ render = true } = {}) {
   if (contextChanged) await loadRemoteStateWhenEnabled();
   if (render) {
     renderSupabaseAccount();
-    if (contextChanged) {
+    if (contextChanged || !availableRoles().includes(activeRole)) {
       renderAll();
       switchView(roleAllowsView(activeView) ? activeView : "dashboard");
+    } else {
+      renderRoleSwitcher();
+      renderRoleNavigation();
     }
   }
 }
@@ -4842,13 +5193,23 @@ async function changeSupabaseWorkspace(event) {
 }
 
 function renderSupabaseAccount() {
+  renderLoginScreen();
   const panel = $("#supabaseAccountPanel");
   if (!panel) return;
   const enabled = Boolean(supabaseRuntime?.enabled);
   panel.hidden = !enabled;
+  $("#headerAccount").hidden = !enabled;
   if (!enabled) return;
 
   const signedIn = Boolean(supabaseSession?.user?.id);
+  const identity = $("#headerAuthIdentity");
+  $("#headerAuthStatus").textContent = signedIn ? "✓ ログイン済み" : "未ログイン";
+  $("#headerAccount").classList.toggle("signed-in", signedIn);
+  identity.hidden = !signedIn;
+  identity.textContent = signedIn ? supabaseSession.user.email || "ログイン中のアカウント" : "";
+  identity.title = identity.textContent;
+  $("#headerAccountButton").textContent = signedIn ? "アカウント設定" : "ログイン";
+  $("#headerAccountButton").className = signedIn ? "ghost-button" : "primary-button";
   const badge = $("#supabaseConnectionBadge");
   const status = $("#supabaseAccountStatus");
   const signedOutPanel = $("#supabaseSignedOutPanel");
@@ -4857,18 +5218,27 @@ function renderSupabaseAccount() {
   const syncPanel = $("#supabaseSyncPanel");
   const dataOperations = $("#accountDataOperations");
   const workspaceSelect = $("#supabaseWorkspaceSelect");
+  const activeWorkspaceCard = $("#activeWorkspaceCard");
   const membership = activeSupabaseMembership();
 
-  badge.textContent = signedIn ? "接続済み" : "ログイン待ち";
+  badge.textContent = signedIn ? "ログイン済み" : "ログイン待ち";
   badge.className = `pill ${signedIn ? "green" : "amber"}`;
   status.textContent = signedIn
     ? "プロフィールと地域データを安全に同期します。"
     : "メールで本人確認すると、地域データを複数端末で共有できます。";
   signedOutPanel.hidden = signedIn;
   signedInPanel.hidden = !signedIn;
-  workspacePanel.hidden = !signedIn;
+  workspacePanel.hidden = !signedIn || !DEMO_TOOLS_ENABLED;
   syncPanel.hidden = !signedIn || !membership;
   dataOperations.hidden = !signedIn;
+  const canManage = signedIn && availableRoles().includes("admin");
+  const profileForm = $("#profileForm");
+  if (signedIn && membership && profileForm.nextElementSibling !== panel) panel.before(profileForm);
+  else if ((!signedIn || !membership) && panel.nextElementSibling !== profileForm) panel.after(profileForm);
+  $("#workspaceParticipantsPanel").hidden = !canManage;
+  $("#workspaceOwnRoles").innerHTML = canManage ? ["sprayer", "neighbor"].filter(role => !availableRoles().includes(role))
+    .map(role => `<button type="button" class="ghost-button" data-add-own-role="${role}">自分に${PROFILE_ROLE_LABELS[role]}を追加</button>`).join("") : "";
+  if (!signedIn && activeWorkspaceCard) activeWorkspaceCard.hidden = true;
   if (!signedIn) return;
 
   $("#supabaseSignedInEmail").textContent = supabaseSession.user.email || "ログイン済み";
@@ -4892,6 +5262,27 @@ function renderSupabaseAccount() {
       `).join("")
     : '<option value="">地域を作成または招待参加してください</option>';
   workspaceSelect.value = membership?.workspace_id || "";
+  const activeWorkspace = membership
+    ? (Array.isArray(membership.workspaces) ? membership.workspaces[0] : membership.workspaces)
+    : null;
+  const activeWorkspaceRoles = membership
+    ? [...new Set(supabaseMemberships
+      .filter((item) => item.workspace_id === membership.workspace_id)
+      .map((item) => PROFILE_ROLE_LABELS[item.role] || item.role))]
+    : [];
+  activeWorkspaceCard.hidden = !activeWorkspace;
+  $("#workspaceCreateTitle").textContent = activeWorkspace ? "別の地域を作成" : "地域を作成";
+  $("#createWorkspaceButton").textContent = activeWorkspace ? "別の地域を作成" : "地域を作成";
+  if (activeWorkspace) {
+    const location = [activeWorkspace.prefecture, activeWorkspace.municipality, activeWorkspace.district]
+      .filter(Boolean)
+      .join(" ");
+    const justCreated = workspaceCreationFeedback?.workspaceId === membership.workspace_id;
+    $("#activeWorkspaceStatus").textContent = justCreated ? "作成完了・現在の地域" : "現在の地域";
+    $("#activeWorkspaceName").textContent = activeWorkspace.name;
+    $("#activeWorkspaceLocation").textContent = location || "所在地未登録";
+    $("#activeWorkspaceRoles").textContent = `利用できる立場：${activeWorkspaceRoles.join("・")}`;
+  }
   renderAccountDataOperations();
   renderSupabaseSyncControls();
 }
@@ -5388,6 +5779,22 @@ async function reloadSupabaseState() {
   }
 }
 
+async function signInWithGoogleAccount() {
+  if (!supabaseAuthService) return;
+  const button = $("#googleSignInButton");
+  const status = $("#googleSignInStatus");
+  try {
+    if (button) button.disabled = true;
+    if (status) status.textContent = "Googleの確認画面へ移動します。";
+    await supabaseAuthService.signInWithGoogle();
+    // 成功するとGoogleの画面へ遷移するため、通常はここから先へ進まない。
+  } catch (error) {
+    if (button) button.disabled = false;
+    if (status) status.textContent = error?.message || "Googleログインを開始できませんでした。";
+    showToast(error?.message || "Googleログインを開始できませんでした。");
+  }
+}
+
 async function sendSupabaseMagicLink() {
   if (!supabaseAuthService) return;
   const button = $("#sendMagicLinkButton");
@@ -5483,24 +5890,80 @@ async function createSupabaseWorkspace() {
   const button = $("#createWorkspaceButton");
   try {
     button.disabled = true;
+    const name = $("#workspaceNameInput").value.trim();
+    if (!name) {
+      $("#workspaceNameInput").focus();
+      showToast("地域名を入力してください。");
+      return;
+    }
+    const initialRoles = $$("input[name='workspaceInitialRole']:checked").map(input => input.value);
+    if (!initialRoles.length) { showToast("散布者・周辺関係者のいずれか、または両方を選んでください。"); return; }
     const workspaceId = await supabaseAuthService.createWorkspace({
-      name: $("#workspaceNameInput").value.trim(),
+      name,
+      role: initialRoles[0],
       prefecture: $("#workspacePrefectureInput").value.trim(),
       municipality: $("#workspaceMunicipalityInput").value.trim(),
       district: $("#workspaceDistrictInput").value.trim(),
     });
-    const selectedRole = $("#profileForm")?.elements.role.value || activeRole;
-    if (selectedRole && selectedRole !== "admin") {
-      await supabaseAuthService.addWorkspaceRole(workspaceId, selectedRole);
+    let roleFailed = false;
+    for (const role of initialRoles.slice(1)) {
+      try { await supabaseAuthService.addWorkspaceRole(workspaceId, role); }
+      catch { roleFailed = true; }
     }
     localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+    workspaceCreationFeedback = { workspaceId, name };
     await refreshSupabaseSession();
-    showToast("地域を作成しました。");
+    const card = $("#activeWorkspaceCard");
+    requestAnimationFrame(() => {
+      card?.scrollIntoView({ behavior: "smooth", block: "center" });
+      card?.focus({ preventScroll: true });
+    });
+    showToast(roleFailed ? "地域は作成済みです。立場の追加に失敗しました。プロフィールの立場を選び直して保存してください。" : `「${name}」を作成し、現在の地域に設定しました。`);
   } catch (error) {
     showToast(error?.message || "地域を作成できませんでした。");
   } finally {
     button.disabled = false;
   }
+}
+
+async function addOwnWorkspaceRole(button) {
+  if (!availableRoles().includes("admin") || !supabaseAuthService) return;
+  button.disabled = true;
+  try {
+    await supabaseAuthService.addWorkspaceRole(activeSupabaseMembership().workspace_id, button.dataset.addOwnRole);
+    await refreshSupabaseSession();
+    showToast("利用する立場を追加しました。画面上部で切り替えられます。");
+  } catch { showToast("立場を追加できませんでした。再試行してください。"); }
+  finally { button.disabled = false; }
+}
+
+async function issueWorkspaceInvite() {
+  if (!availableRoles().includes("admin") || !supabaseAuthService) return;
+  const workspaceId = activeSupabaseMembership().workspace_id;
+  const button = $("#issueWorkspaceInvite");
+  button.disabled = true;
+  try {
+    const result = await supabaseAuthService.createInvite(workspaceId, $("#inviteRole").value, $("#inviteEmail").value.trim());
+    if (activeSupabaseMembership()?.workspace_id !== workspaceId) return;
+    const invite = Array.isArray(result) ? result[0] : result;
+    $("#issuedWorkspaceInvite").value = invite.invite_token;
+    $("#issuedWorkspaceInvite").focus();
+    $("#issuedWorkspaceInvite").select();
+    showToast("招待コードを発行しました。相手へ伝えてください。");
+  } catch { showToast("招待コードを発行できませんでした。地域管理の所属と入力を確認してください。"); }
+  finally { button.disabled = false; }
+}
+
+async function loadWorkspaceParticipants() {
+  if (!availableRoles().includes("admin") || !supabaseAuthService) return;
+  const workspaceId = activeSupabaseMembership().workspace_id;
+  try {
+    const rows = await supabaseAuthService.workspaceParticipants(workspaceId);
+    if (activeSupabaseMembership()?.workspace_id !== workspaceId) return;
+    const people = new Map();
+    rows.forEach(row => people.set(row.user_id, [...(people.get(row.user_id) || []), PROFILE_ROLE_LABELS[row.role] || row.role]));
+    $("#workspaceParticipantsList").innerHTML = [...people].map(([id, roles]) => `<p>${escapeHtml(id === supabaseSession.user.id ? "あなた" : `参加者 ${id}`)}：${escapeHtml(roles.join("・"))}</p>`).join("");
+  } catch { showToast("参加者を取得できませんでした。再試行してください。"); }
 }
 
 async function acceptSupabaseWorkspaceInvite() {
@@ -5526,9 +5989,37 @@ async function acceptSupabaseWorkspaceInvite() {
 function renderProfileForm() {
   const form = $("#profileForm");
   if (!form) return;
+  if (!form.dataset.compactSetup) {
+    const basic = form.elements.name.closest("article");
+    form.prepend(basic);
+    form.prepend($("#profileMunicipalityChips").closest("article"));
+    form.prepend(form.querySelector('[data-profile-role]').closest('article'));
+    const optional = document.createElement("details");
+    optional.className = "wide-field";
+    optional.innerHTML = '<summary>所属・住所など（任意）</summary><div class="form-grid"></div>';
+    ["organizationName", "municipality", "district", "addressDetail", "affiliation"].forEach(name => optional.lastElementChild.append(form.elements[name].closest("label")));
+    basic.querySelector(".form-grid").append(optional);
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "primary-button";
+    save.textContent = "基本情報を保存";
+    save.id = "profileBasicSave";
+    basic.append(save);
+    const next = document.createElement("button");
+    next.type = "submit";
+    next.className = "primary-button";
+    next.dataset.chooseFields = "true";
+    next.textContent = "次へ：地図で自分の圃場を選ぶ";
+    // One primary action; the field picker opens below this form.
+    form.dataset.compactSetup = "true";
+  }
   const profile = activeProfile();
-  form.elements.role.value = profile.role || "";
-  renderProfileRoleOptions(profile.role);
+  const membershipRoles = supabaseSession && activeSupabaseMembership()
+    ? availableRoles().filter(role => role !== "admin") : [];
+  const selectedRoles = membershipRoles.length ? membershipRoles : profile.roles || [profile.role];
+  form.elements.role.value = selectedRoles.includes("sprayer") && selectedRoles.includes("neighbor") ? "both"
+    : selectedRoles.includes("neighbor") ? "neighbor" : "sprayer";
+  renderProfileRoleOptions(form.elements.role.value);
   setFormValue(form, "name", profile.name);
   setFormValue(form, "organizationName", profile.organizationName);
   setFormValue(form, "municipality", profile.municipality);
@@ -5536,7 +6027,10 @@ function renderProfileForm() {
   setFormValue(form, "addressDetail", profile.addressDetail);
   setFormValue(form, "phone", profile.phone);
   setFormValue(form, "email", profile.email);
-  setFormValue(form, "preferredContactMethod", profile.preferredContactMethod);
+  if (!profile.email && supabaseSession?.user?.email) setFormValue(form, "email", supabaseSession.user.email);
+  setFormValue(form, "lineId", profile.lineId || "");
+  setFormValue(form, "preferredContactMethod", ["phone", "line", "email"].includes(profile.preferredContactMethod) ? profile.preferredContactMethod : "email");
+  renderContactFields();
   setFormValue(form, "affiliation", profile.affiliation || "個人");
 
   setFormValue(form, "sprayer_defaultMethod", profile.sprayer.defaultMethod);
@@ -5567,9 +6061,9 @@ function renderProfileForm() {
   setFormValue(form, "admin_reportDeadlineDays", activeSettings().reportDeadlineDays);
   setFormValue(form, "admin_sharingScope", profile.admin.sharingScope || activeSettings().sharingScope);
 
-  renderVisibilitySelects(form, profile);
   renderMunicipalityChips(profile);
   renderBoundaryStatus(profile);
+  renderProfileSetup();
 }
 
 function setFormValue(form, name, value) {
@@ -5578,50 +6072,41 @@ function setFormValue(form, name, value) {
 }
 
 function renderProfileRoleOptions(selectedRole) {
+  const save = $("#profileBasicSave");
+  if (save) save.textContent = "基本情報を保存する";
   $$("[data-profile-role]").forEach((button) => {
     button.classList.toggle("active", button.dataset.profileRole === selectedRole);
+    button.disabled = !["sprayer", "neighbor", "both"].includes(button.dataset.profileRole);
+    button.setAttribute("aria-pressed", String(button.dataset.profileRole === selectedRole));
   });
   $$("[data-profile-settings]").forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.profileSettings === selectedRole);
+    panel.classList.toggle("active", panel.dataset.profileSettings === selectedRole || (selectedRole === "both" && ["sprayer", "neighbor"].includes(panel.dataset.profileSettings)));
   });
+  renderProfileSetup();
 }
 
-function renderVisibilitySelects(form, profile) {
-  Object.keys(profile.visibility).forEach((key) => {
-    const select = form.elements[`visibility_${key}`];
-    if (!select) return;
-    select.innerHTML = VISIBILITY_OPTIONS.map(
-      ([value, label]) => `<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`,
-    ).join("");
-    select.value = profile.visibility[key] || "relatedOnly";
-  });
-}
+
+const MVP_MUNICIPALITIES = [
+  { code: "08201", name: "水戸市" },
+  { code: "08216", name: "笠間市" },
+];
 
 function profileBoundaryChoices() {
-  const entries = boundaryCatalog.length ? boundaryCatalog : [];
-  const preferred = entries.filter((entry) => PREFERRED_BOUNDARY_NAMES.some((name) => entry.name.includes(name)));
-  return preferred.length ? preferred : entries;
+  return MVP_MUNICIPALITIES.flatMap(city => {
+    const entry = boundaryCatalog.find(item => item.code === city.code);
+    return entry ? [{ ...entry, name: city.name }] : [];
+  });
 }
 
 function renderMunicipalityChips(profile) {
   const wrap = $("#profileMunicipalityChips");
   if (!wrap) return;
-  const choices = profileBoundaryChoices();
-  wrap.innerHTML = choices.length
-    ? choices
-        .map((entry) => {
-          const checked = profile.targetMunicipalities.includes(entry.code);
-          const isZip = entry.file.toLowerCase().endsWith(".zip");
-          return `
-            <label class="municipality-chip ${checked ? "selected" : ""}">
-              <input type="checkbox" name="targetMunicipality" value="${escapeAttr(entry.code)}" ${checked ? "checked" : ""}>
-              <span>${escapeHtml(entry.name)}</span>
-              <small>${isZip ? "手動読込" : "軽量"}</small>
-            </label>
-          `;
-        })
-        .join("")
-    : `<div class="empty-state">市町村カタログを読み込み中です。</div>`;
+  const selected = MVP_MUNICIPALITIES.find(city => profile.targetMunicipalities.includes(city.code))
+    || MVP_MUNICIPALITIES.find(city => profile.municipality?.includes(city.name))
+    || MVP_MUNICIPALITIES[1];
+  wrap.innerHTML = `<label>都道府県<select name="targetPrefecture"><option value="08">茨城県</option></select></label>
+    <label>市町村<select name="targetMunicipality">${MVP_MUNICIPALITIES.map(city =>
+      `<option value="${city.code}" ${city.code === selected.code ? "selected" : ""}>${city.name}</option>`).join("")}</select></label>`;
 }
 
 function renderBoundaryStatus(profile) {
@@ -5660,20 +6145,296 @@ function boundaryStatusLabel(status) {
   }[status] || "未読込";
 }
 
-async function saveProfileFromForm() {
+function renderLoginScreen() {
+  const screen = $("#loginScreen");
+  if (!screen) return;
+  const show = !DEMO_TOOLS_ENABLED && !supabaseSession;
+  screen.hidden = !show;
+  document.body.classList.toggle("login-visible", show);
+  if (DEMO_TOOLS_ENABLED && !$("#demoExperienceBanner")) {
+    const banner = document.createElement("div");
+    banner.id = "demoExperienceBanner";
+    banner.className = "demo-experience-banner";
+    banner.innerHTML = '体験ユーザーで操作中・実際の通知は送信されません <button type="button" class="ghost-button">最初の状態に戻す</button> <a href="app.html?login=1">実アカウントでログイン</a>';
+    $(".main").prepend(banner);
+    banner.querySelector("button").onclick = () => { clearDirtyForms(); state = normalizeState(createSampleState()); seedDemoExperience(); saveState(); renderAll(); switchView("dashboard"); };
+  }
+}
+
+function seedDemoExperience() {
+  if (!DEMO_TOOLS_ENABLED || state.demoSeedVersion === 1) return;
+  state.demoSeedVersion = 1;
+  state.profile = {...defaultProfile(),registered:true,role:"sprayer",roles:["sprayer","neighbor"],name:"体験ユーザー"};
+  state.plans.forEach((plan,index) => {
+    const date = new Date(); date.setDate(date.getDate()+index+1);
+    plan.date = date.toLocaleDateString('sv-SE');
+    plan.operator = "サンプル散布者"; plan.contact = "sample@example.invalid";
+    plan.shareWithRegion = true;
+    if (index === 1) plan.cancellation = {type:"延期",reason:"天候による延期（サンプル）",at:date.toISOString()};
+    if (index === 2) { date.setDate(date.getDate()-5); plan.date=date.toLocaleDateString('sv-SE'); plan.report={...plan.report,doneDate:plan.date}; }
+  });
+}
+
+function renderContactFields() {
   const form = $("#profileForm");
-  if (!form) return;
-  const role = form.elements.role.value;
-  if (!ROLE_META[role]) {
-    showToast("利用区分を選択してください。");
+  const method = form.elements.preferredContactMethod.value;
+  form.elements.preferredContactMethod.closest('label').after(form.querySelector('[data-contact-field="email"]'),form.querySelector('[data-contact-field="line"]'));
+  form.querySelectorAll('[data-contact-field]').forEach(label => {
+    const active = label.dataset.contactField === method;
+    label.hidden = !active;
+    label.querySelector('input').required = active;
+  });
+}
+
+function profileDraftKey() { return `hatake.profileDraft:${supabaseSession?.user?.id || 'demo'}:${activeSupabaseMembership()?.workspace_id || 'onboarding'}`; }
+function saveProfileDraft() {
+  const form = $("#profileForm");
+  if (!form || !form.dataset.dirty) return;
+  try { sessionStorage.setItem(profileDraftKey(), JSON.stringify(formDrafts.captureFormDrafts(document).filter(d=>d.id==='profileForm'))); } catch { /* Keep the visible form intact. */ }
+}
+function restoreProfileDraft() {
+  try {
+    const drafts = JSON.parse(sessionStorage.getItem(profileDraftKey()) || '[]');
+    formDrafts.restoreFormDrafts(document,drafts);
+    renderProfileRoleOptions($("#profileForm").elements.role.value); renderContactFields();
+  } catch { /* Ignore unreadable local drafts. */ }
+}
+
+let municipalFeedSequence = 0;
+let municipalScheduleRows = [];
+async function renderMunicipalFeed() {
+  if (DEMO_TOOLS_ENABLED || activeRole !== "neighbor" || !supabaseSession || !supabaseAuthService?.municipalSchedule) return;
+  const seq = ++municipalFeedSequence;
+  const context = activeDeviceStateContext.id;
+  const code = activeProfile().targetMunicipalities?.[0];
+  const panel = $("#roleActionPanel");
+  if (!code || !panel) return;
+  panel.innerHTML = '<article class="panel" role="status">地域の散布予定を読み込んでいます…</article>';
+  try {
+    const rows = await supabaseAuthService.municipalSchedule(code);
+    if (seq !== municipalFeedSequence || context !== activeDeviceStateContext.id || activeRole !== "neighbor") return;
+    municipalScheduleRows = rows;
+    const labels = {draft:"予定",planned:"予定",postponed:"延期",cancelled:"中止",completed:"実施済み",in_progress:"実施中"};
+    panel.innerHTML = `<article class="panel"><h3>${escapeHtml(MVP_MUNICIPALITIES.find(c=>c.code===code)?.name || '')}の散布予定</h3>
+      <p>地域に共有された予定です。表示がないことは、散布がないことを意味しません。</p>${rows.length ? rows.map((row,index)=>`<div class="case-row"><strong>${escapeHtml(row.planned_date)} ${escapeHtml(row.time_window)}</strong><p>${escapeHtml(row.district)} · ${escapeHtml(labels[row.status] || '予定')}</p>${row.geometry ? `<button type="button" class="ghost-button" data-regional-place="${index}">散布場所を見る</button>` : '<span>場所の詳細は非公開です</span>'}</div>`).join('') : '<p>まだ共有された散布予定はありません。</p>'}</article>`;
+    panel.querySelectorAll('[data-regional-place]').forEach(button => button.onclick = () => {
+      const row = rows[Number(button.dataset.regionalPlace)];
+      switchView("map");
+      const bounds = turf.bbox({type:"Feature",geometry:row.geometry,properties:{}});
+      const display = () => { updateGisMap(mapLibreMap); mapLibreMap.fitBounds([[bounds[0],bounds[1]],[bounds[2],bounds[3]]],{padding:50,maxZoom:17}); };
+      if(mapLibreMap?.loaded()) display(); else mapLibreMap?.once('load',display);
+    });
+  } catch {
+    if (seq !== municipalFeedSequence || context !== activeDeviceStateContext.id || activeRole !== "neighbor") return;
+    panel.innerHTML = '<article class="panel" role="status"><p>散布予定を読み込めませんでした。接続または地域の設定を確認してください。</p><button type="button" class="ghost-button">再読み込み</button></article>';
+    panel.querySelector('button').onclick = renderMunicipalFeed;
+  }
+}
+
+let inlineMapShell;
+let inlineMapHome;
+let setupLoadAttemptKey = "";
+function renderProfileSetup() {
+  const panel = $("#profileSetupFlow");
+  if (!panel) return;
+  inlineMapShell ||= $("#mapCanvas").closest(".map-shell");
+  inlineMapHome ||= inlineMapShell.parentElement;
+  if (panel.previousElementSibling !== $("#profileForm")) $("#profileForm").after(panel);
+  const selectedRole = $("#profileForm").elements.role.value;
+  const code = $("#profileForm").elements.targetMunicipality?.value || activeProfile().targetMunicipalities?.[0] || "08216";
+  if (activeView === "profile" && selectedRole !== "neighbor" && !state.profileSetup) {
+    state.profileSetup = {step:"fields",code,fields:[]};
+  }
+  const setup = state.profileSetup;
+  panel.hidden = !setup || !["profile", "map"].includes(activeView) || selectedRole === "neighbor";
+  document.body.dataset.profileSetup = !panel.hidden ? "true" : "false";
+  if (panel.hidden) {
+    if (inlineMapShell.parentElement !== inlineMapHome) inlineMapHome.prepend(inlineMapShell);
     return;
   }
-  const selectedMunicipalities = $$("input[name='targetMunicipality']:checked", form).map((input) => input.value);
+  let controls = panel.querySelector(".profile-setup-controls");
+  if (!controls) {
+    controls = document.createElement("div");
+    controls.className = "profile-setup-controls";
+    panel.prepend(controls);
+  }
+  setup.fields ||= [];
+  setup.code = code;
+  const entries = profileBoundaryChoices();
+  if (controls.contains($("#profileRoleSaveStatus"))) $("#profileBasicSave").after($("#profileRoleSaveStatus"));
+  controls.innerHTML = `<p>${setup.step === "complete" ? "圃場を保存しました。この画面で引き続き確認・追加できます。" : "基本情報と散布する圃場を、この画面で登録します。"}</p>
+    <h3>散布する圃場を選んでください（複数選択可）</h3>
+    <p>青い線で囲まれた農地をタップすると選択できます。地図を拡大して、自分が管理する区画を選んでください。</p>
+    <input id="setupMunicipality" type="hidden" value="${escapeAttr(code)}"><p>対象地域：茨城県 ${escapeHtml(MVP_MUNICIPALITIES.find(city=>city.code===code)?.name || '')}</p>
+    <button class="secondary-button" data-setup-action="load" type="button" ${setupLoading ? "disabled" : ""}>${setupLoading ? "境界を読み込み中…" : "この市町村の地図を表示"}</button>
+    <p role="status">${escapeHtml(setupMapMessage)}</p>
+    <p class="small-note">内蔵の農水省データは2021年版です。現地と照合して選んでください。選択は所有権の証明ではありません。</p>
+    <strong>選択中：${setup.fields.length}件</strong>
+    <ul>${setup.fields.map(field => `<li>${escapeHtml(field.name)} <button class="ghost-button" data-setup-action="remove" data-id="${escapeAttr(field.id)}" type="button">選択を外す</button></li>`).join("")}</ul>
+    <div class="form-actions">
+    <button class="primary-button" data-setup-action="complete" type="button" ${setup.fields.length ? "" : "disabled"}>選択した圃場で登録を完了</button>
+    <button class="ghost-button" data-setup-action="skip" type="button">あとで圃場を登録する</button></div>
+    <div class="form-actions"><label>住所・地名で探す<input id="setupAddress" type="search" placeholder="例：水戸市見川町"></label><button type="button" class="ghost-button" data-setup-action="search">検索</button><button type="button" class="ghost-button" data-setup-action="locate">現在地付近を表示</button></div><div id="setupSearchResults"></div>`;
+  if (activeView === "profile") {
+    if (inlineMapShell.parentElement !== panel) panel.append(inlineMapShell);
+    requestAnimationFrame(() => { initMapLibre(); mapLibreMap?.resize(); updateGisMap(mapLibreMap); });
+  }
+  const loadKey = `${activeDeviceStateContext.id}:${code}`;
+  if (!setupLoading && entries.length && setupLoadAttemptKey !== loadKey) {
+    setupLoadAttemptKey = loadKey;
+    queueMicrotask(() => { if (state.profileSetup === setup && activeView === "profile") handleProfileSetup("load"); });
+  }
+}
+
+let setupLoading = false;
+let setupLoadPromise = Promise.resolve();
+let setupMapMessage = "市町村を選び、地図を表示してください。";
+
+async function handleProfileSetup(action, id) {
+  let setup = state.profileSetup;
+  if (!setup) return;
+  if (action === "back") { switchView("profile"); return; }
+  if (action === "map") { if (switchView("profile") !== false) await handleProfileSetup("load"); return; }
+  if (action === "done") { switchView("dashboard"); return; }
+  if (action === "remove") {
+    const before = structuredClone(state);
+    setup.fields = setup.fields.filter(field => field.id !== id);
+    if (!saveState()) state = before;
+    renderProfileSetup(); updateGisMap(mapLibreMap); return;
+  }
+  if (action === "locate") {
+    const context = activeDeviceStateContext.id;
+    if (!navigator.geolocation) { showToast("現在地を取得できません。住所で検索してください。"); return; }
+    navigator.geolocation.getCurrentPosition(position => {
+      if(context !== activeDeviceStateContext.id || state.profileSetup !== setup) return;
+      mapLibreMap?.flyTo({center:[position.coords.longitude,position.coords.latitude],zoom:16});
+    },()=>showToast("現在地を取得できませんでした。住所検索も利用できます。"),{timeout:10000});
+    return;
+  }
+  if (action === "search") {
+    const results = $("#setupSearchResults");
+    const query = $("#setupAddress").value;
+    results.textContent = "検索中…";
+    try {
+      const {findMunicipalAddresses} = await import('./services/municipal-addresses.mjs');
+      const rows = await findMunicipalAddresses(setup.code,query);
+      if (state.profileSetup !== setup || !results.isConnected) return;
+      results.innerHTML = rows.length ? '<p>町・地区付近へ移動します。番地の位置ではありません。</p>' : '<p>見つかりませんでした。町名・地区名で検索してください。</p>';
+      rows.forEach(row=>{const button=document.createElement('button');button.type='button';button.className='ghost-button';button.textContent=row.name;button.onclick=()=>mapLibreMap?.flyTo({center:row.center,zoom:16});results.append(button);});
+    } catch { results.textContent="住所データを読み込めませんでした。再試行してください。"; }
+    return;
+  }
+  if (action === "load") {
+    if (setupLoading) {
+      await setupLoadPromise;
+      if (state.profileSetup === setup) return handleProfileSetup("load", id);
+      return;
+    }
+    const entry = boundaryCatalog.find(item => item.code === $("#setupMunicipality").value);
+    if (!entry) return;
+    const context = activeDeviceStateContext.id;
+    setupLoading = true;
+    setup.code = entry.code;
+    setupMapMessage = `${entry.name}の農地区画を読み込んでいます…`;
+    renderProfileSetup();
+    setupLoadPromise = (async () => {
+    try {
+      const loaded = await boundaryIOService.fetchBoundaryEntry(entry, shapefileTools());
+      if (context !== activeDeviceStateContext.id || state.profileSetup !== setup || setup.code !== entry.code || activeView !== "profile") return;
+      applyParcelBackdrop(loaded.features, { silent: true });
+      setupMapMessage = `${entry.name}を表示しました。畑をタップして選択できます。`;
+      saveState();
+      switchView("profile");
+    } catch { setupMapMessage = "境界を読み込めませんでした。接続を確認して再試行してください。"; }
+    finally {
+      setupLoading = false;
+      if (context === activeDeviceStateContext.id && state.profileSetup === setup && activeView === "profile") {
+        renderProfileSetup();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        mapLibreMap?.resize();
+        fitToParcels();
+        if (id === "focus") inlineMapShell.scrollIntoView({behavior:"smooth",block:"start"});
+      }
+    }
+    })();
+    await setupLoadPromise;
+    return;
+  }
+  if (action === "complete" || action === "skip") {
+    if ($("#profileForm")?.dataset.dirty === "true" || !activeProfile().registered) {
+      const saved = await saveProfileFromForm({ finishingSetup: true });
+      if (!saved) return;
+      setup = state.profileSetup;
+      if (!setup) return;
+    }
+    if (action === "complete" && !setup.fields.length) return;
+    const before = structuredClone(state);
+    const selected = action === "skip" ? [] : setup.fields;
+    for (const field of selected) {
+      const existing = fieldRepository.get(field.id);
+      if (existing && !isSelfOwned(existing)) { showToast("別の利用者が登録した畑が含まれています。選択を見直してください。"); state = before; return; }
+      if (!existing) fieldRepository.save(field);
+    }
+    state.profileSetup = { step: "complete", count: selected.length, code: setup.code, fields: selected };
+    if (!saveState()) { state = before; return; }
+    renderAll(); switchView("dashboard");
+    window.scrollTo({top:0,behavior:"instant"});
+    showToast("プロフィールの登録が完了しました。");
+  }
+}
+
+function selectSetupParcel() {
+  const setup = state.profileSetup;
+  if (!setup || !lastClickedParcel) return;
+  const imported = domainImport.buildFieldRecord({ type: "Feature", ...lastClickedParcel }, 0,
+    { provider: domainImport.PROVIDER_IDS.PARCEL_BACKDROP, source: "parcel-backdrop", sourceCode: "parcel-backdrop", originalCrs: "EPSG:4326" },
+    { name: `自分の圃場 ${setup.fields.length + 1}`, idFactory: ({ stableKey }) => domainImport.parcelCompatibleId(stableKey) });
+  if (!imported.ok) { showToast("境界を確認できません。この区画は選択できません。"); return; }
+  const before = structuredClone(state);
+  const existing = fieldRepository.get(imported.field.id);
+  if (existing && !isSelfOwned(existing)) { showToast("この区画は別の利用者が登録しています。"); return; }
+  setup.step = "fields";
+  if (setup.fields.some(field => field.id === imported.field.id)) setup.fields = setup.fields.filter(field => field.id !== imported.field.id);
+  else setup.fields.push(existing ? structuredClone(existing) : { ...createBlankField(), ...imported.field,
+    ownerUserId: currentOwnerUserId(), owner: activeProfile().name, positionUnregistered: false, mapGeometryUnverified: false,
+    cultivation: "未回答", chemicalUse: "未回答", organicJas: "未回答", type: "public" });
+  if (!saveState()) state = before;
+  renderProfileSetup(); updateGisMap(mapLibreMap);
+}
+
+function showProfileSaveError(message, finishingSetup = false) {
+  const scrollTop = window.scrollY;
+  const status = $("#profileRoleSaveStatus");
+  const anchor = finishingSetup ? $("[data-setup-action='complete']")?.closest(".form-actions") : $("#profileBasicSave");
+  if (anchor) anchor.after(status);
+  status.textContent = message;
+  status.hidden = false;
+  window.scrollTo({top:scrollTop,behavior:"instant"});
+  showToast(message);
+}
+
+async function saveProfileFromForm({ chooseFields = false, finishingSetup = false } = {}) {
+  let before = structuredClone(state);
+  const form = $("#profileForm");
+  if (!form) return;
+  const selection = form.elements.role.value;
+  const roles = selection === "both" ? ["sprayer", "neighbor"] : [selection];
+  const role = roles[0];
+  const startSetup = role !== "neighbor";
+  if (!form.reportValidity()) return;
+  if (roles.some(item => !["sprayer", "neighbor"].includes(item))) {
+    showToast("利用できる立場を選択してください。");
+    return;
+  }
+  const city = MVP_MUNICIPALITIES.find(item => item.code === form.elements.targetMunicipality.value);
+  if (!city) { showToast("対象地域を選んでください。"); return; }
+  const selectedMunicipalities = [city.code];
   const current = activeProfile();
   const profile = {
     ...current,
     registered: true,
     role,
+    roles,
     name: form.elements.name.value.trim(),
     organizationName: form.elements.organizationName.value.trim(),
     municipality: form.elements.municipality.value.trim(),
@@ -5681,16 +6442,17 @@ async function saveProfileFromForm() {
     addressDetail: form.elements.addressDetail.value.trim(),
     phone: form.elements.phone.value.trim(),
     email: form.elements.email.value.trim(),
+    lineId: form.elements.lineId.value.trim(),
     preferredContactMethod: form.elements.preferredContactMethod.value,
     affiliation: form.elements.affiliation.value,
     targetMunicipalities: selectedMunicipalities,
     visibility: {
-      name: form.elements.visibility_name.value,
-      phone: form.elements.visibility_phone.value,
-      addressDetail: form.elements.visibility_addressDetail.value,
-      fieldLocation: form.elements.visibility_fieldLocation.value,
-      cropStatus: form.elements.visibility_cropStatus.value,
-      notificationReplies: form.elements.visibility_notificationReplies.value,
+      name: "private",
+      phone: "private",
+      addressDetail: "private",
+      fieldLocation: current.visibility.fieldLocation || "relatedOnly",
+      cropStatus: current.visibility.cropStatus || "relatedOnly",
+      notificationReplies: current.visibility.notificationReplies || "relatedOnly",
     },
     sprayer: {
       ...current.sprayer,
@@ -5725,31 +6487,49 @@ async function saveProfileFromForm() {
       return acc;
     }, {}),
   };
+  if (!DEMO_TOOLS_ENABLED && supabaseSession && supabaseAuthService?.joinMunicipality) {
+    try {
+      const workspaceId = await supabaseAuthService.joinMunicipality(city.code, roles);
+      const previousWorkspace = activeSupabaseMembership()?.workspace_id;
+      localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+      localStorage.setItem(cloudSyncKey(workspaceId), "enabled");
+      supabaseMemberships = await supabaseAuthService.memberships();
+      if (previousWorkspace !== workspaceId) {
+        await switchDeviceStateContext();
+        configureRemoteSync();
+        await loadRemoteStateWhenEnabled();
+        before = structuredClone(state);
+      }
+    } catch (error) {
+      showProfileSaveError(['PGRST202','42883'].includes(error?.cause?.code)
+        ? "保存できませんでした。サーバーの地域登録設定が未適用です。管理者による設定後に再試行してください。入力内容と選択した圃場は残っています。"
+        : "地域に登録できませんでした。接続を確認して再試行してください。入力内容と選択した圃場は残っています。", finishingSetup);
+      return;
+    }
+  }
+  const membership = activeSupabaseMembership();
+  let roleSaveError = "";
+  if (supabaseSession && supabaseAuthService && membership) {
+    const granted = availableRoles().filter(item => item !== "admin");
+    if (roles.length !== granted.length || roles.some(item => !granted.includes(item))) {
+      try {
+        await supabaseAuthService.setMyWorkspaceRoles(membership.workspace_id, roles);
+        supabaseMemberships = await supabaseAuthService.memberships();
+      } catch (error) {
+        const missingRpc = ['PGRST202', '42883'].includes(error?.cause?.code);
+        roleSaveError = missingRpc
+          ? "立場の変更は未保存です。管理者によるサーバー設定の更新後、選んだ立場をもう一度保存してください。"
+          : "立場の変更は未保存です。接続と利用権限を確認して、もう一度保存してください。";
+        profile.role = current.role;
+        profile.roles = current.roles || [];
+      }
+    }
+  }
   state.profile = normalizeProfile(profile);
-  state.role = role;
-  activeRole = role;
-  if (role === "admin") {
-    state.settings = {
-      ...activeSettings(),
-      regionName: profile.admin.ruleSetName || activeSettings().regionName,
-      managerName: profile.name || profile.organizationName || activeSettings().managerName,
-      organicRadius: toPositiveNumber(form.elements.admin_organicRadius.value, DEFAULT_SETTINGS.organicRadius),
-      notifyRadius: toPositiveNumber(form.elements.admin_notifyRadius.value, DEFAULT_SETTINGS.notifyRadius),
-      sensitiveRadius: toPositiveNumber(form.elements.admin_sensitiveRadius.value, DEFAULT_SETTINGS.sensitiveRadius),
-      windCaution: toPositiveNumber(form.elements.admin_windCaution.value, DEFAULT_SETTINGS.windCaution),
-      windLimit: toPositiveNumber(form.elements.admin_windLimit.value, DEFAULT_SETTINGS.windLimit),
-      noticeDeadlineDays: toPositiveNumber(form.elements.admin_noticeDeadlineDays.value, DEFAULT_SETTINGS.noticeDeadlineDays),
-      reportDeadlineDays: toPositiveNumber(form.elements.admin_reportDeadlineDays.value, DEFAULT_SETTINGS.reportDeadlineDays),
-      sharingScope: profile.admin.sharingScope,
-    };
-  }
-  if (role === "sprayer") {
-    applyProfileToActivePlan({ silent: true });
-  }
-  if (role === "neighbor") {
-    applyNeighborProfileToField();
-  }
-  saveState();
+  if (startSetup && !roleSaveError) state.profileSetup = { ...(state.profileSetup || {}), code: city.code, step: "fields", fields: state.profileSetup?.fields || [] };
+  if (!saveState()) { state = normalizeState(before); restoreSelectedRole(); return; }
+  delete form.dataset.dirty;
+  try { sessionStorage.removeItem(profileDraftKey()); } catch { /* Storage is optional. */ }
   let cloudSaved = true;
   if (supabaseAuthService && supabaseSession) {
     try {
@@ -5758,9 +6538,39 @@ async function saveProfileFromForm() {
       cloudSaved = false;
     }
   }
-  renderAll();
-  switchView("dashboard");
-  loadProfileLightBoundaries();
+  if (roleSaveError) {
+    renderAll();
+    switchView("profile");
+    form.elements.role.value = selection;
+    renderProfileRoleOptions(selection);
+    form.dataset.dirty = "true";
+    const feedback = $("#profileRoleSaveStatus");
+    feedback.textContent = (cloudSaved ? "基本情報は保存しました。" : "基本情報は端末に保存しました。クラウド同期は再試行してください。") + roleSaveError;
+    feedback.hidden = false;
+    showProfileSaveError(feedback.textContent, finishingSetup);
+    showToast(cloudSaved ? "基本情報は保存しました。立場の変更は未保存です。" : "基本情報は端末に保存しました。立場の変更とクラウド同期は未完了です。");
+    return;
+  }
+  $("#profileRoleSaveStatus").hidden = true;
+  if (finishingSetup) {
+    if (!cloudSaved) {
+      form.dataset.dirty = "true";
+      showToast("基本情報をクラウドに保存できませんでした。接続を確認してもう一度登録してください。");
+      return false;
+    }
+    return true;
+  }
+  if (startSetup) {
+    renderAll();
+    switchView("profile");
+    renderProfileSetup();
+    await handleProfileSetup("load", "focus");
+  } else {
+    state.profileSetup = null;
+    saveState();
+    renderAll();
+    switchView("dashboard");
+  }
   showToast(cloudSaved
     ? "プロフィールを保存しました。"
     : "端末へ保存しました。クラウド同期は再試行してください。");
@@ -5780,7 +6590,7 @@ function resetProfileToDemoMode() {
 function registeredProfileFor(role) {
   if (!state?.profile) return null;
   const profile = normalizeProfile(state.profile);
-  return profile.registered && profile.role === role ? profile : null;
+  return profile.registered && availableRoles().includes(role) ? profile : null;
 }
 
 function profileEquipmentTemplate() {
@@ -5835,7 +6645,7 @@ function profileFieldDefaults() {
 
 function applyProfileToActivePlan(options = {}) {
   const profile = activeProfile();
-  if (!profile.registered || profile.role !== "sprayer") {
+  if (!registeredProfileFor("sprayer")) {
     if (!options.silent) showToast("散布者プロフィールを登録すると反映できます。");
     return;
   }
@@ -5856,7 +6666,7 @@ function applyProfileToActivePlan(options = {}) {
 
 function applyNeighborProfileToField() {
   const profile = activeProfile();
-  if (!profile.registered || profile.role !== "neighbor") return;
+  if (!registeredProfileFor("neighbor")) return;
   const field = activeField();
   field.owner = profile.name || profile.organizationName || "自分";
   field.contactMethod = CONTACT_METHOD_LABELS[profile.preferredContactMethod] || field.contactMethod;
@@ -5955,6 +6765,7 @@ function renderSources() {
 function updatePlanFromForm() {
   const plan = activePlan();
   const form = $("#planForm");
+  plan.shareWithRegion = Boolean(form.elements.shareWithRegion?.checked);
   [
     "date",
     "timeWindow",
@@ -5989,6 +6800,12 @@ function updatePlanFromForm() {
   plan.ratePer10a = toNumber(form.elements.ratePer10a.value);
   plan.areaHa = toNumber(form.elements.areaHa.value);
   plan.sprayWidthM = toNumber(form.elements.sprayWidthM.value);
+  const selectedField = fieldRepository.get(form.elements.selectedFieldId.value);
+  if (!DEMO_TOOLS_ENABLED && selectedField?.type === "spray" && isSelfOwned(selectedField)) {
+    plan.fieldId = selectedField.id;
+    plan.fieldIdSource = "form-select";
+    plan.fieldName = selectedField.name;
+  }
   // 参照中のほ場と同名のままなら既存のfieldIdを維持する（同名圃場があっても参照を失わない）。
   const currentField = fieldForPlan(plan);
   const typedName = String(plan.fieldName ?? "").trim();
@@ -6028,6 +6845,10 @@ function updateWeatherFromForm() {
 
 async function fetchWeatherForecast() {
   const plan = activePlan();
+  const context = activeDeviceStateContext.id;
+  const weatherInputs = () => JSON.stringify([...$("#weatherForm").elements].map(input => [input.name, input.value, input.checked]));
+  const requestedInputs = weatherInputs();
+  const revision = Number(plan.noticeRevision || 0);
   const weather = plan.weather || defaultWeather();
   const latitude = Number(weather.latitude || DEFAULT_WEATHER_LOCATION.latitude);
   const longitude = Number(weather.longitude || DEFAULT_WEATHER_LOCATION.longitude);
@@ -6040,14 +6861,16 @@ async function fetchWeatherForecast() {
       date: plan.date,
       timeWindow: plan.timeWindow,
     });
+    if (context !== activeDeviceStateContext.id || plan !== activePlan() || revision !== Number(plan.noticeRevision || 0)) return;
+    if (weatherInputs() !== requestedInputs) { setWeatherStatus("入力を保持", "取得中に入力が変わりました。必要なら予報をもう一度取得してください。"); return; }
+    const before = structuredClone(state);
     plan.weather = {
       ...plan.weather,
       ...forecast,
       weatherNotes: plan.weather.weatherNotes || forecast.weatherNotes,
     };
     plan.checks.weatherForecast = true;
-    saveState();
-    renderAll();
+    if (!finishMutation(before, ["weatherForm"])) return;
     showToast("気象情報を自動取得しました。");
   } catch (error) {
     setWeatherStatus("取得失敗", "通信できないため、手入力の値を使用してください。");
@@ -6067,7 +6890,9 @@ function setWeatherStatus(label, message) {
 }
 
 function updateReportFromForm() {
+  const before = structuredClone(state);
   const plan = activePlan();
+  if (plan.cancellation) { showToast("中止・延期中です。予定の日程を確定して再開してから実施を記録してください。"); return false; }
   const form = $("#reportForm");
   saveWorkRecord(plan, {
     doneDate: form.elements.doneDate.value,
@@ -6085,14 +6910,14 @@ function updateReportFromForm() {
     outsideFlight: form.elements.outsideFlight.value,
     reportNotes: form.elements.reportNotes.value.trim(),
   });
-  saveState();
-  renderAll();
-  showToast("実施後報告を保存しました。");
+  if (!finishMutation(before, ["reportForm"])) return false;
+  showToast("実施記録を保存しました。");
+  return true;
 }
 
 function autoFillReportFromPlan() {
   const plan = activePlan();
-  const log = plan.droneLog?.imported ? plan.droneLog : null;
+  const log = DEMO_TOOLS_ENABLED && plan.droneLog?.imported ? plan.droneLog : null;
   const report = workRecordForPlan(plan);
   const coverage = estimateCoverage(plan);
   saveWorkRecord(plan, {
@@ -6116,15 +6941,18 @@ function autoFillReportFromPlan() {
 function handlePhotoInput(event) {
   const file = event.target.files[0];
   if (!file) return;
+  const originalPlan = activePlan();
+  const originalContext = activeDeviceStateContext.id;
   const reader = new FileReader();
   reader.onload = () => {
+    if (originalContext !== activeDeviceStateContext.id || originalPlan !== activePlan()) { showToast("写真の読込中に予定が切り替わりました。もう一度写真を選んでください。"); return; }
+    const before = structuredClone(state);
     const plan = activePlan();
     saveWorkRecord(plan, {
       photoData: reader.result,
       photoName: file.name,
     });
-    saveState();
-    renderReport();
+    if (!finishMutation(before)) return;
     showToast("写真メモを読み込みました。");
   };
   reader.readAsDataURL(file);
@@ -6142,14 +6970,17 @@ async function copyNotice() {
 }
 
 function markSelectedTargetsNotified() {
+  const before = structuredClone(state);
   const plan = activePlan();
   const selected = $$("[data-notify-target]:checked").map((input) => input.dataset.notifyTarget);
   if (!selected.length) {
-    showToast("通知済みにする対象を選択してください。");
+    showToast("実際に連絡した相手を選択してください。");
     return;
   }
   selected.forEach((id) => {
     notificationRepository.saveDelivery(plan.id, id, true);
+    plan.noticeDeliveryRecords ||= {};
+    plan.noticeDeliveryRecords[id] = { revision: Number(plan.noticeRevision || 0), at: new Date().toISOString(), method: $("#noticeMethod")?.value || "手動連絡", recordedBy: currentOwnerUserId() };
   });
   if (plan.cancellation) {
     plan.cancellation.notifiedFieldIds = [...new Set([
@@ -6159,12 +6990,12 @@ function markSelectedTargetsNotified() {
   }
   plan.checks.notice = notificationIsComplete(plan);
   planRepository.save(plan);
-  saveState();
-  renderAll();
-  showToast("通知履歴を更新しました。");
+  if (!finishMutation(before)) return;
+  showToast("実際に連絡した記録を保存しました。");
 }
 
 function setNotificationResponse(fieldId, response, planId = "", note, options = {}) {
+  const before = structuredClone(state);
   const plan = planRepository.get(planId) || activePlan();
   notificationRepository.saveResponse(plan.id, fieldId, response || "未回答");
   if (note !== undefined) {
@@ -6172,14 +7003,13 @@ function setNotificationResponse(fieldId, response, planId = "", note, options =
   }
   if (options.acknowledge && response && response !== "未回答") {
     plan.notificationAcks = { ...(plan.notificationAcks || {}) };
-    plan.notificationAcks[fieldId] ||= new Date().toISOString();
+    plan.notificationAcks[fieldId] = new Date().toISOString();
   }
   plan.checks.notice = notificationIsComplete(plan);
   planRepository.save(plan);
   state.activePlanId = plan.id;
-  saveState();
-  renderAll();
-  showToast(`返信を「${response || "未回答"}」に更新しました。`);
+  if (!finishMutation(before)) return;
+  showToast(`返答を「${response || "未回答"}」として記録しました。`);
   if (options.acknowledge && response === "電話希望") {
     const phone = String(plan.contact || "").replace(/[^0-9+]/g, "");
     if (phone) location.href = `tel:${phone}`;
@@ -6325,7 +7155,7 @@ function buildNoticeReplyPrint(plan) {
 function buildPrecheckPrint(plan) {
   const rules = activeSettings();
   const progress = checkProgress(plan);
-  const rows = CHECK_ITEMS.map((item) => [item.title, plan.checks[item.id] ? "確認済み" : "未確認"]);
+  const rows = activeCheckItems().map((item) => [item.title, plan.checks[item.id] ? "確認済み" : "未確認"]);
   return `
     <article class="print-doc">
       <h1>農薬散布前 確認記録</h1>
@@ -6580,7 +7410,7 @@ function getNeighborDashboardMetrics() {
 function getAdminDashboardMetrics() {
   const rules = activeSettings();
   const summary = adminDashboardSummary();
-  return domainDashboard.buildAdminDashboardMetrics({ summary, organicRadius: rules.organicRadius });
+  return domainDashboard.buildAdminDashboardMetrics({ logsEnabled: DEMO_TOOLS_ENABLED, summary, organicRadius: rules.organicRadius });
 }
 
 function dashboardPlanFact(plan) {
@@ -6629,7 +7459,7 @@ function riskItemsForPlan(plan) {
   const sprayGeometry = normalizedFieldGeometry(sprayField);
   const sprayCenter = domainGeometry.geometryCentroid(sprayGeometry);
   return allFields()
-    .filter((field) => field.id !== sprayField.id && field.type !== "spray")
+    .filter((field) => field.id !== sprayField.id)
     .map((field) => {
       const targetGeometry = normalizedFieldGeometry(field);
       const measuredDistance = domainGeometry.geometryDistanceMeters(sprayGeometry, targetGeometry);
@@ -6640,8 +7470,14 @@ function riskItemsForPlan(plan) {
         : "-";
       let level = "low";
       let message = "周辺情報として確認。";
-      const isOrganicLike = field.type === "organic" || field.type === "noChemical";
+      const isOrganicLike = field.type === "organic" || field.type === "noChemical" || field.chemicalUse === "なし" || field.organicJas === "あり";
       const isSensitive = ["house", "preharvest", "water", "bee"].includes(field.type);
+      const guidelineCategory = isOrganicLike ? "有機・農薬不使用の圃場"
+        : field.type === "preharvest" ? "収穫時期の近い農作物"
+          : field.type === "water" ? "水道水源・水域"
+            : field.type === "bee" ? "養蜂・巣箱"
+              : field.type === "facility" ? "住宅・公共施設"
+                : "周辺の農地・施設";
       const windDirection = plan.weather?.actualDirection || plan.weather?.forecastDirection || "";
       const preferenceAllows = domainDisclosure.notifyPreferenceAllows({
         pref: field.notifyPreferenceKey || notifyPreferenceKeyFromLabel(field.notifyPreference),
@@ -6689,6 +7525,7 @@ function riskItemsForPlan(plan) {
         level,
         notified,
         distanceLabel: distance === null ? "距離未判定" : `${distance}m`,
+        guidelineCategory,
         message,
         disclosure,
       };
@@ -6725,19 +7562,26 @@ function priorityScore(plan) {
 
 function notificationIsComplete(plan) {
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
-  if (!targets.length) return true;
+  if (!planFieldResolution(plan).resolved) return false;
+  if (!targets.length) return Boolean(plan.checks.organic && plan.checks.sensitive);
   return targets.every((target) => target.notified);
 }
 
 function notificationLabel(plan) {
   const targets = riskItemsForPlan(plan).filter((item) => item.notifyTarget);
   const done = targets.filter((target) => target.notified).length;
-  return `${done}/${targets.length}件 通知済み`;
+  if (!planFieldResolution(plan).resolved) return "散布する畑を選択してください";
+  if (!targets.length) return "登録済みの連絡対象なし・周辺の確認が必要";
+  return `${done}/${targets.length}件 連絡記録あり`;
+}
+
+function activeCheckItems() {
+  return DEMO_TOOLS_ENABLED ? CHECK_ITEMS : CHECK_ITEMS.filter(item => !["flightLog", "report"].includes(item.id));
 }
 
 function checkProgress(plan) {
-  const done = CHECK_ITEMS.filter((item) => plan.checks[item.id]).length;
-  const total = CHECK_ITEMS.length;
+  const done = activeCheckItems().filter((item) => plan.checks[item.id]).length;
+  const total = activeCheckItems().length;
   return { done, total, percent: Math.round((done / total) * 100) };
 }
 
@@ -6975,7 +7819,7 @@ function buildNoticeText(plan, channel, targetFieldId = null) {
   const term = materialTerm(plan);
   const materialLine = plan.materialType && plan.materialType !== "農薬" ? "使用資材" : "使用農薬";
   const cancellation = plan.cancellation;
-  const noticeKind = cancellation?.state === "cancelled" ? "中止" : cancellation?.state === "postponed" ? "延期" : "予定";
+  const noticeKind = cancellation?.state === "cancelled" ? "中止" : cancellation?.state === "postponed" ? "延期" : (plan.noticeKind || "予定");
   const channelLead = {
     line: "関係者のみなさまへ",
     mail: `件名：${term}${noticeKind}のお知らせ`,
@@ -6995,7 +7839,7 @@ function buildNoticeText(plan, channel, targetFieldId = null) {
 
 ${plan.district}で予定していた以下の${term}は、${noticeKind}になりました。
 
-当初予定：${plan.date} ${plan.timeWindow}
+当初予定：${cancellation.originalDate || plan.date} ${cancellation.originalTimeWindow || plan.timeWindow}
 散布ほ場：${plan.fieldName}
 理由：${cancellation.reason || "未登録"}${cancellation.reasonDetail ? `（${cancellation.reasonDetail}）` : ""}${reschedule}
 連絡先：${plan.contact}
@@ -7004,7 +7848,7 @@ ${plan.district}で予定していた以下の${term}は、${noticeKind}にな�
   }
   return `${channelLead}
 
-${plan.district}で以下の${term}を予定しています。
+${plan.district}で以下の${term}を予定しています。${["変更", "再開"].includes(noticeKind) ? `（${noticeKind}のお知らせです。以前の予定から変わっています。）` : ""}
 
 散布予定：${plan.date} ${plan.timeWindow}
 散布ほ場：${plan.fieldName}
@@ -7105,13 +7949,13 @@ function flightLogImportedAtLabel(log) {
 }
 
 function activeField() {
-  const editableFields = fieldRepository.list().filter((field) => field.type !== "spray" && isSelfOwned(field));
+  const editableFields = fieldRepository.list().filter((field) => isSelfOwned(field));
   const selected = fieldRepository.get(state.activeFieldId);
   const fallback = editableFields[0] || createBlankField();
   if (!state.activeFieldId && fallback.id) {
     state.activeFieldId = fallback.id;
   }
-  return selected?.type !== "spray" && isSelfOwned(selected) ? selected : fallback;
+  return selected && isSelfOwned(selected) ? selected : fallback;
 }
 
 // --- 実際のほ場境界（GeoJSON）の取込・表示 ---
@@ -7191,6 +8035,11 @@ const PARCEL_DISPLAY_LIMIT = 400;
 
 async function initBoundaries() {
   await loadBoundaryCatalog();
+  if (state.realWorkspace || state.profileSetup) {
+    renderProfileSetup();
+    if (state.profileSetup?.step === "fields" && ["map","profile"].includes(activeView)) await handleProfileSetup("load");
+    return;
+  }
   if (profileIsRegistered() && activeProfile().targetMunicipalities.length) {
     await loadProfileLightBoundaries();
     renderBoundarySelector();
@@ -7281,20 +8130,12 @@ function applyParcelBackdrop(polys, opts = {}) {
     type: "FeatureCollection",
     features: polys.map((f) => ({ type: "Feature", geometry: f.geometry, properties: { ...(f.properties || {}) } })),
   };
-  const first = buildFieldsFromFeatures([polys[0]], opts);
-  fieldRepository.replaceAll(first);
-  state.activeFieldId = undefined;
-  const plan = activePlan();
-  if (plan && first[0]) {
-    plan.fieldId = first[0].id;
-    plan.fieldName = first[0].name;
-    plan.fieldIdSource = "parcel-backdrop";
-  }
+  // 市全域の筆ポリゴンは選択用の背景に限定する。読み込んだだけで
+  // 利用者の圃場や散布計画を置換せず、クリックして採用した筆だけを保存する。
   if (opts.pin) {
     state.boundaryPinned = true;
     state.boundaryMunicipality = "__custom__";
   }
-  saveState();
   renderAll();
   renderBoundarySelector();
   setParcelSource();
@@ -7343,12 +8184,12 @@ function showParcelPopup(map, event) {
   const feature = event.features?.[0];
   if (!feature || !window.maplibregl) return;
   lastClickedParcel = { geometry: feature.geometry, properties: { ...(feature.properties || {}) } };
+  if (document.body.dataset.profileSetup === "true") { selectSetupParcel(); return; }
   new maplibregl.Popup({ closeButton: true, offset: 12, className: "gis-popup" })
     .setLngLat(event.lngLat)
     .setHTML(
       `<div class="parcel-popup"><strong>この筆を登録</strong><div class="pill-line">
-        <button class="ghost-button mini-button" data-parcel-adopt="spray" type="button">散布ほ場にする</button>
-        <button class="ghost-button mini-button" data-parcel-adopt="neighbor" type="button">周辺ほ場に追加</button>
+        ${pendingFieldPositionId ? '<button class="ghost-button mini-button" data-parcel-adopt="neighbor" type="button">編集中の畑の境界として登録</button>' : '<button class="ghost-button mini-button" data-parcel-adopt="spray" type="button">散布ほ場にする</button><button class="ghost-button mini-button" data-parcel-adopt="neighbor" type="button">自分の畑に追加</button>'}
       </div></div>`,
     )
     .addTo(map);
@@ -7383,23 +8224,27 @@ function adoptParcel(kind) {
   }
   const importedField = imported.field;
   importedField.ownerUserId = currentOwnerUserId();
+  const pendingField = fieldRepository.get(pendingFieldPositionId);
+  if (pendingField && isSelfOwned(pendingField)) {
+    Object.assign(pendingField, {
+      geometry: importedField.geometry, geo: importedField.geo,
+      geometryRevision: importedField.geometryRevision, externalRefs: importedField.externalRefs,
+      provenance: importedField.provenance, positionUnregistered: false, mapGeometryUnverified: false,
+    });
+    state.activeFieldId = pendingField.id;
+    recomputeFieldDistances();
+    if (!saveState()) return;
+    pendingFieldPositionId = null;
+    renderAll();
+    switchView("fields");
+    showToast("選択した畑の境界を登録しました。");
+    return;
+  }
   if (kind === "spray") {
-    let spray = allFields().find((f) => f.type === "spray");
-    if (!spray) {
-      spray = { ...createBlankField(), id: "parcel-spray", type: "spray", short: "散布", name: "散布ほ場", notifyTarget: false, owner: "自分" };
-      fieldRepository.save(spray, { position: "start" });
-    }
-    spray.geo = importedField.geo;
-    spray.geometry = importedField.geometry;
-    spray.geometryRevision = importedField.geometryRevision;
-    spray.externalRefs = importedField.externalRefs;
-    spray.provenance = importedField.provenance;
-    const plan = activePlan();
-    if (plan) {
-      plan.fieldId = spray.id;
-      plan.fieldName = spray.name;
-      plan.fieldIdSource = "parcel-adopt";
-    }
+    const existing = fieldRepository.get(importedField.id);
+    if (!existing) fieldRepository.save({ ...createBlankField(), ...importedField,
+      type: "spray", short: "散布", positionUnregistered: false, mapGeometryUnverified: false, owner: "自分" }, { position: "start" });
+    state.activeFieldId = importedField.id;
   } else {
     // 同じ筆はIDが安定して同一になるため、二重登録せず既存の周辺ほ場を選択する。
     const existing = fieldRepository.get(importedField.id);
@@ -7413,10 +8258,12 @@ function adoptParcel(kind) {
     const neighbor = {
       ...createBlankField(),
       ...importedField,
+      positionUnregistered: false,
+      mapGeometryUnverified: false,
       short: "隣接",
       name: `隣接ほ場${allFields().length}`,
       notifyTarget: true,
-      owner: "周辺農家",
+      owner: "周辺関係者",
     };
     fieldRepository.save(neighbor);
     state.activeFieldId = neighbor.id;
@@ -7489,12 +8336,10 @@ function createBlankField() {
     house: false,
     waterNear: false,
     unregistered: false,
-    x: 40 + Math.round(Math.random() * 25),
-    y: 34 + Math.round(Math.random() * 25),
-    w: 10,
-    h: 9,
-    distance: 120,
-    direction: "南東",
+    positionUnregistered: true,
+    mapGeometryUnverified: true,
+    distance: null,
+    direction: "位置未登録",
     notifyTarget: true,
     owner: "自分",
     updatedAt: dateOffset(0),
@@ -7640,7 +8485,7 @@ function createSampleState() {
       distance: 82,
       direction: "南東",
       notifyTarget: true,
-      owner: "匿名周辺農家B",
+      owner: "匿名周辺関係者B",
     },
     {
       id: "no-chemical-field-b",
@@ -7662,7 +8507,7 @@ function createSampleState() {
       distance: 135,
       direction: "南西",
       notifyTarget: true,
-      owner: "匿名周辺農家C",
+      owner: "匿名周辺関係者C",
     },
     {
       id: "seedling-house-c",
@@ -7686,7 +8531,7 @@ function createSampleState() {
       distance: 120,
       direction: "東",
       notifyTarget: true,
-      owner: "匿名周辺農家D",
+      owner: "匿名周辺関係者D",
     },
     {
       id: "preharvest-field-d",
@@ -7708,7 +8553,7 @@ function createSampleState() {
       distance: 155,
       direction: "北西",
       notifyTarget: true,
-      owner: "匿名周辺農家E",
+      owner: "匿名周辺関係者E",
     },
     {
       id: "water-channel-d",
@@ -8223,7 +9068,7 @@ function loadState() {
 function normalizeState(input) {
   const next = input || createSampleState();
   next.profile = normalizeProfile(next.profile);
-  if (next.profile.registered && ROLE_META[next.profile.role]) {
+  if (!ROLE_META[next.role] && next.profile.registered && ROLE_META[next.profile.role]) {
     next.role = next.profile.role;
   }
   if (!next.boundaryPinned && (!next.boundaryMunicipality || next.boundaryMunicipality === "082163")) {
@@ -8244,11 +9089,15 @@ function normalizeState(input) {
     next.settings.notifyRadius = DEFAULT_SETTINGS.notifyRadius;
     next.settings.sensitiveRadius = DEFAULT_SETTINGS.sensitiveRadius;
   }
-  next.fields = Array.isArray(next.fields) && next.fields.length ? next.fields : createSampleState().fields;
+  next.fields = Array.isArray(next.fields) && (next.fields.length || next.realWorkspace) ? next.fields : createSampleState().fields;
   next.fields = next.fields.map((field, index) => {
     const known = knownDemoFieldMeta(field.name);
-    const migratedField = known && String(field.id || "").startsWith("imported-") ? { ...field, id: known.id, type: known.type } : field;
-    const sampleGeometry = SAMPLE_FIELD_GEOMETRY[migratedField.id] || {};
+    const legacyRing = LEGACY_DEMO_RINGS[field.id];
+    const savedRing = field.geometry?.type === "Polygon" && field.geometry.coordinates?.length === 1 ? field.geometry.coordinates[0] : field.geo;
+    const oldDemoGeometry = legacyRing && savedRing && JSON.stringify(savedRing.slice(0, legacyRing.length)) === JSON.stringify(legacyRing) && savedRing.length <= legacyRing.length + 1;
+    const importedBoundary = !oldDemoGeometry && Boolean(field.geometry && ((field.externalRefs || []).length || (field.provenance?.source && !["legacy-local", "aerial-demo"].includes(field.provenance.source))));
+    const migratedField = !importedBoundary && known && String(field.id || "").startsWith("imported-") ? { ...field, id: known.id, type: known.type } : field;
+    const sampleGeometry = !importedBoundary ? SAMPLE_FIELD_GEOMETRY[migratedField.id] || {} : {};
     const merged = {
       crop: "未登録",
       cultivation: "未登録・未回答",
@@ -8278,7 +9127,12 @@ function normalizeState(input) {
       merged.ownerUserId = ["spray-field-a", "organic-field-a"].includes(merged.id) ? "local-demo-user" : "demo-neighbor-c";
     }
     // 既知デモ圃場は整備済みサンプル座標が正。保存済みの旧geometryを残すと航空写真との整合修正が反映されない。
-    if (sampleGeometry.geo) merged.geometry = null;
+    if (sampleGeometry.geo) {
+      merged.geometry = null;
+      if (oldDemoGeometry) merged.externalRefs = [];
+      merged.provenance = { ...merged.provenance, source: "aerial-demo", boundaryNote: "航空写真に沿った概略境界（未測量）。名称・栽培種別は架空です。" };
+    }
+    merged.mapGeometryUnverified = Boolean(merged.positionUnregistered) || (!importedBoundary && merged.id === "water-channel-d");
     const geometry = normalizedFieldGeometry(merged, index);
     const geometryHash = domainGeometry.hashGeometry(geometry);
     const outerRing = domainGeometry.polygonsFromGeometry(geometry)?.[0]?.[0] || merged.geo || [];
@@ -8300,12 +9154,12 @@ function normalizeState(input) {
       },
     };
   });
-  const editableFields = next.fields.filter((field) => field.type !== "spray");
+  const editableFields = next.fields;
   next.activeFieldId = editableFields.some((field) => field.id === next.activeFieldId)
     ? next.activeFieldId
     : editableFields[0]?.id;
   next.plans = Array.isArray(next.plans) ? next.plans : [];
-  if (!next.profile.registered && !next.plans.some((plan) => plan.id === "plan-kasama-demo")) {
+  if (!next.realWorkspace && !next.profile.registered && !next.plans.some((plan) => plan.id === "plan-kasama-demo")) {
     const demoCase = createSampleState().plans.find((plan) => plan.id === "plan-kasama-demo");
     if (demoCase) {
       next.plans.unshift(structuredClone(demoCase));
@@ -8349,6 +9203,7 @@ function normalizeProfile(input) {
   };
   next.registered = Boolean(next.registered && ROLE_META[next.role]);
   next.role = ROLE_META[next.role] ? next.role : null;
+  next.roles = [...new Set((Array.isArray(next.roles) && next.roles.length ? next.roles : [next.role]).filter(role => ['sprayer', 'neighbor'].includes(role)))];
   next.targetMunicipalities = Array.isArray(next.targetMunicipalities) ? next.targetMunicipalities : [];
   next.admin.managedMunicipalities = Array.isArray(next.admin.managedMunicipalities) ? next.admin.managedMunicipalities : [];
   next.admin.managedDistricts = Array.isArray(next.admin.managedDistricts) ? next.admin.managedDistricts : [];
@@ -8371,11 +9226,17 @@ function saveState() {
     ) {
       supabaseSyncCoordinator.schedule(structuredClone(state));
     }
+    lastSaveFailed = false;
+    renderSaveStatus();
+    return true;
   } catch (error) {
+    lastSaveFailed = true;
+    renderSaveStatus();
     const message = error?.code === "conflict"
       ? repositoryService.repositoryErrorMessage(error)
-      : "保存容量の上限に達しました。取り込んだ処方マップはこの表示中のみ保持されます。";
+      : "入力を保存できませんでした。この画面の入力を残しています。保存先の空き容量を確認して、もう一度保存してください。";
     showToast(message);
+    return false;
   }
 }
 
@@ -8443,4 +9304,13 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+
+function renderSaveStatus() {
+  const node = $("#saveStatus");
+  if (!node) return;
+  const cloud = Boolean(supabaseSession?.user?.id && cloudSyncEnabled());
+  node.textContent = lastSaveFailed ? "保存できていません。入力はこの画面に残っています。もう一度保存してください。" : cloud ? supabaseSyncState.message : "この端末に保存・自動送信はしません";
+  node.dataset.failed = String(lastSaveFailed);
 }

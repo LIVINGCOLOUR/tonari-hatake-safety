@@ -1,5 +1,42 @@
 # Supabase運用手順
 
+## 市町村からの初期登録（今回の適用対象）
+
+前回の `account-setup.sql` の実行完了後、`supabase/migrations/202609090002_municipal_onboarding.sql` の全文をSQL Editorで一度実行する。水戸市・笠間市の共有先、一般利用者の地域参加RPC、安全な予定一覧の投影RPCを追加する。旧グループのデータは移動しない。新しい共有先で作成した予定のうち「散布場所と日時・地区・実施状況を地域の利用者に表示する」を選択したものが地域一覧に表示される。
+
+実行後は管理者と一般利用者で対象地域を選んでプロフィールを保存する。地域への一般参加だけでは管理権限・生の予定・個人連絡先を取得できない。地域管理の権限は前回の指名方式を維持する。
+
+ローカル検証: `node tools/verify-municipal-sql.mjs`。事前に `/tmp/hatake-sql-check` に `@electric-sql/pglite` を導入するか、`PGLITE_MODULE` にモジュールのパスを指定する。SQL自体はPostgreSQLで実行するが、地理データのシリアライズはスタブのため、実環境のPostGISまでの検証ではない。
+
+## 立場の選択と地域管理の指名（2026-09-09・未適用）
+
+`supabase/migrations/202609090001_platform_role_grants.sql` を既存マイグレーションの後に適用する。フロント公開より先に行う。旧自動付与の地域管理を停止し、旧管理者には一般の所属を残す。旧管理者用招待も失効する。SQLの実DB検証は未実施のため、まず検証環境で下記を確認する。
+
+アプリ管理者の登録と地域管理の指名は、当面あなたのSupabase SQL Editorで行う。一般画面に管理者の自己登録は設けない。最初に本人と対象地域のIDを確認する。
+
+```sql
+select id, email from auth.users order by created_at;
+select id, name from public.workspaces order by name;
+select workspace_id, user_id, role, status from public.workspace_memberships;
+```
+
+以下の3か所のUUIDを、確認した値に置き換えて実行する。指名する人は先に対象地域へ参加している必要がある。アプリ管理者の登録は初回のみ。UUIDやメールを公開資料に掲載しない。
+
+```sql
+begin;
+insert into public.app_administrators(user_id)
+values ('あなたのユーザーUUID') on conflict do nothing;
+select set_config('request.jwt.claim.sub', 'あなたのユーザーUUID', true);
+select public.assign_regional_administrator(
+  '対象地域のUUID', '指名する人のユーザーUUID', true
+);
+commit;
+```
+
+解除は同じ管理者コンテキストで最後の引数を `false` にする。自分が地域管理も行う場合は自分を指名する。この信頼済みSQL操作と同じ権限をブラウザへ渡さない。地域管理者は通常の参加者を招待できるが、地域管理の再指名はできない。
+
+適用後の確認：一般利用者が散布者・周辺関係者・両方を保存できること、新規地域の作成で管理権限が付かないこと、一般利用者・地域管理者による管理者指名／管理者招待／直接の所属変更が拒否されること、あなたによる指名・解除が反映されること。未ログインのサンプル切替は権限確認の代わりにしない。
+
 ## 現在の環境
 
 - 開発プロジェクト：`tonari-hatake-safety-dev`
@@ -58,6 +95,26 @@ Supabase CLI 2.109.1ではFreeプロジェクトへの`config push`時に、
 通常Storageとは無関係なベクターバケット更新で402になる場合があります。
 Auth設定は先に反映されています。設定を変更するときは、Dashboardの
 Authentication URL Configurationも確認し、有料化で回避しません。
+
+### Google OAuth（設定・実機検証待ち）
+
+2026-09-08の記録ではGoogleログインのコードと単体テストは追加済み、
+認証設定は `google: false / email: true`。これは確認当時の状態なので再開時に確認する。
+Magic Linkと併用し、まずローカルでログイン・profiles作成・RLSを確認する方針。
+
+1. Google CloudでOAuth同意画面（外部）を設定し、テストユーザーを登録する。
+2. ウェブアプリケーションのOAuthクライアントを作成し、リダイレクトURIに
+   `https://wigvqprxwzbpztmafuqi.supabase.co/auth/v1/callback` を登録する。
+3. SupabaseのAuthentication > Providers > GoogleへクライアントID・シークレットを設定して有効化する。
+   シークレットはブラウザコード・Gitへ保存しない。
+4. Authentication > URL ConfigurationのローカルSite URLは `http://127.0.0.1:4177`、
+   Redirect URLsに `http://127.0.0.1:4177/app.html?auth=google` を追加する。
+   既存のMagic Link許可URLは維持する。本番URLの追加は未完了。
+5. ローカルHTTPサーバーからGoogleログインし、プロフィール作成、所属、RLS、ログアウトを実機確認する。
+
+`js/services/supabase-auth.mjs` の `oauthRedirectUrl()` と `signInWithGoogle()` が入口。
+戻り先は `app.html?auth=google`。GoogleとMagic Linkの両方でプロフィール画面へ戻る。
+単体テスト `tools/google-auth.test.mjs` は要求とエラーを検証するが、プロバイダ接続成功の代用にはならない。
 
 ## データ移行
 

@@ -13,6 +13,7 @@ async function inspectPage(path, expression, viewport = { width: 1440, height: 9
 
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
+    if (message.method === "Runtime.consoleAPICalled" && message.params.type === "error") errors.push(message.params.args.map(arg => arg.description || arg.value).join(" "));
     if (message.method === "Runtime.exceptionThrown") errors.push(message.params.exceptionDetails.text);
     if (!message.id || !pending.has(message.id)) return;
     const { resolve, reject } = pending.get(message.id);
@@ -79,6 +80,7 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+if (!process.argv.includes("--case-only")) {
 const landingDesktop = await inspectPage("/", `() => ({
   title: document.title,
   imageFailures: [...document.images].filter((image) => !image.complete || !image.naturalWidth).map((image) => image.src),
@@ -93,7 +95,7 @@ assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: 
 assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${landingDesktop.value.overflow}px`);
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");
 assert(landingDesktop.value.featureLinks.length === 2, "Only capabilities with an available demo view should link to demos");
-assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?role=sprayer#")), "Capability links must open an available sprayer demo view");
+assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?demo=1&role=sprayer#")), "Capability links must open an available sprayer demo view");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "現在のデモ").length === 1, "Landing page must identify the currently available workflow");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "実装中").length === 3, "Landing page must mark in-progress capabilities (log import, district posting, org account)");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "将来構想").length === 2, "Landing page must separate future drone capabilities");
@@ -150,7 +152,8 @@ const expectedNavigation = {
 };
 
 for (const [role, expected] of Object.entries(expectedNavigation)) {
-  const result = await inspectPage(`/app.html?role=${role}#dashboard`, `() => ({
+  const result = await inspectPage(`/app.html?demo=1&role=${role}#dashboard`, `() => ({
+    registered: profileIsRegistered(),
     role: document.querySelector('.role-option.active span')?.textContent.trim(),
     navigation: [...document.querySelectorAll('.nav-item')]
       .filter((item) => getComputedStyle(item).display !== 'none')
@@ -165,10 +168,11 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
     deadNeighborNotifyLink: Boolean(document.querySelector('#goNoGoCard [data-view-target="notify"]')),
     overflow: document.documentElement.scrollWidth - innerWidth,
   })`, { width: 1440, height: 960 }, 3500);
-  const expectedRoleLabel = { sprayer: "散布者", neighbor: "周辺農家", admin: "地域管理" }[role];
+  const expectedRoleLabel = { sprayer: "散布者", neighbor: "周辺関係者", admin: "地域管理" }[role];
   const expectedKpiCount = { sprayer: 9, neighbor: 5, admin: 9 }[role];
-  assert(result.value.role === expectedRoleLabel, `${role} demo opened as ${result.value.role}`);
-  assert(JSON.stringify(result.value.navigation) === JSON.stringify(expected), `${role} navigation mismatch: ${result.value.navigation.join(" / ")}`);
+  assert(result.value.role === expectedRoleLabel, `${role} demo opened as ${result.value.role}: ${result.errors.join(", ")}`);
+  const expectedLabels = expected.map(label => label === "プロフィール登録" && result.value.registered ? "設定" : label);
+  assert(JSON.stringify(result.value.navigation) === JSON.stringify(expectedLabels), `${role} navigation mismatch: ${result.value.navigation.join(" / ")}`);
   assert(result.value.kpiCount === expectedKpiCount, `${role} KPI count: ${result.value.kpiCount}`);
   assert(result.value.activePlan === "plan-kasama-demo", `${role} did not keep the Kasama demo case active`);
   assert(result.value.caseTitle?.includes("実証ケースK"), `${role} case bar is missing the shared case title`);
@@ -189,7 +193,7 @@ for (const [role, expected] of Object.entries(expectedNavigation)) {
   assert(result.errors.length === 0, `${role} runtime errors: ${result.errors.join(", ")}`);
 }
 
-const sprayerHistory = await inspectPage("/app.html?role=sprayer#history", `() => ({
+const sprayerHistory = await inspectPage("/app.html?demo=1&role=sprayer#history", `() => ({
   activeView: document.querySelector('.view.active')?.dataset.view,
   activeNavigation: document.querySelector('.nav-item.active span:last-child')?.textContent.trim(),
   recordCount: document.querySelectorAll('#historyTableBody tr').length,
@@ -205,7 +209,7 @@ for (const viewport of [
   { width: 1440, height: 960 },
   { width: 390, height: 844 },
 ]) {
-  const conflictPanel = await inspectPage("/app.html?role=sprayer#profile", `() => {
+  const conflictPanel = await inspectPage("/app.html?demo=1&role=sprayer#profile", `() => {
     const account = document.querySelector('#supabaseAccountPanel');
     const sync = document.querySelector('#supabaseSyncPanel');
     const notice = document.querySelector('#supabaseConflictNotice');
@@ -259,7 +263,7 @@ for (const viewport of [
   { width: 1440, height: 960 },
   { width: 390, height: 844 },
 ]) {
-  const pendingPanel = await inspectPage("/app.html?role=sprayer#profile", `() => {
+  const pendingPanel = await inspectPage("/app.html?demo=1&role=sprayer#profile", `() => {
     const account = document.querySelector('#supabaseAccountPanel');
     const sync = document.querySelector('#supabaseSyncPanel');
     const retry = document.querySelector('#retryCloudSyncButton');
@@ -299,7 +303,7 @@ for (const viewport of [
   { width: 1440, height: 960 },
   { width: 390, height: 844 },
 ]) {
-  const accountOperations = await inspectPage("/app.html?role=sprayer#profile", `() => {
+  const accountOperations = await inspectPage("/app.html?demo=1&role=sprayer#profile", `() => {
     const account = document.querySelector('#supabaseAccountPanel');
     const operations = document.querySelector('#accountDataOperations');
     const confirmation = document.querySelector('#accountDeletionConfirmation');
@@ -356,3 +360,200 @@ assert(
 );
 
 console.log("Landing and role navigation checks passed.");
+
+// The default entry must offer a complete workflow without demo-only tasks.
+for (const width of [1440, 390]) {
+  const result = await inspectPage("/app.html?role=sprayer#drone", `() => {
+    const visible = (node) => Boolean(node && node.getClientRects().length);
+    const dashboardText = document.querySelector('[data-view="dashboard"]').innerText;
+    const redirected = document.querySelector('.view.active')?.dataset.view;
+    const workflow = [...document.querySelectorAll('#roleActionPanel [data-view-target]')].map(n => n.dataset.viewTarget);
+    switchView('map');
+    const layers = [...document.querySelectorAll('[data-map-layer]')].filter(visible).map(n => n.dataset.mapLayer);
+    return {
+      ready: document.documentElement.dataset.appReady,
+      demoVisible: [...document.querySelectorAll('[data-demo-only]')].some(visible),
+      redirected, workflow, layers,
+      asksForLog: dashboardText.includes('ログ未取込') || dashboardText.includes('ログ取込'),
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  }`, { width, height: 960 });
+  assert(result.value.ready === "true", "Default entry did not initialize");
+  assert(result.value.redirected === "dashboard", "Unavailable drone route must return to dashboard");
+  assert(!result.value.demoVisible, "Default entry exposes demo tools");
+  assert(!result.value.asksForLog, "Default dashboard asks for unavailable log import");
+  assert(result.value.workflow.includes("report") && !result.value.workflow.includes("drone"), "Default workflow must lead to report without drone import");
+  assert(JSON.stringify(result.value.layers) === '["risk"]', "Default map exposes advanced layers");
+  assert(result.value.overflow <= 0, "Default map overflows viewport");
+  assert(result.errors.length === 0, `Default runtime errors: ${result.errors.join(', ')}`);
+}
+console.log("Default workflow verified at desktop and mobile widths.");
+
+for (const width of [1440, 390]) {
+  const result = await inspectPage("/app.html#dashboard", `() => {
+    state.profile.registered = true;
+    state.profile.role = "sprayer";
+    state.role = "sprayer";
+    renderAll();
+    const buttons = [...document.querySelectorAll('#roleSwitcher [data-role]')];
+    const visible = buttons.filter(n => n.getClientRects().length).map(n => n.dataset.role);
+    document.querySelector('#roleSwitcher [data-role="neighbor"]').click();
+    const neighbor = activeRole === 'neighbor' && currentNavigationRole() === 'neighbor'
+      && document.querySelector('.view.active').dataset.view === 'dashboard';
+    const profileKept = state.profile.role === 'sprayer' && state.profile.registered;
+    const restored = state.role;
+    state = normalizeState(structuredClone(state));
+    restoreSelectedRole();
+    const selectionKept = activeRole === restored;
+    document.querySelector('#roleSwitcher [data-role="admin"]').click();
+    const admin = activeRole === 'admin' && roleAllowsView('admin') && !roleAllowsView('plans');
+    document.querySelector('#roleSwitcher [data-role="sprayer"]').click();
+    const sprayer = activeRole === 'sprayer' && roleAllowsView('plans');
+    switchView('plans');
+    const input = document.querySelector('#planForm input[name="fieldName"]');
+    input.value = '未保存の畑';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const originalConfirm = window.confirm;
+    window.confirm = () => false;
+    setRole('neighbor');
+    const switchedWithDraft = activeRole === 'neighbor';
+    setRole('sprayer');
+    window.confirm = originalConfirm;
+    const unsavedKept = switchedWithDraft && activeRole === 'sprayer' && input.value === '未保存の畑' && activeView === 'plans';
+    const priorSession = supabaseSession;
+    const priorMemberships = supabaseMemberships;
+    const priorRuntime = supabaseRuntime;
+    const priorFeedback = workspaceCreationFeedback;
+    const priorWorkspace = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+    supabaseSession = { user: { id: 'role-test' } };
+    const workspace = { id: 'role-test-region', name: '笠間市テスト地域', prefecture: '茨城県', municipality: '笠間市', district: '動作確認用' };
+    supabaseMemberships = [
+      { workspace_id: 'role-test-region', role: 'sprayer', status: 'active', workspaces: workspace },
+      { workspace_id: 'role-test-region', role: 'neighbor', status: 'active', workspaces: workspace },
+      { workspace_id: 'other-region', role: 'admin', status: 'active' },
+    ];
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, 'role-test-region');
+    supabaseRuntime = { enabled: true };
+    workspaceCreationFeedback = { workspaceId: 'role-test-region', name: '笠間市テスト地域' };
+    renderSupabaseAccount();
+    const workspaceFeedback = !document.querySelector('#activeWorkspaceCard').hidden
+      && document.querySelector('#activeWorkspaceCard').innerText.includes('作成完了・現在の地域')
+      && document.querySelector('#activeWorkspaceCard').innerText.includes('笠間市テスト地域')
+      && document.querySelector('#activeWorkspaceCard').innerText.includes('散布者・周辺関係者');
+    renderRoleSwitcher();
+    const adminHidden = document.querySelector('#roleSwitcher [data-role="admin"]').hidden;
+    setRole('admin');
+    const unauthorizedBlocked = activeRole === 'sprayer';
+    supabaseSession = priorSession;
+    supabaseMemberships = priorMemberships;
+    supabaseRuntime = priorRuntime;
+    workspaceCreationFeedback = priorFeedback;
+    if (priorWorkspace) localStorage.setItem(ACTIVE_WORKSPACE_KEY, priorWorkspace);
+    else localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+    return { visible, neighbor, admin, sprayer, profileKept, selectionKept, unsavedKept, workspaceFeedback, adminHidden, unauthorizedBlocked };
+  }`, { width, height: 960 });
+  assert(JSON.stringify(result.value.visible) === '["sprayer","neighbor","admin"]', "Role buttons must be visible in normal mode");
+  for (const key of ['neighbor', 'admin', 'sprayer', 'profileKept', 'selectionKept', 'unsavedKept', 'workspaceFeedback', 'adminHidden', 'unauthorizedBlocked']) {
+    assert(result.value[key], `Role switching failed: ${key} at ${width}px`);
+  }
+  assert(result.errors.length === 0, `Role switching runtime errors: ${result.errors.join(', ')}`);
+}
+console.log("Registered role switching and membership boundaries verified.");
+
+}
+
+for (const width of [1440, 390]) {
+  const result = await inspectPage("/app.html?role=sprayer#dashboard", `() => {
+    const original = structuredClone(state);
+    const originalConfirm = window.confirm;
+    const outcome = {};
+    try {
+      outcome.navigation = [...document.querySelectorAll('.nav-list .nav-item, .mobile-quickbar [data-view-target]')].filter(n => n.getClientRects().length).map(n => n.dataset.viewTarget).sort();
+      const otherId = activePlan().id;
+      const otherBefore = JSON.stringify(planRepository.get(otherId));
+      document.querySelector('#caseList [data-action="new-plan"]').click();
+      const id = activePlan().id;
+      outcome.created = id !== otherId && activeView === 'plans';
+      const form = document.querySelector('#planForm');
+      const next = form.querySelector('[data-next-step="notify"]');
+      form.elements.pesticide.value = '';
+      form.requestSubmit(next);
+      outcome.invalidBlocked = activeView === 'plans';
+      const fieldOption = [...form.elements.selectedFieldId.options].find(n => n.value);
+      form.elements.selectedFieldId.value = fieldOption.value;
+      form.elements.selectedFieldId.dispatchEvent(new Event('change', { bubbles: true }));
+      for (const [key, value] of Object.entries({ pesticide: '検証用資材', purpose: '検証', operator: '検証用散布者', contact: '検証用連絡先' })) form.elements[key].value = value;
+      form.requestSubmit(next);
+      outcome.planSaved = activeView === 'notify' && activePlan().id === id && activePlan().fieldId === fieldOption.value;
+      outcome.steps = document.querySelectorAll('#caseWorkflow .case-steps button').length;
+      // A change must lead back to this case's notice, with the change wording.
+      activePlan().notificationTargets = { 'review-target': true };
+      activePlan().notificationAcks = { 'review-target': '2026-09-07' };
+      activePlan().notificationResponses = { 'review-target': '確認しました' };
+      const cancellation = document.querySelector('#caseWorkflow .cancellation-form');
+      cancellation.elements.state.value = 'postponed';
+      cancellation.elements.newDate.value = '2026-09-20';
+      window.confirm = () => true;
+      cancellation.querySelector('[data-action="save-cancellation"]').click();
+      outcome.revisionReset = !activePlan().notificationTargets['review-target'] && !activePlan().notificationAcks['review-target'] && activePlan().noticeHistory.at(-1).acknowledgements['review-target'] === '2026-09-07' && activePlan().date === '2026-09-20';
+      outcome.postponed = activeView === 'notify' && activePlan().id === id && document.querySelector('#noticeText').value.includes('延期');
+      document.querySelector('#caseWorkflow [data-action="clear-cancellation"]').click();
+      outcome.resumed = activeView === 'notify' && !activePlan().cancellation;
+      document.querySelector('[data-view="notify"] [data-view-target="weather"]').click();
+      const weather = document.querySelector('#weatherForm');
+      weather.elements.actualSpeed.value = '1.2';
+      weather.elements.weatherConfirmed.checked = true;
+      document.querySelector('[data-save-weather-next]').click();
+      outcome.weather = activeView === 'checklist' && activePlan().id === id && activePlan().weather.actualSpeed === 1.2;
+      document.querySelector('[data-view="checklist"] [data-view-target="report"]').click();
+      document.querySelector('#autoFillReportButton').click();
+      outcome.draftOnly = !workRecordForPlan(activePlan()).doneDate;
+      const report = document.querySelector('#reportForm');
+      report.elements.reportNotes.value = '画面更新でも残す入力';
+      report.elements.reportNotes.dispatchEvent(new Event('input', { bubbles: true }));
+      renderAll();
+      outcome.draftRetained = report.elements.reportNotes.value === '画面更新でも残す入力';
+      report.elements.doneDate.value = '2026-09-07';
+      const normalRepository = stateRepository;
+      stateRepository = { ...normalRepository, save() { throw new Error('test save failure'); } };
+      report.requestSubmit(report.querySelector('[data-next-step="dashboard"]'));
+      outcome.failedSaveStays = activeView === 'report' && report.elements.doneDate.value === '2026-09-07';
+      stateRepository = normalRepository;
+      report.requestSubmit(report.querySelector('[data-next-step="dashboard"]'));
+      outcome.report = activeView === 'dashboard' && activePlan().id === id && workRecordForPlan(activePlan()).doneDate === '2026-09-07';
+      document.querySelector('[data-open-case="' + id + '"]').click();
+      outcome.reopened = activeView === 'report' && document.querySelector('#reportForm').elements.doneDate.value === '2026-09-07';
+      outcome.otherUnchanged = JSON.stringify(planRepository.get(otherId)) === otherBefore;
+      outcome.overflow = document.documentElement.scrollWidth - innerWidth;
+      outcome.currentCase = document.querySelector('#caseBar').innerText.includes('検証用資材');
+      const boundaryState = structuredClone(state);
+      const importedField = boundaryState.fields.find(field => field.id === 'spray-field-a');
+      const actualBoundary = {type:'Polygon',coordinates:[[[140.31,36.38],[140.311,36.38],[140.311,36.381],[140.31,36.38]]]};
+      importedField.geometry = actualBoundary;
+      importedField.provenance = {source:'parcel-backdrop'};
+      const preserved = normalizeState(boundaryState).fields.find(field => field.id === 'spray-field-a');
+      outcome.importedBoundaryPreserved = JSON.stringify(preserved.geometry) === JSON.stringify(actualBoundary);
+      outcome.unverifiedWaterHidden = !fieldFeatureCollection().features.some(feature => feature.id === 'water-channel-d');
+      const originalMap = maplibregl.Map;
+      const container = document.createElement('div');
+      try {
+        maplibregl.Map = class { constructor() { throw new Error('WebGL unavailable'); } };
+        outcome.mapFallback = createMapSafely({ container }) === null && container.textContent.includes('一覧から操作');
+      } finally { maplibregl.Map = originalMap; }
+      return outcome;
+    } finally {
+      window.confirm = originalConfirm;
+      state = normalizeState(original);
+      saveState();
+      renderAll();
+    }
+  }`, { width, height: 960 });
+  assert(JSON.stringify(result.value.navigation) === '["dashboard","map","profile"]', `Default sprayer must have three navigation entries at ${width}px: ${JSON.stringify(result.value)}`);
+  assert(result.value.steps === 4, "Case must have four steps");
+  for (const key of ['created', 'invalidBlocked', 'planSaved', 'postponed', 'revisionReset', 'resumed', 'draftRetained', 'mapFallback', 'weather', 'draftOnly', 'failedSaveStays', 'report', 'reopened', 'otherUnchanged', 'currentCase', 'importedBoundaryPreserved', 'unverifiedWaterHidden']) {
+    assert(result.value[key], `Case workflow failed: ${key} at ${width}px: ${JSON.stringify(result.value)}`);
+  }
+  assert(result.value.overflow <= 0, "Case workflow overflows viewport");
+  assert(result.errors.length === 0, `Case workflow errors: ${result.errors.join(', ')}`);
+}
+console.log("One-case registration, changes, weather, and report flow verified.");

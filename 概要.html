@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="農薬・液体肥料のドローン散布について、散布前の周知・確認と実施後の記録を、散布する人・周辺の農家・自治体／JAが同じ地図の上で共有するしくみの概要。">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:title" content="となりの畑セーフティ（仮称）">
+<meta property="og:description" content="農薬・液体肥料のドローン散布について、散布前の周知・確認と実施後の記録を、関係する方が同じ地図の上で共有するしくみ。茨城県笠間市周辺を想定した、実証前のデモ版です。">
+<meta property="og:type" content="website">
+<title>となりの畑セーフティ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@600;700&display=swap">
+<style>
+  /* ---------- トークン：明るい配色を基準に定義する ---------- */
+  :root {
+    --bg:        #f2f6f3;
+    --surface:   #ffffff;
+    --surface-2: #e7f0ea;
+    --ink:       #16241f;
+    --ink-soft:  #46584f;
+    --muted:     #6c7f77;
+    --green:     #14453d;
+    --green-mid: #2f6b5c;
+    --ochre:     #8a5a1c;
+    --line:      #d2e0d8;
+    --line-firm: #14453d;
+    --shadow:    0 1px 2px rgba(20, 69, 61, .06), 0 8px 24px rgba(20, 69, 61, .05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:        #0d1411;
+      --surface:   #151f1b;
+      --surface-2: #1b2a24;
+      --ink:       #e8efea;
+      --ink-soft:  #b6c6bf;
+      --muted:     #8ea19a;
+      --green:     #8fcfb6;
+      --green-mid: #6fb59a;
+      --ochre:     #d9a866;
+      --line:      #2a3a34;
+      --line-firm: #8fcfb6;
+      --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg:        #0d1411;
+    --surface:   #151f1b;
+    --surface-2: #1b2a24;
+    --ink:       #e8efea;
+    --ink-soft:  #b6c6bf;
+    --muted:     #8ea19a;
+    --green:     #8fcfb6;
+    --green-mid: #6fb59a;
+    --ochre:     #d9a866;
+    --line:      #2a3a34;
+    --line-firm: #8fcfb6;
+    --shadow:    0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic",
+                 "YuGothic", "Noto Sans JP", "Meiryo", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.85;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap {
+    max-width: 36rem;
+    margin: 0 auto;
+    padding: 0 1.25rem 4rem;
+  }
+
+  /* ---------- 見出し ---------- */
+  h1, h2, .step-name, .role-name {
+    font-family: "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-weight: 700;
+    text-wrap: balance;
+    line-height: 1.4;
+  }
+
+  /* ---------- ヘッダー ---------- */
+  .masthead {
+    padding: 2.75rem 0 1.75rem;
+    border-bottom: 2px solid var(--line-firm);
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+  }
+  .eyebrow {
+    font-size: .72rem;
+    letter-spacing: .18em;
+    color: var(--green-mid);
+    font-weight: 700;
+    margin: 0;
+  }
+  h1 {
+    font-size: clamp(1.75rem, 7.5vw, 2.3rem);
+    margin: 0;
+    color: var(--green);
+    letter-spacing: .01em;
+  }
+  .lead {
+    margin: 0;
+    font-size: 1.02rem;
+    color: var(--ink);
+  }
+  .note {
+    margin: 0;
+    font-size: .85rem;
+    color: var(--muted);
+  }
+
+  /* ---------- セクション ---------- */
+  section { padding-top: 2.5rem; }
+  h2 {
+    font-size: 1.22rem;
+    margin: 0 0 1rem;
+    color: var(--green);
+    display: flex;
+    align-items: baseline;
+    gap: .6rem;
+  }
+  h2 .idx {
+    font-family: "Zen Old Mincho", serif;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--surface);
+    background: var(--green);
+    border-radius: 3px;
+    padding: .1rem .45rem;
+    flex: none;
+    align-self: center;
+  }
+  :root[data-theme="dark"] h2 .idx { color: #0d1411; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) h2 .idx { color: #0d1411; }
+  }
+
+  p { margin: 0 0 1rem; }
+  p:last-child { margin-bottom: 0; }
+  strong { color: var(--green); font-weight: 700; }
+
+  /* ---------- ガイドライン引用（この紙の起点） ---------- */
+  .rule {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--line-firm);
+    border-radius: 4px;
+    padding: 1.15rem 1.15rem 1rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
+  }
+  .rule-title {
+    font-family: "Zen Old Mincho", serif;
+    font-weight: 700;
+    font-size: 1.02rem;
+    color: var(--green);
+    margin: 0 0 .7rem;
+    line-height: 1.5;
+  }
+  .rule p { font-size: .96rem; }
+  .four {
+    list-style: none;
+    margin: .9rem 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: .85rem 0;
+  }
+  .four li {
+    display: flex;
+    gap: .6rem;
+    font-size: .95rem;
+    line-height: 1.6;
+  }
+  .four .n {
+    flex: none;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-top: .22rem;
+    border: 1px solid var(--green-mid);
+    border-radius: 50%;
+    color: var(--green-mid);
+    font-size: .72rem;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .src {
+    font-size: .78rem;
+    line-height: 1.75;
+    color: var(--muted);
+    margin: .8rem 0 0;
+    padding-top: .7rem;
+    border-top: 1px dashed var(--line);
+  }
+
+  /* ---------- 箇条書き ---------- */
+  .list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+  }
+  .list li {
+    position: relative;
+    padding-left: 1.1rem;
+    font-size: .98rem;
+    line-height: 1.75;
+  }
+  .list li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: .78em;
+    width: .38rem;
+    height: .38rem;
+    border-radius: 50%;
+    background: var(--green-mid);
+  }
+
+  /* ---------- 「しない」こと ---------- */
+  .never {
+    background: var(--surface-2);
+    border-radius: 4px;
+    padding: 1.15rem 1.2rem;
+  }
+  .never .list li::before { background: var(--ochre); }
+
+  /* ---------- しくみ 4ステップ（順序に意味がある） ---------- */
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .steps li {
+    display: grid;
+    grid-template-columns: 2.1rem 1fr;
+    gap: 0 .95rem;
+    padding-bottom: 1.4rem;
+  }
+  .steps li:last-child { padding-bottom: 0; }
+  .marker {
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .4rem;
+  }
+  .marker .dot {
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 50%;
+    background: var(--green);
+    color: var(--surface);
+    font-family: "Zen Old Mincho", serif;
+    font-size: .95rem;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  :root[data-theme="dark"] .marker .dot { color: #0d1411; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .marker .dot { color: #0d1411; }
+  }
+  .marker .line {
+    flex: 1;
+    width: 1px;
+    background: var(--line);
+    min-height: .5rem;
+  }
+  .steps li:last-child .marker .line { display: none; }
+  .step-name {
+    font-size: 1.04rem;
+    color: var(--green);
+    margin: .15rem 0 .3rem;
+  }
+  .steps p {
+    margin: 0;
+    font-size: .96rem;
+    line-height: 1.75;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- 3つの立場 ---------- */
+  .roles {
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+  }
+  .role {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    box-shadow: var(--shadow);
+  }
+  .role-name {
+    font-size: 1.02rem;
+    color: var(--green);
+    margin: 0 0 .1rem;
+  }
+  .role-sub {
+    font-size: .78rem;
+    color: var(--muted);
+    margin: 0 0 .55rem;
+  }
+  .role p:last-of-type {
+    margin: 0;
+    font-size: .95rem;
+    line-height: 1.75;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- デモへの導線 ---------- */
+  .demo {
+    display: block;
+    background: var(--green);
+    color: var(--surface);
+    text-decoration: none;
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    margin: 0 0 1.1rem;
+    box-shadow: var(--shadow);
+  }
+  :root[data-theme="dark"] .demo { color: #0d1411; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .demo { color: #0d1411; }
+  }
+  .demo .label {
+    display: block;
+    font-size: .76rem;
+    letter-spacing: .12em;
+    opacity: .8;
+    margin-bottom: .2rem;
+  }
+  .demo .addr {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: .92rem;
+    font-weight: 700;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .demo:hover { background: var(--green-mid); }
+  .demo:focus-visible {
+    outline: 3px solid var(--ochre);
+    outline-offset: 2px;
+  }
+
+  /* ---------- 開発にあたっての課題 ---------- */
+  .issues {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+  .issues li {
+    border-left: 3px solid var(--ochre);
+    padding-left: .95rem;
+  }
+  .issue-name {
+    display: block;
+    font-weight: 700;
+    color: var(--green);
+    font-size: 1rem;
+    margin-bottom: .15rem;
+  }
+  .issues p {
+    margin: 0;
+    font-size: .95rem;
+    line-height: 1.75;
+    color: var(--ink-soft);
+  }
+
+  .kicker {
+    font-size: .95rem;
+    color: var(--ink-soft);
+    margin: 0 0 1.2rem;
+  }
+
+  /* ---------- フッター ---------- */
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+  }
+  footer a {
+    color: var(--green);
+    font-weight: 700;
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+    align-self: flex-start;
+  }
+  footer a:hover { border-bottom-color: var(--green); }
+  footer .meta {
+    font-size: .78rem;
+    color: var(--muted);
+    line-height: 1.75;
+    margin: 0;
+  }
+
+  @media (min-width: 44rem) {
+    body { font-size: 17px; }
+    .wrap { padding-bottom: 5rem; }
+    section { padding-top: 3rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">実証前のデモ版・個人開発</p>
+    <h1>となりの畑セーフティ<br>（仮称）</h1>
+    <p class="lead">農薬・液体肥料のドローン散布について、<strong>散布前の周知・確認と実施後の記録</strong>を、散布する人・周辺の農家・自治体／JAが同じ地図の上で共有するしくみです。</p>
+    <p class="note">茨城県笠間市周辺を想定しています。画面に出てくるほ場や散布の予定は、すべて架空のサンプルです。</p>
+  </header>
+
+  <section>
+    <h2><span class="idx">1</span>背景と課題</h2>
+
+    <div class="rule">
+      <p class="rule-title">国のガイドラインは、すでに事前の周知を求めています</p>
+      <p>散布区域の周辺に<strong>有機農業のほ場・学校や病院等・家屋・蜜蜂の巣箱</strong>がある場合、実施主体はその農家・管理者・居住者・養蜂家へ、次の4つを十分な時間的余裕をもって知らせることとされています。</p>
+      <ul class="four">
+        <li><span class="n">1</span><span>散布の日時</span></li>
+        <li><span class="n">2</span><span>使用目的</span></li>
+        <li><span class="n">3</span><span>使用農薬の種類</span></li>
+        <li><span class="n">4</span><span>実施主体の連絡先</span></li>
+      </ul>
+      <p>さらに、<strong>天候等で日時が変わった場合は、改めて知らせる</strong>ことも求められています。</p>
+      <p class="src">農林水産省「無人マルチローターによる農薬の空中散布に係る安全ガイドライン」（令和元年7月30日 元消安第1388号）第2の2。原文の語は「情報提供」。消費・安全局長通知であり、罰則を伴う法律上の義務ではありません。</p>
+    </div>
+
+    <p><strong>問題は、この周知が実際にどう行われているかを確かめる手段がないことです。</strong>実施状況を示す統計はありません。一方で農林水産省や自治体の資料には、周知が不足していたと考えられる飛散事故や、連絡のない散布についての相談事例が報告されています。</p>
+
+    <p class="kicker">連絡と記録の面で、次の課題があると考えています。</p>
+    <ul class="list">
+      <li>回覧や機関紙など一律の周知では、<strong>必要な相手へ届いたかが分からず</strong>、受け取る側も自分に関係する散布か判断しにくい</li>
+      <li>天候による延期・再開を、同じ相手へその都度伝えにくい</li>
+      <li><strong>有機・農薬不使用のほ場、養蜂、学校・住宅など、配慮すべき対象の把握が難しい</strong></li>
+      <li>誰に知らせ、相手がどう答えたかが、記録として残らない</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>このアプリが「しない」こと</h2>
+    <div class="never">
+      <ul class="list">
+        <li>散布してよいかどうかを<strong>判定しません</strong></li>
+        <li>自治体・JAが散布を<strong>許可したように見せません</strong></li>
+        <li>被害の原因や責任の所在を決めません</li>
+        <li><strong>散布する方を監視・取り締まるためのものではありません</strong></li>
+        <li>気象の予報を、現地の実測の代わりにしません</li>
+        <li>周辺の農家の情報を、必要以上に公開しません</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="idx">2</span>しくみ</h2>
+    <ol class="steps">
+      <li>
+        <div class="marker"><span class="dot">1</span><span class="line"></span></div>
+        <div>
+          <p class="step-name">計画する</p>
+          <p>散布者がほ場・日時・資材・機体を登録します。航空写真の上で周辺のほ場、距離、風下の方向を確かめ、気象の予報を取り込みます。</p>
+        </div>
+      </li>
+      <li>
+        <div class="marker"><span class="dot">2</span><span class="line"></span></div>
+        <div>
+          <p class="step-name">地区へ知らせる</p>
+          <p>地区ごとのLINEオープンチャットへ、アプリが作った文面を投稿します。<strong>周辺の農家はアプリを入れる必要がありません。</strong>都合の悪い方は電話等で直接連絡でき、その内容も記録に残ります。</p>
+        </div>
+      </li>
+      <li>
+        <div class="marker"><span class="dot">3</span><span class="line"></span></div>
+        <div>
+          <p class="step-name">散布し、記録する</p>
+          <p>散布前のチェック、飛行ログ（軌跡・散布範囲・<strong>飛行高度</strong>）、実施後の報告までを、一つの案件としてまとめて保存します。</p>
+        </div>
+      </li>
+      <li>
+        <div class="marker"><span class="dot">4</span><span class="line"></span></div>
+        <div>
+          <p class="step-name">地域として把握する</p>
+          <p>自治体・JAは市町村と日付で予定・実績を一覧できます。苦情や問い合わせを受けた際に、その案件の記録を書類として出力できます。</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="idx">3</span>それぞれの立場でできること</h2>
+    <div class="roles">
+      <div class="role">
+        <p class="role-name">散布する人</p>
+        <p class="role-sub">農家・防除受託者</p>
+        <p>計画の登録／周辺のほ場・距離・風向と気象の確認／地区への周知／飛行ログと<strong>散布高度</strong>の確認／実施後の報告・防除履歴の出力。<strong>自分の作業を振り返り、「きちんとやった」ことを示す記録になります。</strong></p>
+      </div>
+      <div class="role">
+        <p class="role-name">周辺の農家</p>
+        <p class="role-sub">有機・農薬不使用・収穫前など</p>
+        <p>自分のほ場と、<strong>配慮してほしい事情</strong>（有機・農薬不使用・収穫の予定・養蜂など）の登録／情報の公開範囲の設定／周知の受け取りと、散布者への返答。</p>
+      </div>
+      <div class="role">
+        <p class="role-name">自治体・JA</p>
+        <p class="role-sub">地域として把握する立場</p>
+        <p>市町村・日付ごとの予定と実績の集計／<strong>周知が未了・確認が必要な案件</strong>の抽出／案件ごとの航空写真と作業内容の確認／記録の書類出力。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="idx">4</span>現在の段階</h2>
+    <a class="demo" href="https://tonari-hatake-safety.pages.dev/">
+      <span class="label">公開デモ（登録不要）</span>
+      <span class="addr">tonari-hatake-safety.pages.dev</span>
+    </a>
+    <p>笠間市周辺の架空のデータで、3つの立場の画面をお試しいただけます。プロフィール画面で立場を切り替えられます。ドローンメーカーとのデータ連携、飛行中の位置の取得は未実装です。</p>
+    <p>将来的には、<strong>いま地域のどこで散布が行われているかを、関係する方が地図の上で共有できる状態</strong>を目指しています。問い合わせを受けた際に、どこの作業かがすぐ分かるようにすることが目標です。</p>
+  </section>
+
+  <section>
+    <h2><span class="idx">5</span>開発にあたっての課題</h2>
+    <p class="kicker">実証に入る前に、確かめなければならないことが残っています。</p>
+    <ul class="issues">
+      <li>
+        <span class="issue-name">実態が分かっていない</span>
+        <p>散布の前にどれだけ周知が行われているかを示す統計はなく、散布されている方に直接伺うほかありません。難しさの原因が手間なのか、<strong>そもそも周辺に誰がいるかを知る手立てがない</strong>ことなのかで、作るべきものが変わります。</p>
+      </li>
+      <li>
+        <span class="issue-name">知らせが本当に届くか</span>
+        <p>周辺の農家に新しくアプリを入れていただかずに済む形を選びましたが、スマートフォンをお使いでない方への届け方と、投稿が実際に読まれたかを確かめる方法が残っています。</p>
+      </li>
+      <li>
+        <span class="issue-name">どこまで伝え、どこから伏せるか</span>
+        <p>配慮の必要な事情は、ほ場の持ち主ご自身に登録していただく前提です。散布者には名前や持ち主を伏せ、<strong>種別・方向・距離だけ</strong>をお伝えする想定ですが、この線の引き方は地域で確かめる必要があります。</p>
+      </li>
+      <li>
+        <span class="issue-name">誰が運用の主体になるか</span>
+        <p>地区・JA・自治体のうち、どこが記録を持ち、問い合わせを受けたときに答える立場になるのか。まずは一つの地区で試し、確かめたいと考えています。</p>
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    <a href="mailto:makoto.monda@gmail.com">makoto.monda@gmail.com</a>
+    <p class="meta">
+      2026年8月<br>
+      農地のデータは農林水産省の筆ポリゴン、地図は国土地理院の航空写真を利用しています。<br>
+      参照：農林水産省「農薬の使用に伴う事故・被害」「無人航空機による農薬等の空中散布」
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -67,3 +67,17 @@ export function notifyPreferenceAllows({
   if (isOrganicLike && meters <= Number(organicRadius)) allowed = true;
   return allowed;
 }
+
+
+// Memberships are already scoped to the signed-in user by the auth service.
+// The local sample workspace permits all roles; cloud workspaces fail closed.
+export function switchableRoles({ signedIn = false, workspaceId = "", memberships = [] } = {}) {
+  const roles = Object.keys(ROLE_VIEWS);
+  if (!signedIn) return roles;
+  return roles.filter(role => memberships.some(item =>
+    item.workspace_id === workspaceId && item.status === "active" && item.role === role));
+}
+
+export function selectAvailableRole(roles, preferred, fallback) {
+  return roles.includes(preferred) ? preferred : roles.includes(fallback) ? fallback : roles[0] || null;
+}

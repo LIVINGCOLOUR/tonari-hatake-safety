@@ -142,7 +142,7 @@
   <tr><td><code>data/boundaries/index.json</code></td><td>市町村境界カタログ</td><td>5市町村登録</td></tr>
   <tr><td><code>data/boundaries/*.geojson</code></td><td>軽量デモ境界（笠間市デモ、友部エリアデモ 各約1.8KB）</td><td>2件</td></tr>
   <tr><td><code>data/boundaries/*-fude.zip</code></td><td>筆ポリゴンShapefile zip（笠間市 5.3MB／水戸市 4.7MB／石岡市 6.2MB、2021年版）</td><td>3件</td></tr>
-  <tr><td><code>README.md</code> / <code>HANDOFF.md</code></td><td>概要・引継ぎ資料（別AI/別スレッド引継ぎ時はHANDOFF.mdを先に読ませる運用）</td><td>—</td></tr>
+  <tr><td><code>AGENTS.md</code> / <code>docs/README.md</code></td><td>エージェント共通指示・作業別文書索引。継続作業のみHANDOFF.mdを参照</td><td>—</td></tr>
 </table>
 
 <h3>2.3 外部連携仕様</h3>
@@ -520,15 +520,12 @@
   <li>変更後は <code>git status</code> → 構文チェック → コミット → プッシュ →（公開デモを変える場合）デプロイ、の順で実施。</li>
 </ul>
 
-<h3>9.5 開発・引継ぎルール（HANDOFF.md より）</h3>
-<ul>
-  <li>編集前に README.md と HANDOFF.md を読む。<code>git status</code> を先に実行し、未コミットの変更を上書きしない。</li>
-  <li>UIは既存の高密度業務ツール調に合わせる。ランディングページは追加しない。</li>
-  <li>地図・空間処理は vendor 同梱の MapLibre / Turf / shpjs を使う（新規CDN依存を追加しない）。</li>
-  <li>ユーザーが明示しない限り静的アプリのまま保つ（バックエンド・認証を勝手に追加しない）。</li>
-  <li>データ量の大きい機能追加時は Git サイズと Cloudflare Pages のアップロード上限を考慮する。</li>
-  <li>判断理由・未完了事項はコミットメッセージか HANDOFF.md に必ず残す（AI間の会話はリポジトリから参照できないため）。</li>
-</ul>
+<h3>9.5 開発・引継ぎルール</h3>
+<p>共通指示は <a href="../AGENTS.md">AGENTS.md</a>、実装・検証は
+<a href="../DEVELOPMENT.md">DEVELOPMENT.md</a> を正本とし、作業に必要な文書だけ参照する。
+継続作業の未完了事項は <a href="../HANDOFF.md">HANDOFF.md</a>、
+現在の機能・構成は <a href="../FEATURE_MAP.md">FEATURE_MAP.md</a> を参照する。
+本説明資料の作成時点の記述を、現在の開発指示や実装状況として扱わない。</p>
 
 <h2 class="pagebreak">10. 未実装事項・既知の制約・今後の課題</h2>
 

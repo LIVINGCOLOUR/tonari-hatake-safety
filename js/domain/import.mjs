@@ -350,7 +350,7 @@ export function buildFieldRecord(feature, index = 0, context = {}, options = {})
       distance: 0,
       direction: type === "spray" ? "中心" : "-",
       notifyTarget: type !== "spray" && type !== "public",
-      owner: type === "spray" ? "自分" : "周辺農家",
+      owner: type === "spray" ? "自分" : "周辺関係者",
     },
   };
 }

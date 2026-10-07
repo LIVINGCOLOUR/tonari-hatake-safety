@@ -260,12 +260,12 @@ test("notification repository saves delivery and marks a replied notice as deliv
     id: "p1:f2",
     planId: "p1",
     fieldId: "f2",
-    delivered: true,
+    delivered: false,
     response: "電話希望",
   });
   assert.equal(saves, 2);
   assert.equal(plan.notificationTargets.f1, true);
-  assert.equal(plan.notificationTargets.f2, true);
+  assert.equal(plan.notificationTargets.f2, undefined);
   assert.equal(plan.notificationResponses.f2, "電話希望");
 });
 

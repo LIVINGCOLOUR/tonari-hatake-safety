@@ -5,9 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>デモ | となりの畑セーフティ（仮称）</title>
     <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
-    <link rel="stylesheet" href="css/styles.css?v=20260728-kasama-case">
+    <link rel="stylesheet" href="css/styles.css?v=20260909-profile-server-error">
   </head>
   <body>
+    <section id="loginScreen" class="login-screen" hidden aria-labelledby="loginTitle">
+      <a href="index.html" class="login-brand">🌱 となりの畑セーフティ</a>
+      <p>地域の散布予定を、わかりやすく。</p>
+      <article class="login-card"><h1 id="loginTitle">はじめる</h1>
+        <p>Googleまたはメールでログイン・新規登録</p>
+        <div id="loginMethods"></div>
+      </article>
+      <p>初めての方は、ログイン後にプロフィールを登録します。</p>
+      <a href="app.html?demo=1">登録せずにデモを試す</a>
+    </section>
     <div class="app-shell">
       <aside class="sidebar" aria-label="メインナビゲーション">
         <a class="brand" href="index.html" title="紹介ページへ戻る">
@@ -19,13 +29,13 @@
           </div>
         </a>
 
-        <div class="role-switcher" id="roleSwitcher" aria-label="利用者モード">
+        <div class="role-switcher" id="roleSwitcher" aria-label="利用する立場">
           <button class="role-option active" data-role="sprayer" type="button">
             <span>散布者</span>
             <strong>散布前後の確認</strong>
           </button>
           <button class="role-option" data-role="neighbor" type="button">
-            <span>周辺農家</span>
+            <span>周辺関係者</span>
             <strong>圃場登録・返信</strong>
           </button>
           <button class="role-option" data-role="admin" type="button">
@@ -43,20 +53,21 @@
           <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
-          <button class="nav-item" data-roles="sprayer" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
+          <button data-demo-only class="nav-item" data-roles="sprayer" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="history" type="button"><span class="nav-icon">≡</span><span>作業履歴</span></button>
           <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>散布予定・実績</span></button>
         </nav>
 
         <div class="sidebar-actions">
-          <button class="ghost-button wide" id="loadSampleButton" type="button">サンプル読込</button>
+          <button class="ghost-button wide" id="loadSampleButton" type="button" data-demo-only>サンプル読込</button>
           <button class="primary-button wide" id="newPlanButton" type="button">散布計画を追加</button>
         </div>
 
         <div class="org-card">
           <span>実証モード</span>
-          <strong>匿名サンプル運用</strong>
+          <strong>公開準備中・サンプル運用</strong>
+          <a href="app.html#dashboard" data-demo-only>通常画面を確認する</a>
         </div>
       </aside>
 
@@ -71,10 +82,20 @@
             <select id="activePlanSelect"></select>
             <button class="ghost-button" id="exportCsvButton" type="button">CSV出力</button>
           </div>
+          <div class="header-account" id="headerAccount" hidden>
+            <div class="header-account-summary" role="status" aria-live="polite">
+              <strong id="headerAuthStatus">未ログイン</strong>
+              <span id="headerAuthIdentity" hidden></span>
+            </div>
+            <button class="primary-button" id="headerAccountButton" type="button">ログイン</button>
+          </div>
         </header>
 
+        <p id="saveStatus" class="save-status" role="status" aria-live="polite"></p>
         <div class="profile-mode-banner" id="profileModeBanner"></div>
         <div class="case-bar" id="caseBar"></div>
+        <section id="profileSetupFlow" class="panel" aria-label="初期設定の手順" hidden></section>
+        <section id="caseWorkflow" class="case-workflow" aria-label="散布案件の操作" hidden></section>
 
         <section class="view active" data-view="dashboard" aria-labelledby="dashboardTitle">
           <div class="section-head">
@@ -84,6 +105,8 @@
             </div>
             <button class="primary-button" data-roles="sprayer" data-view-target="plans" type="button">計画登録へ</button>
           </div>
+
+          <div id="caseList"></div>
 
           <div class="gonogo-card" id="goNoGoCard"></div>
 
@@ -128,7 +151,7 @@
                   </div>
                 </div>
 
-                <div class="dashboard-map-overlay dashboard-right-stack">
+                <div class="dashboard-map-overlay dashboard-right-stack" data-demo-only>
                   <div class="dashboard-glass-card track-card">
                     <strong>↗ 作業軌跡</strong>
                     <span id="dashboardTrackSummary">サンプルログ未取込</span>
@@ -207,7 +230,8 @@
               <div class="form-grid">
                 <label>散布予定日<input name="date" type="date" required></label>
                 <label>散布時間帯<input name="timeWindow" type="text" placeholder="例：06:00-07:30" required></label>
-                <label>散布ほ場<input name="fieldName" type="text" required></label>
+                <label class="wide-field" data-case-only>散布する畑<select id="planFieldSelect" name="selectedFieldId"></select></label>
+                <label>散布ほ場名<input name="fieldName" type="text" required></label>
                 <label>地区<input name="district" type="text" required></label>
                 <label>作物名<input name="crop" type="text" required></label>
                 <label>資材種別
@@ -230,7 +254,7 @@
                 </label>
                 <label>散布者名または事業者名<input name="operator" type="text" required></label>
                 <label>連絡先<input name="contact" type="text" required></label>
-                <details class="form-section wide-field" open>
+                <details class="form-section wide-field">
                   <summary>ドローン・飛行条件</summary>
                   <div class="form-grid nested-form-grid">
                     <label>ドローン機体<input name="droneModel" type="text"></label>
@@ -258,7 +282,7 @@
                     <label>ラベル確認日<input name="labelCheckedAt" type="date"></label>
                   </div>
                 </details>
-                <details class="form-section wide-field" open>
+                <details class="form-section wide-field">
                   <summary>散布量・カバレッジ（総量の自動計算）</summary>
                   <div class="form-grid nested-form-grid">
                     <label>使用量（数値・10a当たり）<input name="ratePer10a" type="number" min="0" step="0.1" placeholder="例：600"></label>
@@ -279,8 +303,9 @@
                 <label class="wide-field">備考<textarea name="notes" rows="4"></textarea></label>
               </div>
               <div class="form-actions">
-                <button class="primary-button" type="submit">計画を保存</button>
-                <button class="ghost-button" data-view-target="checklist" type="button">チェックへ進む</button>
+                <button class="primary-button" type="submit" data-next-step="notify" data-case-only>保存して近隣への連絡へ</button>
+                <button class="ghost-button" type="submit">計画を保存</button>
+                <button class="ghost-button" data-view-target="checklist" type="button" data-demo-only>チェックへ進む</button>
               </div>
             </form>
 
@@ -306,20 +331,20 @@
           <div class="section-head">
             <div>
               <h3 id="mapTitle">圃場マップ・周辺確認</h3>
-              <p>散布ほ場、圃場ステータス、通知範囲、風下方向、ドローン飛行ログをGIS風に表示します。</p>
+              <p>散布する畑と周辺の畑、連絡が必要な相手、風下方向を確認します。</p>
             </div>
             <div class="segmented" role="group" aria-label="マップ表示">
               <button class="segment active" data-map-layer="risk" type="button">周辺・風下</button>
-              <button class="segment" data-map-layer="drone" type="button">飛行ログ</button>
-              <button class="segment" data-map-layer="coverage" type="button">カバレッジ（高度）</button>
-              <button class="segment" data-map-layer="prescription" type="button">VRA（高度）</button>
+              <button class="segment" data-map-layer="drone" data-demo-only type="button">飛行ログ</button>
+              <button class="segment" data-map-layer="coverage" data-demo-only type="button">カバレッジ（高度）</button>
+              <button class="segment" data-map-layer="prescription" data-demo-only type="button">VRA（高度）</button>
             </div>
           </div>
 
           <div class="map-layout">
             <div class="map-shell panel">
               <div class="map-canvas" id="mapCanvas">
-                <div class="maplibre-canvas" id="mapLibreCanvas" aria-hidden="true"></div>
+                <div class="maplibre-canvas" id="mapLibreCanvas" aria-label="圃場の地図"></div>
                 <div class="map-overlay top-left">
                   <div class="dash-card">
                     <span>気象確認状況</span>
@@ -332,7 +357,7 @@
                 </div>
                 <div class="map-legend" id="mapLegend"></div>
 
-                <div class="map-overlay coverage-panel" id="coveragePanel">
+                <div class="map-overlay coverage-panel" id="coveragePanel" data-demo-only>
                   <div class="coverage-panel-head">
                     <strong>▧ 高度機能：散布カバレッジ</strong>
                     <span>ログ確認用の補助表示</span>
@@ -345,7 +370,7 @@
                   <div id="coverageReadout"></div>
                 </div>
 
-                <div class="map-overlay coverage-panel prescription-panel" id="prescriptionPanel">
+                <div class="map-overlay coverage-panel prescription-panel" id="prescriptionPanel" data-demo-only>
                   <div class="coverage-panel-head">
                     <strong>▤ 高度機能：VRA処方マップ</strong>
                     <span>施用量の補助表示</span>
@@ -504,7 +529,7 @@
           </div>
         </section>
 
-        <section class="view" data-view="drone" aria-labelledby="droneTitle">
+        <section class="view" data-view="drone" data-demo-only aria-labelledby="droneTitle">
           <div class="section-head">
             <div>
               <h3 id="droneTitle">ドローン連携・飛行ログ取込</h3>
@@ -559,7 +584,7 @@
           <div class="section-head">
             <div>
               <h3 id="notifyTitle">近隣通知</h3>
-              <p>関係者へ共有する文面と通知履歴を作成します。</p>
+              <p>文面をコピーしてLINE等へ投稿し、個別連絡した相手も記録します。この画面から自動送信はされません。</p>
             </div>
             <div class="section-actions">
               <button class="ghost-button" id="printNoticeReplyButton" type="button">通知・返信記録PDF</button>
@@ -580,10 +605,13 @@
                   <button class="segment" data-channel="paper" type="button">紙</button>
                 </div>
               </div>
+              <p class="small-note">コピーしただけでは連絡済みになりません。重点対象には電話・訪問等で個別に連絡してください。</p>
+              <div id="noticeHistory" class="small-note"></div>
+              <label>実際に連絡した方法<select id="noticeMethod"><option>LINE</option><option>メール</option><option>電話</option><option>訪問</option><option>紙の配布</option></select></label>
               <textarea class="notice-text" id="noticeText" rows="18"></textarea>
               <div class="form-actions">
                 <button class="primary-button" id="copyNoticeButton" type="button">文面コピー</button>
-                <button class="secondary-button" id="markNotifiedButton" type="button">選択先を通知済みにする</button>
+                <button class="secondary-button" id="markNotifiedButton" type="button">選択した相手への連絡を記録</button>
               </div>
             </article>
 
@@ -595,6 +623,10 @@
                 </div>
               </div>
               <div class="target-list" id="notifyTargetList"></div>
+              <div class="form-actions" data-case-only>
+                <button class="ghost-button" data-view-target="map" type="button">地図で連絡先を確認</button>
+                <button class="primary-button" data-view-target="weather" type="button">当日の確認へ進む</button>
+              </div>
             </aside>
           </div>
         </section>
@@ -618,6 +650,8 @@
                 <div class="donut" id="checkDonut"><span>0%</span></div>
               </div>
               <div class="checklist" id="checklistItems"></div>
+              <p class="small-note" data-case-only>チェックの変更はその都度保存されます。記録の有無は散布可否の判定ではありません。</p>
+              <button class="primary-button" data-view-target="report" type="button" data-case-only>散布後に実施を記録</button>
             </article>
 
             <aside class="panel">
@@ -637,11 +671,12 @@
           <div class="section-head">
             <div>
               <h3 id="weatherTitle">気象・風向風速確認</h3>
-              <p>OSS系の気象API予報、散布者確認、現地実測を分けて記録します。</p>
+              <p>予報と現地で測った風向・風速を分けて記録します。予報だけで現地確認を済ませないでください。</p>
             </div>
             <div class="section-actions">
               <button class="secondary-button" id="fetchWeatherButton" type="button">気象情報を自動取得</button>
-              <button class="primary-button" id="saveWeatherButton" type="button">気象メモを保存</button>
+              <button class="ghost-button" id="saveWeatherButton" type="button">気象メモを保存</button>
+              <button class="primary-button" data-save-weather-next type="button" data-case-only>保存して散布前チェックへ</button>
             </div>
           </div>
 
@@ -708,7 +743,7 @@
           <div class="report-layout">
             <form class="panel form-panel" id="reportForm">
               <div class="form-grid">
-                <label>実施日<input name="doneDate" type="date"></label>
+                <label>実施日<input name="doneDate" type="date" required></label>
                 <label>実施時間<input name="doneTime" type="text" placeholder="例：06:10-07:05"></label>
                 <label>実施ほ場<input name="doneField" type="text"></label>
                 <label>使用農薬<input name="donePesticide" type="text"></label>
@@ -749,8 +784,9 @@
                 <label class="wide-field">備考<textarea name="reportNotes" rows="4"></textarea></label>
               </div>
               <div class="form-actions">
-                <button class="secondary-button" id="autoFillReportButton" type="button">計画とログから自動入力</button>
-                <button class="primary-button" type="submit">報告を保存</button>
+                <button class="secondary-button" id="autoFillReportButton" type="button">計画から入力を補完</button>
+                <button class="primary-button" type="submit" data-next-step="dashboard" data-case-only>実施記録を保存して一覧へ</button>
+                <button class="ghost-button" type="submit">報告を保存</button>
                 <button class="ghost-button" data-view-target="history" type="button">作業履歴を見る</button>
                 <button class="ghost-button" id="clearReportPhotoButton" type="button">写真を外す</button>
               </div>
@@ -947,7 +983,7 @@
           <div class="section-head">
             <div>
               <h3 id="profileTitle">初期設定・プロフィール</h3>
-              <p>未登録デモモードではロールを切り替えて各画面を確認できます。各ロールでは、その利用区分に必要な画面だけ表示されます。</p>
+              <p>利用区分と連絡先を登録します。利用区分に応じた画面を表示します。</p>
             </div>
           </div>
 
@@ -962,6 +998,9 @@
             <p class="small-note" id="supabaseAccountStatus"></p>
 
             <div class="cloud-auth-form" id="supabaseSignedOutPanel">
+              <button class="primary-button" id="googleSignInButton" type="button">Googleでログイン</button>
+              <p class="small-note" id="googleSignInStatus" role="status" aria-live="polite"></p>
+              <p class="cloud-auth-divider">または、メールアドレスでログイン</p>
               <label>メールアドレス
                 <input id="supabaseLoginEmail" type="email" autocomplete="email">
               </label>
@@ -982,15 +1021,33 @@
               <button class="ghost-button" id="supabaseSignOutButton" type="button">ログアウト</button>
             </div>
 
+            <section class="active-workspace-card" id="activeWorkspaceCard" tabindex="-1" hidden>
+              <div>
+                <span class="tag tag-green" id="activeWorkspaceStatus">現在の地域</span>
+                <strong id="activeWorkspaceName"></strong>
+                <span class="small-note" id="activeWorkspaceLocation"></span>
+                <span class="small-note">この地域が畑・散布予定の共有先です。プロフィール登録後に同期を開始できます。</span>
+              </div>
+              <div class="active-workspace-next">
+                <span class="small-note" id="activeWorkspaceRoles"></span>
+                <button class="primary-button" data-scroll-target="profileForm" type="button">プロフィール登録へ進む</button>
+              </div>
+            </section>
+
             <div class="cloud-workspace-grid" id="supabaseWorkspacePanel" hidden>
               <div class="cloud-workspace-block">
-                <strong>地域を作成</strong>
+                <strong id="workspaceCreateTitle">地域を作成</strong>
                 <div class="form-grid">
-                  <label>地域名<input id="workspaceNameInput" type="text" value="笠間市周辺実証"></label>
+                  <label>地域名<input id="workspaceNameInput" type="text" value="笠間市周辺実証" required></label>
                   <label>都道府県<input id="workspacePrefectureInput" type="text" value="茨城県"></label>
                   <label>市町村<input id="workspaceMunicipalityInput" type="text" value="笠間市"></label>
                   <label>地区<input id="workspaceDistrictInput" type="text"></label>
                 </div>
+                <fieldset><legend>この地域で行うこと（複数選択可）</legend>
+                  <label><input type="checkbox" name="workspaceInitialRole" value="sprayer" checked>散布を行う</label>
+                  <label><input type="checkbox" name="workspaceInitialRole" value="neighbor">自分の畑で近隣のお知らせを確認する</label>
+                  <p class="small-note">複数選択できます。地域管理はアプリ管理者が指定した人だけに付与します。</p>
+                </fieldset>
                 <button class="primary-button" id="createWorkspaceButton" type="button">地域を作成</button>
               </div>
               <div class="cloud-workspace-block">
@@ -1000,6 +1057,19 @@
               </div>
             </div>
 
+            <section id="workspaceParticipantsPanel" hidden>
+              <h3>参加者・兼務の設定</h3>
+              <p>既存参加者も、招待コードで別の立場を追加できます。本人がコードを入力して参加します。</p>
+              <div id="workspaceOwnRoles"></div>
+              <label>招待する立場<select id="inviteRole"><option value="sprayer">散布者</option><option value="neighbor">周辺関係者</option></select></label>
+              <label>相手のメール（任意）<input id="inviteEmail" type="email"></label>
+              <p class="small-note">有効期間7日・1回限り。メールを指定すると、その本人だけが参加できます。</p>
+              <button class="secondary-button" id="issueWorkspaceInvite" type="button">招待コードを発行</button>
+              <label>発行した招待コード<input id="issuedWorkspaceInvite" readonly></label>
+              <p class="small-note">コードをコピーして相手へ伝えてください。自動送信はしません。</p>
+              <button class="ghost-button" id="loadWorkspaceParticipants" type="button">参加者の立場を確認</button>
+              <div id="workspaceParticipantsList" aria-live="polite"></div>
+            </section>
             <div class="cloud-sync-panel" id="supabaseSyncPanel" hidden>
               <div>
                 <strong>地域データの同期</strong>
@@ -1068,43 +1138,45 @@
                 </div>
               </div>
               <input name="role" type="hidden">
+              <p class="small-note">初回から両方を選べます。地域管理の権限は、アプリ管理者が指定した人だけに付与します。</p>
               <div class="profile-role-grid" id="profileRoleOptions">
                 <button class="profile-role-option" data-profile-role="sprayer" type="button">
                   <strong>散布者</strong>
                   <span>散布計画、通知、気象、ログ、報告を記録します。</span>
                 </button>
                 <button class="profile-role-option" data-profile-role="neighbor" type="button">
-                  <strong>周辺農家</strong>
-                  <span>自分の圃場、通知返信、公開範囲を管理します。</span>
+                  <strong>周辺関係者</strong>
+                  <span>農家・住民・学校や施設の担当者など。近隣の散布予定を確認します。</span>
                 </button>
-                <button class="profile-role-option" data-profile-role="admin" type="button">
-                  <strong>地域管理</strong>
-                  <span>地域内の散布予定・通知・報告の確認状況を見ます。</span>
+                <button class="profile-role-option" data-profile-role="both" type="button">
+                  <strong>散布者＋周辺関係者</strong>
+                  <span>両方の立場で利用します。画面上部で切り替えられます。</span>
                 </button>
               </div>
+              <p id="profileRoleSaveStatus" class="small-note" role="status" aria-live="polite" hidden></p>
             </article>
 
             <article class="panel profile-panel">
               <div class="panel-head">
                 <div>
                   <span class="tag">基本情報</span>
-                  <h4>連絡先と所属</h4>
+                  <h4>基本情報</h4>
                 </div>
               </div>
               <div class="form-grid">
-                <label>氏名 / 会社名 / 屋号<input name="name" type="text"></label>
+                <label>氏名 / 会社名 / 屋号（必須）<input name="name" type="text" required></label>
                 <label>組織名<input name="organizationName" type="text"></label>
                 <label>市町村<input name="municipality" type="text"></label>
                 <label>地区<input name="district" type="text"></label>
                 <label class="wide-field">詳細住所<input name="addressDetail" type="text"></label>
                 <label>電話番号<input name="phone" type="tel"></label>
-                <label>メール<input name="email" type="email"></label>
+                <label data-contact-field="email">連絡用メールアドレス<input name="email" type="email" autocomplete="email"></label>
+                <label data-contact-field="line" hidden>LINE ID<input name="lineId" type="text"><small>連絡先として登録します。自動通知はありません。</small></label>
                 <label>主な連絡方法
                   <select name="preferredContactMethod">
                     <option value="phone">電話</option>
                     <option value="line">LINE</option>
                     <option value="email">メール</option>
-                    <option value="paper">紙</option>
                   </select>
                 </label>
                 <label>所属
@@ -1123,23 +1195,24 @@
             <article class="panel profile-panel">
               <div class="panel-head">
                 <div>
-                  <span class="tag tag-blue">対象市町村</span>
-                  <h4>圃場・管理対象の市町村</h4>
+                  <span class="tag tag-blue">対象地域</span>
+                  <h4>圃場・管理対象の地域</h4>
                 </div>
               </div>
-              <p class="small-note">対象市町村は複数選択できます。境界データは選択市町村に応じて読み込まれます。</p>
-              <div class="municipality-chip-grid" id="profileMunicipalityChips"></div>
+              <p class="small-note">都道府県、市町村の順に選んでください。現在は茨城県の水戸市・笠間市に対応しています。</p>
+              <div class="form-grid" id="profileMunicipalityChips"></div>
               <div class="boundary-status-list" id="profileBoundaryStatus"></div>
             </article>
 
-            <article class="panel profile-panel">
+            <article class="panel profile-panel" id="profileEquipmentSettings">
               <div class="panel-head">
                 <div>
-                  <span class="tag tag-attention">ロール別設定</span>
+                  <span class="tag tag-attention">任意・あとから設定できます</span>
                   <h4>利用区分ごとの既定値</h4>
                 </div>
               </div>
 
+              <details><summary>機材・通知・管理の既定値を設定</summary>
               <div class="profile-role-settings" data-profile-settings="sprayer">
                 <div class="form-grid">
                   <label>主な散布方法
@@ -1159,7 +1232,7 @@
                   <label>ノズル・粒径<input name="sprayer_defaultNozzle" type="text"></label>
                   <label>既定飛行高度<input name="sprayer_defaultAltitude" type="text"></label>
                   <label>既定飛行速度<input name="sprayer_defaultSpeed" type="text"></label>
-                  <label>ドローンログ取込方式
+                  <label data-demo-only>ドローンログ取込方式
                     <select name="sprayer_logImportMethod">
                       <option value="sample">サンプルログ</option>
                       <option value="csv">CSV</option>
@@ -1225,39 +1298,12 @@
                   </label>
                 </div>
               </div>
+              </details>
             </article>
 
-            <article class="panel profile-panel">
-              <div class="panel-head">
-                <div>
-                  <span class="tag tag-blue">情報公開範囲</span>
-                  <h4>センシティブ情報の扱い</h4>
-                </div>
-              </div>
-              <p class="small-note">住所、電話番号、圃場位置、農薬使用ステータスはセンシティブ情報です。どこまで共有されるかをここで設定します。</p>
-              <div class="form-grid">
-                <label>氏名 / 会社名
-                  <select name="visibility_name"></select>
-                </label>
-                <label>電話番号
-                  <select name="visibility_phone"></select>
-                </label>
-                <label>詳細住所
-                  <select name="visibility_addressDetail"></select>
-                </label>
-                <label>圃場位置
-                  <select name="visibility_fieldLocation"></select>
-                </label>
-                <label>作物
-                  <select name="visibility_cropStatus"></select>
-                </label>
-                <label>通知返信内容
-                  <select name="visibility_notificationReplies"></select>
-                </label>
-              </div>
-            </article>
 
-            <article class="panel profile-panel" id="demoDataPanel">
+
+            <article class="panel profile-panel" id="demoDataPanel" data-demo-only>
               <div class="panel-head"><div>
                 <span class="tag tag-attention">デモデータ</span>
                 <h4>サンプルの読込と初期化</h4>
@@ -1272,12 +1318,12 @@
             <article class="panel profile-panel profile-save-panel">
               <div>
                 <span class="tag tag-attention">V1 MVP</span>
-                <strong>これは本番認証ではなく、localStorage上のプロフィール設定に基づくUI制御です。</strong>
-                <span>プロフィール登録後は、選択した利用区分の画面だけ表示されます。</span>
+                <strong>本人情報と、今後作る予定の既定値を保存します。</strong>
+                <span>登録後も、画面上部で利用する立場を切り替えられます。</span>
               </div>
               <div class="form-actions">
                 <button class="primary-button" type="submit">プロフィールを保存</button>
-                <button class="ghost-button" id="resetProfileButton" type="button">プロフィールをリセットしてデモモードに戻す</button>
+                <button class="ghost-button" id="resetProfileButton" type="button" data-demo-only>プロフィールをリセットしてデモモードに戻す</button>
               </div>
             </article>
           </form>
@@ -1315,6 +1361,6 @@
     <script src="vendor/shpjs/shp.min.js" defer></script>
     <script src="vendor/supabase/supabase.min.js" defer></script>
     <script src="js/config/supabase-runtime.js" defer></script>
-    <script src="js/main.js?v=20260728-kasama-case" defer></script>
+    <script src="js/main.js?v=20260909-profile-server-error" defer></script>
   </body>
 </html>
