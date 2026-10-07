@@ -1,0 +1,255 @@
+{
+  "$mulmocast": {
+    "version": "1.1"
+  },
+  "title": "となりの畑セーフティ 第2部 散布者編（慣行農家・ドローン散布者向け）",
+  "lang": "ja",
+  "canvasSize": {
+    "width": 1920,
+    "height": 1080
+  },
+  "imageParams": {
+    "images": {
+      "cut01": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut01-dawn-paddies-v1.png"
+        }
+      },
+      "cut02": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut02-kei-truck-drone-v1.png"
+        }
+      },
+      "cut05": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut05-oblique-farmland-v1.png"
+        }
+      },
+      "cut04": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut04-farmer-drone-v1.png"
+        }
+      },
+      "cut03": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut03-pouring-liquid-v1.png"
+        }
+      },
+      "cut13": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut13-after-rain-a.png"
+        }
+      },
+      "cut14": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut14-school-a.png"
+        }
+      },
+      "cut16": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut16-organic-field-a.png"
+        }
+      },
+      "cut08": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut08-smartphone-transition-v1.png"
+        }
+      },
+      "cut12": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut12-overcast-a.png"
+        }
+      },
+      "cut17": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut17-phone-post-a.png"
+        }
+      },
+      "map": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/map.mp4"
+        }
+      },
+      "notify": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/notify.mp4"
+        }
+      },
+      "weather": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/weather.mp4"
+        }
+      },
+      "postpone": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/postpone.mp4"
+        }
+      },
+      "history": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/history.mp4"
+        }
+      }
+    }
+  },
+  "beats": [
+    {
+      "id": "open",
+      "duration": 5.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut02\"></div>\n  <div id=\"b\" class=\"abs fill\" style=\"opacity:0;transform-origin:50% 60%\"><img class=\"cover\" src=\"image:cut04\"></div>\n  <div class=\"abs fill shade\"></div>\n  <div id=\"vig\" class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">散布の前に</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">まく前に、知らせる。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  \n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.08]}, {start:0, end:3.2, easing:\"linear\"});\nanimation.animate(\"#b\", {opacity:[0,1], scale:[1.10,1.0]}, {start:2.6, end:3.3, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:3.20, end:3.60, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:3.30, end:3.90, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:3.70, end:4.20, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "map",
+      "duration": 5.5,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"frame\" class=\"abs frame\" style=\"left:160px;top:70px;width:1600px;height:900px;transform-origin:50% 40%\">\n    <video id=\"v\" class=\"cover\" src=\"movie:map\" muted playsinline preload=\"auto\"></video>\n  </div>\n  <div class=\"abs fill shade\" style=\"pointer-events:none\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">圃場マップ・周辺確認</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">知らせる相手が、地図の上に出る。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  \n</div>\n  <div id=\"flash\" class=\"abs fill flash\" style=\"opacity:0\"></div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#frame\", {scale:[1.05,1.0], opacity:[0.0,1.0]}, {start:0, end:1.1, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\nanimation.animate(\"#flash\", {opacity:[1,0]}, {start:0, end:0.55, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "notify",
+      "duration": 4.5,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"frame\" class=\"abs frame\" style=\"left:160px;top:70px;width:1600px;height:900px;transform-origin:50% 40%\">\n    <video id=\"v\" class=\"cover\" src=\"movie:notify\" muted playsinline preload=\"auto\"></video>\n  </div>\n  <div class=\"abs fill shade\" style=\"pointer-events:none\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">近隣通知</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">地区へのお知らせは、投稿ひとつ。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">有機のほ場など、特に配慮が要る相手へは、個別にご連絡ください。</div>\n</div>\n  \n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#frame\", {scale:[1.05,1.0], opacity:[0.0,1.0]}, {start:0, end:1.1, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:1.40, end:1.90, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "weather",
+      "duration": 3.5,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"frame\" class=\"abs frame\" style=\"left:160px;top:70px;width:1600px;height:900px;transform-origin:50% 40%\">\n    <video id=\"v\" class=\"cover\" src=\"movie:weather\" muted playsinline preload=\"auto\"></video>\n  </div>\n  <div class=\"abs fill shade\" style=\"pointer-events:none\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">気象メモ・散布前チェック</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">当日の風も、決められた確認も、記録しながら。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  \n</div>\n  \n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#frame\", {scale:[1.05,1.0], opacity:[0.0,1.0]}, {start:0, end:1.1, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "postpone",
+      "duration": 4.5,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"frame\" class=\"abs frame\" style=\"left:160px;top:70px;width:1600px;height:900px;transform-origin:50% 40%\">\n    <video id=\"v\" class=\"cover\" src=\"movie:postpone\" muted playsinline preload=\"auto\"></video>\n  </div>\n  <div class=\"abs fill shade\" style=\"pointer-events:none\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">延期のお知らせ</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">延期になったら、同じ相手にもう一度。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  \n</div>\n  \n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#frame\", {scale:[1.05,1.0], opacity:[0.0,1.0]}, {start:0, end:1.1, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "history",
+      "duration": 3.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"frame\" class=\"abs frame\" style=\"left:160px;top:70px;width:1600px;height:900px;transform-origin:50% 40%\">\n    <video id=\"v\" class=\"cover\" src=\"movie:history\" muted playsinline preload=\"auto\"></video>\n  </div>\n  <div class=\"abs fill shade\" style=\"pointer-events:none\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">ドローン連携・作業履歴</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">まいた記録も、同じ案件に。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  \n</div>\n  \n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#frame\", {scale:[1.05,1.0], opacity:[0.0,1.0]}, {start:0, end:1.1, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "close",
+      "duration": 4.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at 50% 40%, #16271d 0%, #0b1410 70%)\"></div>\n  <div class=\"abs\" style=\"left:0;right:0;top:360px;text-align:center\">\n    <div id=\"l1\" class=\"cap\" style=\"font-size:72px;opacity:0\">まく前に知らせて、飛散トラブルを防ぐ。</div>\n    <div id=\"bar\" class=\"bar\" style=\"width:0px;margin:34px auto 0\"></div>\n    <div id=\"l2\" style=\"font-weight:700;font-size:44px;letter-spacing:.06em;margin-top:40px;opacity:0\">となりの畑セーフティ<span style=\"font-weight:500;font-size:30px;opacity:.8\">（仮称）</span></div>\n  </div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#l1\", {opacity:[0,1], translateY:[30,0]}, {start:0.2, end:0.9, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,160,\"px\"]}, {start:0.8, end:1.3, easing:\"easeOut\"});\nanimation.animate(\"#l2\", {opacity:[0,1], translateY:[16,0]}, {start:1.3, end:1.9, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    }
+  ]
+}

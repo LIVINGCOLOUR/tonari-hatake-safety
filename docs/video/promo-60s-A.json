@@ -1,0 +1,291 @@
+{
+  "$mulmocast": {
+    "version": "1.1"
+  },
+  "title": "ドローンによる農薬散布の事前周知をめぐる課題（第1部・自治体/JA向け・60秒）",
+  "lang": "ja",
+  "canvasSize": {
+    "width": 1920,
+    "height": 1080
+  },
+  "imageParams": {
+    "images": {
+      "cut01": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut01-dawn-paddies-v1.png"
+        }
+      },
+      "cut02": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut02-kei-truck-drone-v1.png"
+        }
+      },
+      "cut05": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut05-oblique-farmland-v1.png"
+        }
+      },
+      "cut04": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut04-farmer-drone-v1.png"
+        }
+      },
+      "cut03": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut03-pouring-liquid-v1.png"
+        }
+      },
+      "cut13": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut13-after-rain-a.png"
+        }
+      },
+      "cut14": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut14-school-a.png"
+        }
+      },
+      "cut16": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut16-organic-field-a.png"
+        }
+      },
+      "cut08": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut08-smartphone-transition-v1.png"
+        }
+      },
+      "cut12": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut12-overcast-a.png"
+        }
+      },
+      "cut17": {
+        "type": "image",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/cut17-phone-post-a.png"
+        }
+      },
+      "map": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/map.mp4"
+        }
+      },
+      "notify": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/notify.mp4"
+        }
+      },
+      "weather": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/weather.mp4"
+        }
+      },
+      "postpone": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/postpone.mp4"
+        }
+      },
+      "history": {
+        "type": "movie",
+        "source": {
+          "kind": "path",
+          "path": "../../assets/video/out/clips/history.mp4"
+        }
+      }
+    }
+  },
+  "beats": [
+    {
+      "id": "a-title",
+      "duration": 6.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut01\"></div>\n  \n  \n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.5) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  \n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">ドローンによる農薬散布の、</div>\n  <div id=\"cap2\" class=\"cap\" style=\"opacity:0;margin-top:6px\">事前周知をめぐる課題</div>\n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">国のガイドラインが求めていることと、現場で実行できていないこと</div>\n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.06]}, {start:0, end:6.0, easing:\"linear\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:1.30, end:1.90, easing:\"easeOut\"});\nanimation.animate(\"#cap2\", {opacity:[0,1], translateY:[30,0]}, {start:1.80, end:2.40, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:2.30, end:2.80, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:2.70, end:3.20, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-stat",
+      "duration": 8.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at 50% 35%, #16271d 0%, #0b1410 70%)\"></div>\n  <div class=\"abs\" style=\"left:160px;top:120px;right:160px\">\n    <div id=\"kick\" class=\"kick\" style=\"opacity:0\">分かっていること、分かっていないこと</div>\n    <div id=\"h\" class=\"cap2\" style=\"margin-top:16px;opacity:0\">事前の周知は、どれだけ行われているのか。</div>\n    <div style=\"margin-top:56px\">\n      <div id=\"row0\" style=\"display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.18);padding:22px 8px;opacity:0\"><span style=\"font-size:36px;font-weight:700\">農薬事故統計</span><span style=\"font-size:30px;opacity:.75\">「周知を行った割合」の集計　<b style=\"font-size:44px;color:#f0b35a;margin-left:14px\">なし</b></span></div><div id=\"row1\" style=\"display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.18);padding:22px 8px;opacity:0\"><span style=\"font-size:36px;font-weight:700\">公害苦情調査</span><span style=\"font-size:30px;opacity:.75\">「周知を行った割合」の集計　<b style=\"font-size:44px;color:#f0b35a;margin-left:14px\">なし</b></span></div><div id=\"row2\" style=\"display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.18);padding:22px 8px;opacity:0\"><span style=\"font-size:36px;font-weight:700\">都道府県への空中散布計画書</span><span style=\"font-size:30px;opacity:.75\">「周知を行った割合」の集計　<b style=\"font-size:44px;color:#f0b35a;margin-left:14px\">なし</b></span></div>\n    </div>\n    <div id=\"big\" class=\"cap\" style=\"margin-top:64px;opacity:0\">測る仕組みが、そもそもない。</div>\n    <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n    <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">特定の自治体の取り組みが不足している、という話ではありません。</div>\n  </div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#kick\", {opacity:[0,1]}, {start:0.2, end:0.6});\nanimation.animate(\"#h\", {opacity:[0,1], translateY:[24,0]}, {start:0.4, end:1.0, easing:\"easeOut\"});\nanimation.animate(\"#row0\", {opacity:[0,1], translateX:[-24,0]}, {start:1.6, end:2.0, easing:\"easeOut\"});\nanimation.animate(\"#row1\", {opacity:[0,1], translateX:[-24,0]}, {start:2.3, end:2.7, easing:\"easeOut\"});\nanimation.animate(\"#row2\", {opacity:[0,1], translateX:[-24,0]}, {start:3.0, end:3.4, easing:\"easeOut\"});\nanimation.animate(\"#big\", {opacity:[0,1], translateY:[30,0]}, {start:4.4, end:5.1, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:5.0, end:5.5, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1]}, {start:5.8, end:6.4, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-guide",
+      "duration": 10.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut05\"></div>\n  <svg class=\"abs fill\" viewBox=\"0 0 1920 1080\" style=\"pointer-events:none\">\n<circle id=\"ring0\" cx=\"384\" cy=\"594\" r=\"10\" fill=\"none\" stroke=\"#9fe88a\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"dot0\" cx=\"384\" cy=\"594\" r=\"11\" fill=\"#9fe88a\" stroke=\"#0b1410\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"ring1\" cx=\"1680\" cy=\"405\" r=\"10\" fill=\"none\" stroke=\"#9fe88a\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"dot1\" cx=\"1680\" cy=\"405\" r=\"11\" fill=\"#9fe88a\" stroke=\"#0b1410\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"ring2\" cx=\"1123\" cy=\"529\" r=\"10\" fill=\"none\" stroke=\"#9fe88a\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"dot2\" cx=\"1123\" cy=\"529\" r=\"11\" fill=\"#9fe88a\" stroke=\"#0b1410\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"ring3\" cx=\"691\" cy=\"356\" r=\"10\" fill=\"none\" stroke=\"#9fe88a\" stroke-width=\"4\" opacity=\"0\"/>\n<circle id=\"dot3\" cx=\"691\" cy=\"356\" r=\"11\" fill=\"#9fe88a\" stroke=\"#0b1410\" stroke-width=\"4\" opacity=\"0\"/>\n</svg>\n<div id=\"lbl0\" class=\"abs pinlabel\" style=\"left:406px;top:572px;opacity:0\">有機のほ場</div>\n<div id=\"lbl1\" class=\"abs pinlabel\" style=\"left:1702px;top:383px;opacity:0\">学校</div>\n<div id=\"lbl2\" class=\"abs pinlabel\" style=\"left:1145px;top:507px;opacity:0\">家屋</div>\n<div id=\"lbl3\" class=\"abs pinlabel\" style=\"left:713px;top:334px;opacity:0\">蜜蜂の巣箱</div>\n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs\" style=\"left:120px;bottom:90px\">\n    <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">国のガイドラインが求めていること</div>\n    <div id=\"cap\" class=\"cap2\" style=\"opacity:0\">周辺に配慮すべき対象があるとき、事前に知らせる。</div>\n    <div style=\"display:flex;gap:18px;margin-top:22px\"><div id=\"chip0\" style=\"opacity:0;font-size:30px;font-weight:700;padding:10px 22px;border-radius:999px;background:rgba(159,232,138,.16);border:2px solid #9fe88a\">① 散布の日時</div><div id=\"chip1\" style=\"opacity:0;font-size:30px;font-weight:700;padding:10px 22px;border-radius:999px;background:rgba(159,232,138,.16);border:2px solid #9fe88a\">② 使用目的</div><div id=\"chip2\" style=\"opacity:0;font-size:30px;font-weight:700;padding:10px 22px;border-radius:999px;background:rgba(159,232,138,.16);border:2px solid #9fe88a\">③ 使用農薬の種類</div><div id=\"chip3\" style=\"opacity:0;font-size:30px;font-weight:700;padding:10px 22px;border-radius:999px;background:rgba(159,232,138,.16);border:2px solid #9fe88a\">④ 実施主体の連絡先</div></div>\n    <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:22px\"></div>\n    <div id=\"sub\" class=\"sub\" style=\"margin-top:16px;opacity:0\">天候などで日時が変わったら、その変更を改めて知らせる。</div>\n  </div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.08]}, {start:0, end:10, easing:\"linear\"});\nanimation.animate(\"#dot0\", {opacity:[0,1]}, {start:0.60, end:0.90});\nanimation.animate(\"#lbl0\", {opacity:[0,1], translateX:[-12,0]}, {start:0.75, end:1.10, easing:\"easeOut\"});\nanimation.animate(\"#ring0\", {r:[10,140], opacity:[0.9,0]}, {start:0.60, end:2.20, easing:\"easeOut\"});\nanimation.animate(\"#dot1\", {opacity:[0,1]}, {start:1.30, end:1.60});\nanimation.animate(\"#lbl1\", {opacity:[0,1], translateX:[-12,0]}, {start:1.45, end:1.80, easing:\"easeOut\"});\nanimation.animate(\"#ring1\", {r:[10,140], opacity:[0.9,0]}, {start:1.30, end:2.90, easing:\"easeOut\"});\nanimation.animate(\"#dot2\", {opacity:[0,1]}, {start:2.00, end:2.30});\nanimation.animate(\"#lbl2\", {opacity:[0,1], translateX:[-12,0]}, {start:2.15, end:2.50, easing:\"easeOut\"});\nanimation.animate(\"#ring2\", {r:[10,140], opacity:[0.9,0]}, {start:2.00, end:3.60, easing:\"easeOut\"});\nanimation.animate(\"#dot3\", {opacity:[0,1]}, {start:2.70, end:3.00});\nanimation.animate(\"#lbl3\", {opacity:[0,1], translateX:[-12,0]}, {start:2.85, end:3.20, easing:\"easeOut\"});\nanimation.animate(\"#ring3\", {r:[10,140], opacity:[0.9,0]}, {start:2.70, end:4.30, easing:\"easeOut\"});\n\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:3.4, end:3.8, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[30,0]}, {start:3.6, end:4.2, easing:\"easeOut\"});\nanimation.animate(\"#chip0\", {opacity:[0,1], translateY:[14,0]}, {start:4.60, end:5.00, easing:\"easeOut\"});\nanimation.animate(\"#chip1\", {opacity:[0,1], translateY:[14,0]}, {start:5.05, end:5.45, easing:\"easeOut\"});\nanimation.animate(\"#chip2\", {opacity:[0,1], translateY:[14,0]}, {start:5.50, end:5.90, easing:\"easeOut\"});\nanimation.animate(\"#chip3\", {opacity:[0,1], translateY:[14,0]}, {start:5.95, end:6.35, easing:\"easeOut\"});\n\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:6.6, end:7.1, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[14,0]}, {start:7.2, end:7.8, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-m1",
+      "duration": 5.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut04\"></div>\n  \n  \n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.5) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">実行する手段がない ①</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">周辺に誰がいるかを、知る手段がない。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">隣のほ場が有機なのか、蜜蜂の巣箱がどこにあるのか。</div>\n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.06]}, {start:0, end:5.0, easing:\"linear\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:1.40, end:1.90, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-m2",
+      "duration": 5.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut12\"></div>\n  <div id=\"b\" class=\"abs fill\" style=\"opacity:0;transform-origin:50% 60%\"><img class=\"cover\" src=\"image:cut13\"></div>\n  \n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.5) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">実行する手段がない ②</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">変わったことを、伝え直す手段がない。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">回覧や機関紙では、同じ相手へその都度伝え直すことができません。</div>\n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.05]}, {start:0, end:5.0, easing:\"linear\"});\nanimation.animate(\"#b\", {opacity:[0,1], scale:[1.10,1.0]}, {start:2.2, end:2.9000000000000004, easing:\"easeOut\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.00, end:1.50, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:1.40, end:1.90, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-m3",
+      "duration": 4.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut14\"></div>\n  \n  \n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.5) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">実行する手段がない ③</div>\n  <div id=\"cap\" class=\"cap\" style=\"opacity:0\">届いたかを、確かめる手段がない。</div>\n  \n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">受け取る側も、自分に関係する散布かどうかを判断しにくい。</div>\n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.05]}, {start:0, end:4.0, easing:\"linear\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.40, end:0.80, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.50, end:1.10, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:0.90, end:1.40, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:1.30, end:1.80, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-r1",
+      "duration": 6.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut03\"></div>\n  \n  \n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.5) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  <div id=\"kick\" class=\"kick\" style=\"margin-bottom:14px;opacity:0\">記録が残らないこと</div>\n  <div id=\"cap\" class=\"cap2\" style=\"opacity:0\">残留が確認されたとき、散布した人の手元に</div>\n  <div id=\"cap2\" class=\"cap2\" style=\"opacity:0;margin-top:6px\">いつ・どこで・どんな条件で散布したかの記録がない。</div>\n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">疑いを向けられた側が、自分の作業を説明する材料を持っていません。</div>\n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.06]}, {start:0, end:6.0, easing:\"linear\"});\nanimation.animate(\"#kick\", {opacity:[0,1], translateX:[-20,0]}, {start:0.50, end:0.90, easing:\"easeOut\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#cap2\", {opacity:[0,1], translateY:[30,0]}, {start:1.10, end:1.70, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.60, end:2.10, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:2.00, end:2.50, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-r2",
+      "duration": 6.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div id=\"a\" class=\"abs fill\" style=\"transform-origin:55% 45%\"><img class=\"cover\" src=\"image:cut16\"></div>\n  \n  \n  <div class=\"abs fill shade2\"></div>\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.5) 100%)\"></div>\n  \n<div class=\"abs\" style=\"left:120px;bottom:120px\">\n  \n  <div id=\"cap\" class=\"cap2\" style=\"opacity:0\">有機農家にとって、隣からの飛散は経営のリスク。</div>\n  <div id=\"cap2\" class=\"cap2\" style=\"opacity:0;margin-top:6px\">記録が残らないことが、双方を等しく不利にしている。</div>\n  <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:16px\"></div>\n  <div id=\"sub\" class=\"sub\" style=\"margin-top:18px;opacity:0\">どちらかに責任がある、という話ではありません。</div>\n</div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#a\", {scale:[1.0,1.06]}, {start:0, end:6.0, easing:\"linear\"});\nanimation.animate(\"#cap\", {opacity:[0,1], translateY:[36,0]}, {start:0.60, end:1.20, easing:\"easeOut\"});\nanimation.animate(\"#cap2\", {opacity:[0,1], translateY:[30,0]}, {start:1.10, end:1.70, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,240,\"px\"]}, {start:1.60, end:2.10, easing:\"easeOut\"});\nanimation.animate(\"#sub\", {opacity:[0,1], translateY:[16,0]}, {start:2.00, end:2.50, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    },
+    {
+      "id": "a-close",
+      "duration": 10.0,
+      "image": {
+        "type": "html_tailwind",
+        "html": [
+          "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap\" rel=\"stylesheet\">",
+          "\n<style>\n  html,body{margin:0;padding:0;width:1920px;height:1080px;overflow:hidden;background:#0b1410}\n  .stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#0b1410;\n         font-family:'Noto Sans JP',system-ui,sans-serif;color:#f4f1e8}\n  .abs{position:absolute}\n  .fill{left:0;top:0;width:1920px;height:1080px}\n  .cover{width:100%;height:100%;object-fit:cover;display:block}\n  .shade{background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(5,12,8,.78) 100%)}\n  .shade2{background:linear-gradient(180deg,rgba(0,0,0,0) 28%,rgba(5,12,8,.88) 100%)}\n  .cap{font-weight:900;font-size:66px;letter-spacing:.02em;line-height:1.25;\n       text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .cap2{font-weight:900;font-size:50px;letter-spacing:.02em;line-height:1.3;\n        text-shadow:0 2px 28px rgba(0,0,0,.5);white-space:nowrap}\n  .sub{font-weight:500;font-size:28px;line-height:1.5;opacity:.92;text-shadow:0 1px 14px rgba(0,0,0,.5)}\n  .bar{height:7px;background:#7ed957;border-radius:4px}\n  .kick{font-weight:700;font-size:26px;letter-spacing:.18em;color:#9fe88a}\n  .frame{border-radius:20px;overflow:hidden;box-shadow:0 36px 90px rgba(0,0,0,.6);\n         border:1px solid rgba(255,255,255,.10);background:#111}\n  .flash{background:#ffffff}\n  .pinlabel{font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.7)}\n</style>\n",
+          "\n<div class=\"stage\">\n  <div class=\"abs fill\" style=\"background:radial-gradient(ellipse at 40% 40%, #16271d 0%, #0b1410 70%)\"></div>\n  <div class=\"abs\" style=\"left:140px;top:250px;width:1000px\">\n    <div id=\"l0\" class=\"kick\" style=\"opacity:0\">新たな規制や負担ではなく</div>\n    <div id=\"l1\" class=\"cap\" style=\"font-size:62px;margin-top:18px;opacity:0;white-space:normal\">周知と記録は、散布する人を<br>縛るものではなく、守るもの。</div>\n    <div id=\"bar\" class=\"bar\" style=\"width:0px;margin-top:26px\"></div>\n    <div id=\"l2\" class=\"sub\" style=\"font-size:32px;margin-top:26px;opacity:0\">まず現状を把握し、解決策の検討につなげたい。</div>\n    <div id=\"l3\" style=\"margin-top:70px;opacity:0\">\n      <div style=\"font-weight:700;font-size:40px;letter-spacing:.06em\">となりの畑セーフティ<span style=\"font-weight:500;font-size:28px;opacity:.8\">（仮称）</span></div>\n      <div class=\"sub\" style=\"margin-top:12px\">作っている途中です。実情を聞かせてください。</div>\n    </div>\n  </div>\n  <div id=\"frame\" class=\"abs frame\" style=\"left:1200px;top:330px;width:600px;height:338px;opacity:0\">\n    <video class=\"cover\" src=\"movie:map\" muted playsinline preload=\"auto\"></video>\n  </div>\n</div>"
+        ],
+        "script": [
+          "\nvar animation = new MulmoAnimation();\nanimation.animate(\"#l0\", {opacity:[0,1]}, {start:0.2, end:0.7, easing:\"easeOut\"});\nanimation.animate(\"#l1\", {opacity:[0,1], translateY:[30,0]}, {start:0.6, end:1.4, easing:\"easeOut\"});\nanimation.animate(\"#bar\", {width:[0,200,\"px\"]}, {start:1.4, end:1.9, easing:\"easeOut\"});\nanimation.animate(\"#l2\", {opacity:[0,1], translateY:[14,0]}, {start:2.4, end:3.0, easing:\"easeOut\"});\nanimation.animate(\"#frame\", {opacity:[0,1], scale:[1.06,1.0]}, {start:5.4, end:6.2, easing:\"easeOut\"});\nanimation.animate(\"#l3\", {opacity:[0,1], translateY:[14,0]}, {start:5.8, end:6.5, easing:\"easeOut\"});\n"
+        ],
+        "animation": {
+          "fps": 30
+        }
+      }
+    }
+  ]
+}
