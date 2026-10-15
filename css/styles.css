@@ -4261,3 +4261,24 @@ body[data-simple-sprayer="true"]:not([data-view="profile"]):not([data-view="dash
 #profileSetupFlow .map-legend { display: none !important; }
 #profileSetupFlow .map-shell { scroll-margin-top: 110px; }
 #profileSetupFlow .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+
+/* 通常画面（2026-10-15）: 周辺関係者は「自分の畑」と「関係する予定」だけ、地域管理は重複する件数を畳む。表示の整理であり認可境界ではない。 */
+body[data-compact-home="neighbor"] [data-view="dashboard"] #goNoGoCard,
+body[data-compact-home="neighbor"] [data-view="dashboard"] #ruleBanner,
+body[data-compact-home="neighbor"] [data-view="dashboard"] #kpiGrid,
+body[data-compact-home="neighbor"] [data-view="dashboard"] .dashboard-grid,
+body[data-compact-home="neighbor"] [data-view="dashboard"] .split-grid,
+body[data-compact-home="neighbor"] .neighbor-inbox-summary,
+body[data-compact-home="neighbor"] #boundaryImportPanel,
+body[data-compact-home="admin"] [data-view="dashboard"] #kpiGrid,
+body[data-compact-home="admin"] .admin-flow { display: none; }
+
+/* 通常画面の畑の地図: 左上は移動ボタンだけにし、境界データの取込は管理側に限る */
+body[data-simple-sprayer="true"] .map-overlay.top-left .dash-card,
+body[data-simple-sprayer="true"] #boundaryImportPanel { display: none; }
+body[data-simple-sprayer="true"] .map-overlay.top-left { display: flex; flex-wrap: wrap; gap: 8px; width: auto; max-width: calc(100% - 36px); }
+body[data-simple-sprayer="true"] .map-overlay.top-left .map-chip { width: auto; }
+
+.score-badge small { margin-left: 2px; font-size: 12px; font-weight: 700; opacity: .8; }
+.score-badge em { display: block; margin-top: 4px; font-size: 11px; font-style: normal; font-weight: 700; opacity: .85; }
+body[data-compact-home="neighbor"] .neighbor-home-grid > .neighbor-card:first-child { align-self: start; justify-content: flex-start; gap: 12px; }

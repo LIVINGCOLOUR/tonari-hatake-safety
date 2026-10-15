@@ -26,7 +26,7 @@
           <div>
             <p class="eyebrow">REGIONAL SPRAY SAFETY</p>
             <h1>となりの畑<br>セーフティ <small class="provisional-label">（仮称）</small></h1>
-            <span>笠間市周辺を想定した実証デモ</span>
+            <span>散布前の確認・連絡・記録</span>
           </div>
         </a>
 
@@ -48,24 +48,24 @@
         <nav class="nav-list">
           <button class="nav-item" data-roles="sprayer neighbor admin" data-view-target="profile" type="button"><span class="nav-icon">◎</span><span>プロフィール登録</span></button>
           <button class="nav-item active" data-roles="sprayer neighbor admin" data-view-target="dashboard" type="button"><span class="nav-icon">⌂</span><span>トップ</span></button>
-          <button class="nav-item" data-roles="sprayer" data-view-target="plans" type="button"><span class="nav-icon">＋</span><span>散布計画</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="plans" type="button"><span class="nav-icon">＋</span><span>散布予定</span></button>
           <button class="nav-item" data-roles="sprayer neighbor" data-view-target="map" type="button"><span class="nav-icon">◇</span><span>圃場マップ</span></button>
           <button class="nav-item" data-roles="neighbor" data-view-target="fields" type="button"><span class="nav-icon">▦</span><span>圃場ステータス</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="weather" type="button"><span class="nav-icon">↗</span><span>気象メモ</span></button>
-          <button class="nav-item" data-roles="sprayer" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣通知</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="notify" type="button"><span class="nav-icon">✉</span><span>近隣への連絡</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="checklist" type="button"><span class="nav-icon">✓</span><span>散布前チェック</span></button>
           <button data-demo-only class="nav-item" data-roles="sprayer" data-view-target="drone" type="button"><span class="nav-icon">⌁</span><span>ドローン連携</span></button>
-          <button class="nav-item" data-roles="sprayer" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施後報告</span></button>
+          <button class="nav-item" data-roles="sprayer" data-view-target="report" type="button"><span class="nav-icon">□</span><span>実施記録</span></button>
           <button class="nav-item" data-roles="sprayer" data-view-target="history" type="button"><span class="nav-icon">≡</span><span>作業履歴</span></button>
           <button class="nav-item" data-roles="admin" data-view-target="admin" type="button"><span class="nav-icon">▤</span><span>散布予定・実績</span></button>
         </nav>
 
         <div class="sidebar-actions">
           <button class="ghost-button wide" id="loadSampleButton" type="button" data-demo-only>サンプル読込</button>
-          <button class="primary-button wide" id="newPlanButton" type="button">散布計画を追加</button>
+          <button class="primary-button wide" id="newPlanButton" type="button">散布予定を追加</button>
         </div>
 
-        <div class="org-card">
+        <div class="org-card" data-demo-only>
           <span>実証モード</span>
           <strong>公開準備中・サンプル運用</strong>
           <a href="app.html#dashboard" data-demo-only>通常画面を確認する</a>
@@ -79,7 +79,7 @@
             <h2 id="currentTitle">地域内の散布予定と確認状況</h2>
           </div>
           <div class="topbar-controls">
-            <label class="select-label" for="activePlanSelect">表示中の散布計画</label>
+            <label class="select-label" for="activePlanSelect">表示中の散布予定</label>
             <select id="activePlanSelect"></select>
             <button class="ghost-button" id="exportCsvButton" type="button">CSV出力</button>
           </div>
@@ -104,7 +104,7 @@
               <h3 id="dashboardTitle">トップダッシュボード</h3>
               <p>地域内の予定、通知、確認不足を一覧します。</p>
             </div>
-            <button class="primary-button" data-roles="sprayer" data-view-target="plans" type="button">計画登録へ</button>
+            <button class="primary-button" data-roles="sprayer" data-view-target="plans" type="button">予定の登録へ</button>
           </div>
 
           <div id="caseList"></div>
@@ -217,12 +217,12 @@
         <section class="view" data-view="plans" aria-labelledby="plansTitle">
           <div class="section-head">
             <div>
-              <h3 id="plansTitle">散布計画登録</h3>
+              <h3 id="plansTitle">予定の登録</h3>
               <p>散布前に必要な情報を記録します。</p>
             </div>
             <div class="section-actions">
-              <button class="ghost-button" id="printPlanButton" type="button">計画書PDF</button>
-              <button class="ghost-button" id="duplicatePlanButton" type="button">この計画を複製</button>
+              <button class="ghost-button" id="printPlanButton" type="button">予定のPDF</button>
+              <button class="ghost-button" id="duplicatePlanButton" type="button">この予定を複製</button>
             </div>
           </div>
 
@@ -284,7 +284,7 @@
                   </div>
                 </details>
                 <details class="form-section wide-field">
-                  <summary>散布量・カバレッジ（総量の自動計算）</summary>
+                  <summary>散布量（総量の自動計算）</summary>
                   <div class="form-grid nested-form-grid">
                     <label>使用量（数値・10a当たり）<input name="ratePer10a" type="number" min="0" step="0.1" placeholder="例：600"></label>
                     <label>単位
@@ -305,7 +305,7 @@
               </div>
               <div class="form-actions">
                 <button class="primary-button" type="submit" data-next-step="notify" data-case-only>保存して近隣への連絡へ</button>
-                <button class="ghost-button" type="submit">計画を保存</button>
+                <button class="ghost-button" type="submit">予定を保存</button>
                 <button class="ghost-button" data-view-target="checklist" type="button" data-demo-only>チェックへ進む</button>
               </div>
             </form>
@@ -392,7 +392,7 @@
             </div>
 
             <aside class="map-side">
-              <article class="panel">
+              <article class="panel" id="boundaryImportPanel">
                 <div class="panel-head">
                   <div>
                     <span class="tag tag-blue">圃場境界</span>
@@ -584,12 +584,12 @@
         <section class="view" data-view="notify" aria-labelledby="notifyTitle">
           <div class="section-head">
             <div>
-              <h3 id="notifyTitle">近隣通知</h3>
+              <h3 id="notifyTitle">近隣への連絡</h3>
               <p>文面をコピーしてLINE等へ投稿し、個別連絡した相手も記録します。この画面から自動送信はされません。</p>
             </div>
             <div class="section-actions">
-              <button class="ghost-button" id="printNoticeReplyButton" type="button">通知・返信記録PDF</button>
-              <button class="primary-button" id="printNoticeButton" type="button">通知書PDF</button>
+              <button class="ghost-button" id="printNoticeReplyButton" type="button">連絡・返信の記録PDF</button>
+              <button class="primary-button" id="printNoticeButton" type="button">お知らせPDF</button>
             </div>
           </div>
 
@@ -597,10 +597,10 @@
             <article class="panel">
               <div class="panel-head">
                 <div>
-                  <span class="tag tag-green">通知文生成</span>
+                  <span class="tag tag-green">連絡文</span>
                   <h4>農薬散布予定のお知らせ</h4>
                 </div>
-                <div class="segmented compact" role="group" aria-label="通知手段">
+                <div class="segmented compact" role="group" aria-label="連絡手段">
                   <button class="segment active" data-channel="line" type="button">LINE</button>
                   <button class="segment" data-channel="mail" type="button">メール</button>
                   <button class="segment" data-channel="paper" type="button">紙</button>
@@ -619,7 +619,7 @@
             <aside class="panel">
               <div class="panel-head">
                 <div>
-                  <span class="tag">通知対象</span>
+                  <span class="tag">連絡する相手</span>
                   <h4>周辺関係者</h4>
                 </div>
               </div>
@@ -685,8 +685,8 @@
             <form class="panel form-panel" id="weatherForm">
               <div class="weather-api-status" id="weatherApiStatus"></div>
               <div class="form-grid">
-                <label>取得地点 緯度<input name="latitude" type="number" min="-90" max="90" step="0.0001"></label>
-                <label>取得地点 経度<input name="longitude" type="number" min="-180" max="180" step="0.0001"></label>
+                <label data-demo-only>取得地点 緯度<input name="latitude" type="number" min="-90" max="90" step="0.0001"></label>
+                <label data-demo-only>取得地点 経度<input name="longitude" type="number" min="-180" max="180" step="0.0001"></label>
                 <label>予報風向
                   <select name="forecastDirection">
                     <option>北</option><option>北東</option><option>東</option><option>南東</option>
@@ -735,10 +735,10 @@
         <section class="view" data-view="report" aria-labelledby="reportTitle">
           <div class="section-head">
             <div>
-              <h3 id="reportTitle">実施後報告</h3>
+              <h3 id="reportTitle">実施記録</h3>
               <p>実施内容、問い合わせ、写真メモを記録します。</p>
             </div>
-            <button class="primary-button" id="printReportButton" type="button">実施後報告PDF</button>
+            <button class="primary-button" id="printReportButton" type="button">実施記録PDF</button>
           </div>
 
           <div class="report-layout">
@@ -747,7 +747,7 @@
                 <label>実施日<input name="doneDate" type="date" required></label>
                 <label>実施時間<input name="doneTime" type="text" placeholder="例：06:10-07:05"></label>
                 <label>実施ほ場<input name="doneField" type="text"></label>
-                <label>使用農薬<input name="donePesticide" type="text"></label>
+                <label>使用資材<input name="donePesticide" type="text"></label>
                 <label>実施範囲<input name="doneArea" type="text"></label>
                 <label>実施時の風向・風速<input name="doneWeather" type="text"></label>
                 <label>異常の有無
@@ -773,8 +773,8 @@
                   </select>
                 </label>
                 <label>実散布量<input name="actualAmount" type="text"></label>
-                <label>高度要確認区間<input name="altitudeNotes" type="text"></label>
-                <label>予定範囲外飛行
+                <label data-demo-only>高度要確認区間<input name="altitudeNotes" type="text"></label>
+                <label data-demo-only>予定範囲外飛行
                   <select name="outsideFlight">
                     <option>なし</option>
                     <option>要確認</option>
@@ -785,9 +785,8 @@
                 <label class="wide-field">備考<textarea name="reportNotes" rows="4"></textarea></label>
               </div>
               <div class="form-actions">
-                <button class="secondary-button" id="autoFillReportButton" type="button">計画から入力を補完</button>
+                <button class="secondary-button" id="autoFillReportButton" type="button">予定から入力を補完</button>
                 <button class="primary-button" type="submit" data-next-step="dashboard" data-case-only>実施記録を保存して一覧へ</button>
-                <button class="ghost-button" type="submit">報告を保存</button>
                 <button class="ghost-button" data-view-target="history" type="button">作業履歴を見る</button>
                 <button class="ghost-button" id="clearReportPhotoButton" type="button">写真を外す</button>
               </div>
@@ -796,7 +795,7 @@
             <aside class="panel">
               <div class="panel-head">
                 <div>
-                  <span class="tag">報告プレビュー</span>
+                  <span class="tag">控えのプレビュー</span>
                   <h4>散布者控え</h4>
                 </div>
               </div>
@@ -809,7 +808,7 @@
           <div class="section-head">
             <div>
               <h3 id="historyTitle">作業履歴・防除履歴</h3>
-              <p>登録した散布計画と実施後報告から、圃場ごとの農薬・肥料散布の履歴を自動でまとめます。防除履歴の記帳や出荷確認の控えに使えます。</p>
+              <p>登録した散布予定と実施記録から、圃場ごとの農薬・肥料散布の履歴を自動でまとめます。防除履歴の記帳や出荷確認の控えに使えます。</p>
             </div>
             <div class="section-actions">
               <button class="ghost-button" id="exportHistoryCsvButton" type="button">履歴CSV</button>
@@ -892,7 +891,7 @@
           </div>
 
           <div class="admin-disclaimer">
-            この画面は散布の許可・承認を行うものではありません。散布計画、近隣通知、気象確認、実施後報告の記録状況を一覧化するための実証用画面です。
+            この画面は散布の許可・承認を行うものではありません。散布予定、近隣への連絡、気象確認、実施記録の記録状況を一覧化するための実証用画面です。
           </div>
 
           <div class="admin-filters">
@@ -954,7 +953,7 @@
           </div>
 
           <details class="form-section admin-settings">
-            <summary>実証ルール案（設定：気象確認の目安など）</summary>
+            <summary>地域の確認ルール（設定：気象確認の目安など）</summary>
             <form id="rulesForm" class="form-grid">
               <label>デモ地域名<input name="regionName" type="text"></label>
               <label>管理者名<input name="managerName" type="text"></label>
@@ -964,7 +963,7 @@
               <label>再確認推奨風速 m/s<input name="windCaution" type="number" min="0" max="20" step="0.1"></label>
               <label>延期検討風速 m/s<input name="windLimit" type="number" min="0" max="20" step="0.1"></label>
               <label>事前通知期限 日前<input name="noticeDeadlineDays" type="number" min="0" max="30" step="1"></label>
-              <label>報告提出期限 日後<input name="reportDeadlineDays" type="number" min="0" max="30" step="1"></label>
+              <label>実施記録の期限 日後<input name="reportDeadlineDays" type="number" min="0" max="30" step="1"></label>
               <label>共有範囲
                 <select name="sharingScope">
                   <option>関係者限定</option>
@@ -1143,7 +1142,7 @@
               <div class="profile-role-grid" id="profileRoleOptions">
                 <button class="profile-role-option" data-profile-role="sprayer" type="button">
                   <strong>散布者</strong>
-                  <span>散布計画、通知、気象、ログ、報告を記録します。</span>
+                  <span>散布予定、連絡、気象、実施の記録を残します。</span>
                 </button>
                 <button class="profile-role-option" data-profile-role="neighbor" type="button">
                   <strong>周辺関係者</strong>
@@ -1289,7 +1288,7 @@
                   <label>再確認推奨風速 m/s<input name="admin_windCaution" type="number" min="0" step="0.1"></label>
                   <label>延期検討風速 m/s<input name="admin_windLimit" type="number" min="0" step="0.1"></label>
                   <label>事前通知期限 日前<input name="admin_noticeDeadlineDays" type="number" min="0" step="1"></label>
-                  <label>報告提出期限 日後<input name="admin_reportDeadlineDays" type="number" min="0" step="1"></label>
+                  <label>実施記録の期限 日後<input name="admin_reportDeadlineDays" type="number" min="0" step="1"></label>
                   <label>共有範囲
                     <select name="admin_sharingScope">
                       <option>関係者限定</option>
@@ -1316,7 +1315,7 @@
               </div>
             </article>
 
-            <article class="panel profile-panel profile-save-panel">
+            <article class="panel profile-panel profile-save-panel" data-demo-only>
               <div>
                 <span class="tag tag-attention">V1 MVP</span>
                 <strong>本人情報と、今後作る予定の既定値を保存します。</strong>

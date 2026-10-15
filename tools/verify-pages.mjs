@@ -95,12 +95,11 @@ assert(landingDesktop.value.imageFailures.length === 0, `Broken landing images: 
 assert(landingDesktop.value.overflow <= 0, `Desktop landing page overflows by ${landingDesktop.value.overflow}px`);
 assert(landingDesktop.value.roleLinks.length === 3, "Landing page must expose all three role demos");
 assert(landingDesktop.value.featureLinks.length === 2, "Only capabilities with an available demo view should link to demos");
-assert(landingDesktop.value.featureLinks.every((href) => href?.startsWith("app.html?demo=1&role=sprayer#")), "Capability links must open an available sprayer demo view");
-assert(landingDesktop.value.featureStatuses.filter((status) => status === "現在のデモ").length === 1, "Landing page must identify the currently available workflow");
+assert(landingDesktop.value.featureLinks.every((href) => /^app\.html\?(preview|demo)=1&role=sprayer#/.test(href || "")), "Capability links must open an available sprayer view (preview or demo)");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "いま試せる").length === 1, "Landing page must identify the currently available workflow");
 assert(landingDesktop.value.featureStatuses.filter((status) => status === "実装中").length === 3, "Landing page must mark in-progress capabilities (log import, district posting, org account)");
-assert(landingDesktop.value.featureStatuses.filter((status) => status === "将来構想").length === 2, "Landing page must separate future drone capabilities");
+assert(landingDesktop.value.featureStatuses.filter((status) => status === "将来構想").length === 0, "Landing page must not list future drone capabilities (removed 2026-10-15)");
 assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("実ファイルを入手して形式を検証してから対応")), "Landing page must not present DJI log import as implemented");
-assert(landingDesktop.value.featureDescriptions.some((description) => description.includes("実証済みの機体から段階的に対応")), "Landing page must not imply universal live telemetry support");
 assert(landingDesktop.errors.length === 0, `Landing runtime errors: ${landingDesktop.errors.join(", ")}`);
 
 // Browser zoom-out increases the CSS viewport. Keep the hero copy from being
@@ -146,7 +145,7 @@ assert(landingNarrow.value.overflow <= 0, `Narrow mobile landing page overflows 
 assert(landingNarrow.value.signalHidden, "Narrow mobile hero should prioritize primary content over the stage signal");
 
 const expectedNavigation = {
-  sprayer: ["プロフィール登録", "トップ", "散布計画", "圃場マップ", "気象メモ", "近隣通知", "散布前チェック", "ドローン連携", "実施後報告", "作業履歴"],
+  sprayer: ["プロフィール登録", "トップ", "散布予定", "圃場マップ", "気象メモ", "近隣への連絡", "散布前チェック", "ドローン連携", "実施記録", "作業履歴"],
   neighbor: ["プロフィール登録", "トップ", "圃場マップ", "圃場ステータス"],
   admin: ["プロフィール登録", "トップ", "散布予定・実績"],
 };
@@ -363,14 +362,18 @@ console.log("Landing and role navigation checks passed.");
 
 // The default entry must offer a complete workflow without demo-only tasks.
 for (const width of [1440, 390]) {
-  const result = await inspectPage("/app.html?role=sprayer#drone", `() => {
+  // 未ログインの既定入口はログイン画面になるため、通常画面の検査はサンプル表示の入口（preview=1）で行う。
+  const result = await inspectPage("/app.html?preview=1&role=sprayer#drone", `() => {
     const visible = (node) => Boolean(node && node.getClientRects().length);
     const dashboardText = document.querySelector('[data-view="dashboard"]').innerText;
     const redirected = document.querySelector('.view.active')?.dataset.view;
     const workflow = [...document.querySelectorAll('#roleActionPanel [data-view-target]')].map(n => n.dataset.viewTarget);
-    switchView('map');
+    let switchError = '';
+    try { switchView('map'); } catch (error) { switchError = String(error && error.stack || error); }
     const layers = [...document.querySelectorAll('[data-map-layer]')].filter(visible).map(n => n.dataset.mapLayer);
+    const mapDiag = { switchError, profileSetup: state.profileSetup, seed: state.demoSeedVersion, role: activeRole, session: Boolean(supabaseSession), runtime: Boolean(supabaseRuntime?.enabled), registered: profileIsRegistered(), panelHidden: document.querySelector('#profileSetupFlow')?.hidden, bodyView: document.body.dataset.view, active: document.querySelector('.view.active')?.dataset.view, setup: document.body.dataset.profileSetup, segDisplay: getComputedStyle(document.querySelector('[data-view="map"] .segmented')).display, mapDisplay: getComputedStyle(document.querySelector('[data-view="map"]')).display };
     return {
+      mapDiag,
       ready: document.documentElement.dataset.appReady,
       demoVisible: [...document.querySelectorAll('[data-demo-only]')].some(visible),
       redirected, workflow, layers,
@@ -383,14 +386,14 @@ for (const width of [1440, 390]) {
   assert(!result.value.demoVisible, "Default entry exposes demo tools");
   assert(!result.value.asksForLog, "Default dashboard asks for unavailable log import");
   assert(result.value.workflow.includes("report") && !result.value.workflow.includes("drone"), "Default workflow must lead to report without drone import");
-  assert(JSON.stringify(result.value.layers) === '["risk"]', "Default map exposes advanced layers");
+  assert(JSON.stringify(result.value.layers) === '["risk"]', `Default map exposes advanced layers at ${width}px: ${JSON.stringify(result.value.layers)} ${JSON.stringify(result.value.mapDiag)}`);
   assert(result.value.overflow <= 0, "Default map overflows viewport");
   assert(result.errors.length === 0, `Default runtime errors: ${result.errors.join(', ')}`);
 }
 console.log("Default workflow verified at desktop and mobile widths.");
 
 for (const width of [1440, 390]) {
-  const result = await inspectPage("/app.html#dashboard", `() => {
+  const result = await inspectPage("/app.html?preview=1#dashboard", `() => {
     state.profile.registered = true;
     state.profile.role = "sprayer";
     state.role = "sprayer";
@@ -463,7 +466,7 @@ console.log("Registered role switching and membership boundaries verified.");
 }
 
 for (const width of [1440, 390]) {
-  const result = await inspectPage("/app.html?role=sprayer#dashboard", `() => {
+  const result = await inspectPage("/app.html?preview=1&role=sprayer#dashboard", `() => {
     const original = structuredClone(state);
     const originalConfirm = window.confirm;
     const outcome = {};

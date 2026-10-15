@@ -119,7 +119,7 @@ export function buildSprayerWorkflowModel({
         view: "map",
       },
       {
-        title: "近隣通知",
+        title: "近隣への連絡",
         detail: `${notificationSummary}${Number(plan.replyNeed || 0) ? `（返信 ${Number(plan.replyNeed)}件）` : ""}`,
         done: notificationComplete,
         view: "notify",
@@ -146,7 +146,7 @@ export function buildSprayerWorkflowModel({
       }] : []),
       {
         title: "実施後報告",
-        detail: plan.report?.doneDate ? "提出済み" : "未提出",
+        detail: plan.report?.doneDate ? "記録済み" : "未記録",
         done: Boolean(plan.report?.doneDate),
         view: "report",
       },
@@ -167,11 +167,11 @@ export function buildSprayerTimeline({
   weatherSummary = "",
 } = {}) {
   return [
-    { title: "散布計画登録", detail: `${plan.date || ""} ${plan.timeWindow || ""} / ${plan.operator || ""}` },
+    { title: "予定の登録", detail: `${plan.date || ""} ${plan.timeWindow || ""} / ${plan.operator || ""}` },
     { title: "周辺確認", detail: `${riskCount}件の周辺確認項目` },
-    { title: "近隣通知", detail: notificationSummary },
+    { title: "近隣への連絡", detail: notificationSummary },
     { title: "風向・風速確認", detail: weatherSummary },
-    { title: "実施後報告", detail: plan.report?.doneDate ? `${plan.report.doneDate} 提出済み` : "未提出" },
+    { title: "実施記録", detail: plan.report?.doneDate ? `${plan.report.doneDate} 記録済み` : "未記録" },
     { title: "作業履歴", detail: plan.report?.doneDate ? "履歴に反映済み" : "実施後報告の保存後に反映" },
   ];
 }
@@ -198,7 +198,7 @@ export function buildAdminTimeline({ logsEnabled = true, prefecture = "", munici
     },
     {
       title: "確認キュー",
-      detail: `通知未完了 ${summary.notifyIncomplete || 0}件 / 報告未提出 ${summary.reportMissing || 0}件${logsEnabled ? ` / ドローンログ未取込 ${summary.droneMissing || 0}件` : ""}`,
+      detail: `通知未完了 ${summary.notifyIncomplete || 0}件 / 実施記録なし ${summary.reportMissing || 0}件${logsEnabled ? ` / ドローンログ未取込 ${summary.droneMissing || 0}件` : ""}`,
     },
     { title: "航空写真表示", detail: "黄が散布予定、緑が実施済み、赤が追加確認対象です。" },
     { title: "位置づけ", detail: "散布の許可・承認ではなく、記録状況と追加確認対象の一覧です。" },
@@ -265,10 +265,10 @@ export function buildSprayerDashboardMetrics({
   return [
     { label: "今日の散布予定", value: `${todayPlans}件`, note: today, alert: false },
     { label: "明日の散布予定", value: `${tomorrowPlans}件`, note: tomorrow, alert: false },
-    { label: "通知未完了", value: `${notifyIncomplete}件`, note: "近隣通知", alert: notifyIncomplete > 0 },
+    { label: "通知未完了", value: `${notifyIncomplete}件`, note: "近隣への連絡", alert: notifyIncomplete > 0 },
     { label: `有機ほ場${organicRadius}m以内`, value: `${organicNear}件`, note: "周辺確認", alert: organicNear > 0 },
     { label: "風向・風速要確認", value: `${windNeed}件`, note: "気象メモ", alert: windNeed > 0 },
-    { label: "実施後報告未提出", value: `${reportMissing}件`, note: "散布者控え", alert: reportMissing > 0 },
+    { label: "実施記録なし", value: `${reportMissing}件`, note: "散布者控え", alert: reportMissing > 0 },
     { label: "追加確認が必要な予定", value: `${highRisk}件`, note: "管理者確認", alert: highRisk > 0 },
     { label: "近隣からの返信", value: `${replyNeed}件`, note: "要調整", alert: replyNeed > 0 },
     { label: "表示中の確認進捗", value: `${activeReadiness}`, note: "説明用指標", alert: activeReadiness < 70 },
@@ -298,9 +298,9 @@ export function buildNeighborDashboardMetrics({ notices = [], field = {} } = {})
 export function buildAdminDashboardMetrics({ logsEnabled = true, summary, organicRadius } = {}) {
   return [
     { label: "対象日の散布予定", value: `${summary.planned}件`, note: summary.date, alert: false },
-    { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣通知", alert: summary.notifyIncomplete > 0 },
+    { label: "通知未完了", value: `${summary.notifyIncomplete}件`, note: "近隣への連絡", alert: summary.notifyIncomplete > 0 },
     { label: "風向・風速要確認", value: `${summary.windNeed}件`, note: "気象条件", alert: summary.windNeed > 0 },
-    { label: "実施後報告未提出", value: `${summary.reportMissing}件`, note: "散布者控え", alert: summary.reportMissing > 0 },
+    { label: "実施記録なし", value: `${summary.reportMissing}件`, note: "散布者控え", alert: summary.reportMissing > 0 },
     { label: `有機ほ場${organicRadius}m以内`, value: `${summary.organicNear}件`, note: "周辺確認", alert: summary.organicNear > 0 },
     ...(logsEnabled ? [{ label: "ドローンログ未取込", value: `${summary.droneMissing}件`, note: "飛行ログ", alert: summary.droneMissing > 0 }] : []),
     { label: "高度要確認", value: `${summary.altitudeNeed}件`, note: "作業軌跡", alert: summary.altitudeNeed > 0 },
@@ -313,7 +313,7 @@ export function buildAdminQueueItems(summary) {
   return [
     { key: "notifyIncomplete", label: "通知未完了", count: summary.notifyIncomplete },
     { key: "windNeed", label: "風向風速要確認", count: summary.windNeed },
-    { key: "reportMissing", label: "報告未提出", count: summary.reportMissing },
+    { key: "reportMissing", label: "実施記録なし", count: summary.reportMissing },
     { key: "droneMissing", label: "ドローンログ未取込", count: summary.droneMissing },
     { key: "altitudeNeed", label: "高度要確認", count: summary.altitudeNeed },
     { key: "inquiry", label: "問い合わせあり", count: summary.inquiry },
