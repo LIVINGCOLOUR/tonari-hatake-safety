@@ -77,9 +77,14 @@ Remotion＋Veo 3.1＋Gemini TTS＋Lyria の実写風シネマ構成。台本は 
 - 声: Vertex AI の `gemini-3.8-flash-tts`、Gacrux。`video/src/lines.mjs` を直したら `npm run narration`（既にある行は飛ばす）。長さは `src/narration.json` に入り、場面の長さはそこから決まる。
 - 映像: Vertex AI の `veo-3.1-generate-001`（us-central1、8秒・16:9・1080p・音なし、1本 $3.2）。指示文は `video/scripts/gen-veo.mjs` の CUTS。`npm run veo`（既にあるカットは飛ばす）。没にしたカットは `public/gen/veo/rejected/`。Fast 版と Veo 3.1 preview 系の ID はこのプロジェクトでは使えなかった。
 - 音楽: Vertex AI の `lyria-002`（32秒クリップ、$0.06）。Lyria 3 系はこのプロジェクトでは使えない（要許可）。静かな曲と少し明るい曲を数本作り、Remotion 側で2秒重ねてつなぐ。`npm run music`。
-- 静止画の生成は使わず、実画面は `video/public/screens/` のスクリーンショット（ログインを模擬した通常画面、1440×900）。
+- 静止画の生成は使わず、実画面は `video/public/screens/` のスクリーンショット（1440×900）。2026-10-16 に `/app.html?preview=1` の通常画面で撮り直した（上部のサンプル表示の帯とログイン欄は撮影時だけ隠す）。アプリの表記や見本を変えたら撮り直し、`video/src/Main.tsx` の枠・寄りの座標を合わせる。延期の場面は延期のお知らせ文と「未連絡」に戻った宛先の画面（`reschedule.png`）。
+- Veo の cut04 は2秒目から稲の上に霧が流れ、飛散が起きているように見えるため、冒頭1.6秒だけを引き延ばして使う（`useSec`）。
 - 字幕: `node video/scripts/gen-vtt.mjs` が `lines.mjs` と `narration.json` から `assets/promo/intro-ja.vtt` を作る（タイミングは `timeline.ts` と同じ計算）。ナレーションや尺を変えたら作り直す。
-- 組み立てと書き出し: `cd video && npm run studio` でプレビュー、`npm run render` で `video/out/` へ。**見せる用は `assets/video/out/final/` に時刻入りの名前でコピーする**（2部構成の無音版と同じ置き場。動画の置き場はここ1か所）。`video/public/gen/` と `video/out/` は Git 管理外。
+- 組み立てと書き出し: `cd video && npm run studio` でプレビュー、`npm run render` で `video/out/` へ。トップページ用の `assets/promo/intro-720p.mp4` は、書き出した動画を720pに縮め、音量を −16 LUFS にそろえて作る（下のコマンド）。字幕は `node video/scripts/gen-vtt.mjs` で作り直す。**見せる用は `assets/video/out/final/` に時刻入りの名前でコピーする**（2部構成の無音版と同じ置き場。動画の置き場はここ1か所）。`video/public/gen/` と `video/out/` は Git 管理外。
+```sh
+ffmpeg -i video/out/tonari-hatake-safety-3min.mp4 -vf scale=1280:720 -c:v libx264 -profile:v high -crf 26 -preset slow -pix_fmt yuv420p \
+  -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 128k -ar 48000 -movflags +faststart assets/promo/intro-720p.mp4
+```
 - 判明した注意: Gemini TTS は「農薬」「事故」を含む文で安全フィルタに当たることがある（段落を分けて再送）。Lyria は具体的すぎる指示で「recitation」で拒否されることがある（言い換える）。Veo は農業用ドローンと指示しないと空撮用の小型機を出す。
 
 

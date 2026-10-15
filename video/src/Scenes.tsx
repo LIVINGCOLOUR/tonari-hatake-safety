@@ -55,10 +55,11 @@ function Shade({ strong = false }: { strong?: boolean }) {
 }
 
 /** Veo の8秒カット。場面が長いときは遅回しにし、足りない分は最後のコマで止める */
-export function VeoScene({ cut, items, len, children, strong }: { cut: string; items: Item[]; len: number; children?: ReactNode; strong?: boolean }) {
+export function VeoScene({ cut, items, len, children, strong, useSec }: { cut: string; items: Item[]; len: number; children?: ReactNode; strong?: boolean; useSec?: number }) {
   const f = useCurrentFrame()
   const sec = len / FPS
-  const rate = Math.max(0.4, Math.min(1, 8 / sec))
+  // useSec を指定したカットは、素材の冒頭 useSec 秒だけを場面の長さに引き延ばして使う
+  const rate = useSec ? useSec / sec : Math.max(0.4, Math.min(1, 8 / sec))
   const zoom = interpolate(f, [0, len], [1.0, 1.05], clamp)
   const fadeIn = interpolate(f, [0, 14], [0, 1], clamp)
   return (

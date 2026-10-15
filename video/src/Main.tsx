@@ -24,19 +24,22 @@ const SCENES: Record<SceneKey, (p: P) => React.ReactElement> = {
       <Chips at={p.items[0].start + 330} labels={['① 散布の日時', '② 使用目的', '③ 使用農薬の種類', '④ 実施主体の連絡先']} />
     </VeoScene>
   ),
-  m1: (p) => <VeoScene cut="cut04" {...p} />,
+  // cut04 は2秒目から稲の上に霧が流れ、飛散が起きているように見えるため、霧の出ない冒頭1.6秒だけを使う
+  m1: (p) => <VeoScene cut="cut04" useSec={1.6} {...p} />,
   m2: (p) => <VeoScene cut="cut05" {...p} />,
   m3: (p) => <VeoScene cut="cut06" {...p} />,
   rec1: (p) => <VeoScene cut="cut02" strong {...p} />,
   rec2: (p) => <VeoScene cut="cut07" strong {...p} />,
   turn: (p) => <TurnScene {...p} />,
-  app1: (p) => <ScreenScene img="plan.png" highlight={{ x: 206, y: 296, w: 1028, h: 86, at: p.items[0].start + 40 }} {...p} />,
-  app2: (p) => <ScreenScene img="map.png" zoomTo={{ x: 650, y: 560, scale: 1.25, at: p.items[0].start + 60 }} {...p} />,
-  app3: (p) => <ScreenScene img="notify.png" zoomTo={{ x: 420, y: 780, scale: 1.2, at: p.items[0].start + 90 }} {...p} />,
-  app4: (p) => <ScreenScene img="notify.png" highlight={{ x: 300, y: 398, w: 230, h: 38, at: p.items[0].start + 20 }} zoomTo={{ x: 420, y: 420, scale: 1.6, at: p.items[0].start + 30 }} {...p} />,
-  app5: (p) => (
-    <ScreenScene img="report.png" img2="history.png" switchAt={p.items[0].start + 330} badge={{ text: '飛行ログの実機取込は開発中', x: 1020, y: 330, at: p.items[0].start + 420 }} {...p} />
-  ),
+  // 画面は video/public/screens/（2026-10-16 撮影、/app.html?preview=1 の通常画面、1440×900）。座標はその画面上の位置
+  app1: (p) => <ScreenScene img="plan.png" highlight={{ x: 308, y: 305, w: 1092, h: 75, at: p.items[0].start + 40 }} {...p} />,
+  app2: (p) => <ScreenScene img="map.png" zoomTo={{ x: 665, y: 446, scale: 1.25, at: p.items[0].start + 60 }} {...p} />,
+  // 「文面コピー」ボタンは字幕の影に入るため枠を付けず、文面に寄るだけにする
+  app3: (p) => <ScreenScene img="notify.png" zoomTo={{ x: 560, y: 480, scale: 1.15, at: p.items[0].start + 60 }} {...p} />,
+  // 延期: 延期のお知らせ文に差し替わり、宛先が全員「未連絡」に戻った画面
+  app4: (p) => <ScreenScene img="reschedule.png" highlight={{ x: 318, y: 280, w: 500, h: 30, at: p.items[0].start + 20 }} zoomTo={{ x: 700, y: 400, scale: 1.15, at: p.items[0].start + 30 }} {...p} />,
+  // 「開発中」は字幕（TITLES.n13.sub）で示す。画面に札を重ねない
+  app5: (p) => <ScreenScene img="report.png" img2="history.png" switchAt={p.items[0].start + 330} {...p} />,
   close1: (p) => <CloseScene {...p} />,
   close2: (p) => <CloseScene final {...p} />,
 }
