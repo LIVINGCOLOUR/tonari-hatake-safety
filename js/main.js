@@ -1,5 +1,7 @@
 // Explicit demo tools; this is a presentation mode, not an authorization boundary.
 const DEMO_TOOLS_ENABLED = new URLSearchParams(location.search).get("demo") === "1";
+// 紹介ページの「画面を試す」。通常画面をサンプルの状態で開き、ログイン画面を出さないだけの表示モード。認可境界ではない。
+const PREVIEW_MODE = new URLSearchParams(location.search).get("preview") === "1";
 const STORAGE_KEY = "tonariHatakeSafetyMvp.v3.coverage";
 const MAGIC_LINK_COOLDOWN_KEY = "tonariHatakeSafety.magicLinkCooldownUntil";
 const MAGIC_LINK_COOLDOWN_MS = 60_000;
@@ -6145,24 +6147,31 @@ function boundaryStatusLabel(status) {
   }[status] || "未読込";
 }
 
+function previewActive() {
+  return PREVIEW_MODE && !DEMO_TOOLS_ENABLED && !supabaseSession;
+}
+
 function renderLoginScreen() {
   const screen = $("#loginScreen");
   if (!screen) return;
-  const show = !DEMO_TOOLS_ENABLED && !supabaseSession;
+  const show = !DEMO_TOOLS_ENABLED && !supabaseSession && !PREVIEW_MODE;
   screen.hidden = !show;
   document.body.classList.toggle("login-visible", show);
-  if (DEMO_TOOLS_ENABLED && !$("#demoExperienceBanner")) {
+  if (PREVIEW_MODE && supabaseSession) $("#demoExperienceBanner")?.remove();
+  if ((DEMO_TOOLS_ENABLED || previewActive()) && !$("#demoExperienceBanner")) {
     const banner = document.createElement("div");
     banner.id = "demoExperienceBanner";
     banner.className = "demo-experience-banner";
-    banner.innerHTML = '体験ユーザーで操作中・実際の通知は送信されません <button type="button" class="ghost-button">最初の状態に戻す</button> <a href="app.html?login=1">実アカウントでログイン</a>';
+    banner.innerHTML = DEMO_TOOLS_ENABLED
+      ? '体験ユーザーで操作中・実際の通知は送信されません <button type="button" class="ghost-button">最初の状態に戻す</button> <a href="app.html?login=1">実アカウントでログイン</a>'
+      : 'サンプルの画面です。入力はこの端末にだけ残り、実際の通知は送信されません <button type="button" class="ghost-button">最初の状態に戻す</button> <a href="app.html?login=1">ログインして使う</a>';
     $(".main").prepend(banner);
     banner.querySelector("button").onclick = () => { clearDirtyForms(); state = normalizeState(createSampleState()); seedDemoExperience(); saveState(); renderAll(); switchView("dashboard"); };
   }
 }
 
 function seedDemoExperience() {
-  if (!DEMO_TOOLS_ENABLED || state.demoSeedVersion === 1) return;
+  if (!(DEMO_TOOLS_ENABLED || previewActive()) || state.demoSeedVersion === 1) return;
   state.demoSeedVersion = 1;
   state.profile = {...defaultProfile(),registered:true,role:"sprayer",roles:["sprayer","neighbor"],name:"体験ユーザー"};
   state.plans.forEach((plan,index) => {

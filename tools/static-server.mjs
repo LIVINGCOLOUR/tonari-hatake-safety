@@ -19,6 +19,7 @@ const contentTypes = {
   ".webp": "image/webp",
   ".mp4": "video/mp4",
   ".m4a": "audio/mp4",
+  ".vtt": "text/vtt; charset=utf-8",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
   ".pdf": "application/pdf",
