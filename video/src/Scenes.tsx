@@ -124,7 +124,7 @@ export function StatScene({ items }: { items: Item[] }) {
   const f = useCurrentFrame()
   const it = items[0]
   const at = it.start
-  const rows = ['農薬事故統計', '公害苦情調査', '都道府県への空中散布計画書']
+  const rows = ['農薬事故統計（国）', '公害苦情調査（国）', '空中散布計画書（県へ提出）']
   return (
     <Stage bg={`radial-gradient(ellipse at 50% 35%, ${C.bg2} 0%, ${C.bg} 70%)`}>
       <div style={{ position: 'absolute', left: 160, top: 120, right: 160 }}>
@@ -140,7 +140,7 @@ export function StatScene({ items }: { items: Item[] }) {
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 66, fontWeight: 900, marginTop: 64, ...fadeUp(f, at + 330) }}>測る仕組みが、そもそもない。</div>
+        <div style={{ fontSize: 66, fontWeight: 900, marginTop: 64, ...fadeUp(f, at + 330) }}>{it.title.main}</div>
         <div style={{ height: 7, borderRadius: 4, background: C.accent, marginTop: 16, width: interpolate(f, [at + 350, at + 366], [0, 240], { ...clamp, easing: ease }) }} />
         <div style={{ fontSize: 28, color: C.muted, marginTop: 18, ...fadeUp(f, at + 420, 14, 12) }}>特定の自治体の取り組みが不足している、という話ではありません。</div>
       </div>

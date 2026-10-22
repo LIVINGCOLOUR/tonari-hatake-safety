@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyPlanSettings, revisePlan, changeSchedule, noticeContentChanged } from '../js/domain/plan-lifecycle.mjs';
+import { copyPlanSettings, revisePlan, changeSchedule, noticeContentChanged, hasNoticeActivity } from '../js/domain/plan-lifecycle.mjs';
 const plan = () => ({ id:'original', date:'2026-09-08', timeWindow:'06:00-07:00', fieldId:'field', fieldName:'畑', pesticide:'資材', checks:{ wind:true, notice:true }, weather:{ actualSpeed:2, measuredAt:'06:00' }, notificationTargets:{ a:true }, notificationResponses:{ a:'確認しました' }, notificationAcks:{ a:'2026-09-07' }, report:{}, droneLog:{ imported:true }, remoteVersion:8 });
 test('複製する設定に実績・版番号・連絡・案件IDを混ぜない', () => { const source=plan(); const before=structuredClone(source); const copy=copyPlanSettings(source); assert.equal(copy.fieldId,'field'); for(const key of ['id','date','checks','weather','notificationTargets','notificationResponses','notificationAcks','droneLog','remoteVersion','report']) assert.equal(key in copy,false,key); assert.deepEqual(source,before); });
 test('延期は新日程を反映し、以前の連絡と確認は履歴へ移す', () => { const source=plan(); const next=changeSchedule(source,{kind:'延期',date:'2026-09-10',timeWindow:'08:00-09:00'},'t1'); assert.equal(next.date,'2026-09-10'); assert.equal(next.noticeRevision,1); assert.equal(next.notificationTargets.a,false); assert.deepEqual(next.notificationAcks,{}); assert.equal(next.weather.actualSpeed,''); assert.equal(next.checks.wind,false); assert.equal(next.noticeHistory[0].acknowledgements.a,'2026-09-07'); assert.equal(source.date,'2026-09-08'); });
@@ -16,3 +16,6 @@ test('日程変更後は以前の予報値も消す', () => {
   assert.equal(revised.weather.forecastSpeed, '');
   assert.equal(revised.weather.forecastTargetTime, '');
 });
+test('延期のお知らせで伝えた日程どおりの再開は、その連絡記録を引き継ぐ', () => { let next=changeSchedule(plan(),{kind:'延期',date:'2026-09-10',timeWindow:'08:00-09:00'},'t1'); next.notificationTargets.a=true; next=changeSchedule(next,{kind:'再開',date:'2026-09-10',timeWindow:'08:00-09:00'},'t2'); assert.equal(next.status,'planned'); assert.equal(next.cancellation,null); assert.equal(next.noticeRevision,1); assert.equal(next.notificationTargets.a,true); });
+test('延期で伝えた日程と違う再開は、再連絡が必要', () => { let next=changeSchedule(plan(),{kind:'延期',date:'2026-09-10',timeWindow:'08:00-09:00'},'t1'); next.notificationTargets.a=true; next=changeSchedule(next,{kind:'再開',date:'2026-09-11',timeWindow:'08:00-09:00'},'t2'); assert.equal(next.noticeRevision,2); assert.equal(next.notificationTargets.a,false); });
+test('連絡も返信もない予定は、連絡の記録がないと判定する', () => { assert.equal(hasNoticeActivity({ notificationTargets:{ a:false }, notificationResponses:{ a:'未回答' } }),false); assert.equal(hasNoticeActivity(plan()),true); });

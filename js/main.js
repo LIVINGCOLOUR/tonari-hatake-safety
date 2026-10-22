@@ -668,7 +668,7 @@ async function init() {
     import("./services/supabase-auth.mjs?v=20260908-google"),
     import("./services/account-operations.mjs?v=20260725-account-operations"),
   ]);
-  [domainLifecycle, formDrafts] = await Promise.all([import("./domain/plan-lifecycle.mjs?v=20260908"), import("./services/form-drafts.mjs?v=20260908")]);
+  [domainLifecycle, formDrafts] = await Promise.all([import("./domain/plan-lifecycle.mjs?v=20261022"), import("./services/form-drafts.mjs?v=20260908")]);
   supabaseRuntime = supabaseClientService.createSupabaseRuntime({
     config: DEMO_TOOLS_ENABLED ? {} : window.__TONARI_SUPABASE__ || {},
     library: window.supabase,
@@ -985,7 +985,7 @@ function bindEvents() {
     const before = structuredClone(state);
     const previous = structuredClone(activePlan());
     let plan = updatePlanFromForm();
-    if (domainLifecycle.noticeContentChanged(previous, plan)) {
+    if (domainLifecycle.noticeContentChanged(previous, plan) && domainLifecycle.hasNoticeActivity(previous)) {
       if (previous.report?.doneDate) { state = normalizeState(before); showToast("実施記録がある予定は変更できません。新しい予定を追加してください。"); return; }
       plan = domainLifecycle.revisePlan(previous, plan, "変更");
     }
@@ -1751,11 +1751,13 @@ function clearPlanCancellation() {
   if (!form || !activePlan().cancellation) return;
   const before = structuredClone(state);
   try {
-    const plan = domainLifecycle.changeSchedule(activePlan(), { kind: "再開", date: form.elements.newDate.value, timeWindow: form.elements.newTimeWindow.value.trim() });
+    const previous = activePlan();
+    const plan = domainLifecycle.changeSchedule(previous, { kind: "再開", date: form.elements.newDate.value, timeWindow: form.elements.newTimeWindow.value.trim() });
+    const carried = plan.noticeRevision === previous.noticeRevision;
     planRepository.save(plan);
     if (!finishMutation(before, ["cancellationForm"])) return;
     switchView("notify");
-    showToast("再開する日程を保存しました。再開の連絡が必要です。");
+    showToast(carried ? "延期のお知らせで伝えた日程で再開しました。連絡の記録は引き継いでいます。" : "再開する日程を保存しました。再開の連絡が必要です。");
   } catch (error) { state = normalizeState(before); showToast(error.message); }
 }
 
@@ -2768,7 +2770,7 @@ function renderMapView() {
           </div>
           <strong>${escapeHtml(item.name)}</strong>
           <span>${escapeHtml(item.message)}</span>
-          <small>国ガイドラインの確認区分：${escapeHtml(item.guidelineCategory || "周辺の農地・施設")}</small>
+          ${item.guidelineCategory ? `<small>ガイドラインで挙げる対象：${escapeHtml(item.guidelineCategory)}</small>` : ""}
           <small>確認理由：${escapeHtml(riskReasonLabel(item))}</small>
         </div>
       `,
@@ -7529,7 +7531,7 @@ function riskItemsForPlan(plan) {
           : field.type === "water" ? "水道水源・水域"
             : field.type === "bee" ? "養蜂・巣箱"
               : field.type === "facility" ? "住宅・公共施設"
-                : "周辺の農地・施設";
+                : "";
       const windDirection = plan.weather?.actualDirection || plan.weather?.forecastDirection || "";
       const preferenceAllows = domainDisclosure.notifyPreferenceAllows({
         pref: field.notifyPreferenceKey || notifyPreferenceKeyFromLabel(field.notifyPreference),
@@ -7549,20 +7551,20 @@ function riskItemsForPlan(plan) {
       } else if (isOrganicLike && distance <= rules.organicRadius) {
         level = "high";
         requiresNotice = true;
-        message = `周辺確認が必要です。${direction}方向 ${distance}m に${field.name}があります。地域の確認ルールの重点確認距離 ${rules.organicRadius}m 以内です。`;
+        message = `周辺確認が必要です。${direction}方向 ${distance}m に${field.name}があります。確認距離の設定（重点 ${rules.organicRadius}m）以内です。`;
       } else if (isSensitive && distance <= rules.sensitiveRadius) {
         level = "medium";
         requiresNotice = true;
         message = `通知・作業調整の確認対象です。${rules.sensitiveRadius}m 圏内にあります。`;
       } else if (requiresNotice) {
         level = "medium";
-        message = `地域の確認ルール上の連絡候補です。連絡対象距離 ${rules.notifyRadius}m 圏内にあります。`;
+        message = `連絡候補です。連絡距離の設定（${rules.notifyRadius}m）圏内にあります。`;
       }
       const notified = notificationRecord(plan, field.id).delivered;
       const disclosure = disclosureFor(field);
       const visibleName = disclosure === "full" ? field.name : domainDisclosure.maskedFieldLabel(field);
       if (disclosure !== "full" && distance !== null) {
-        if (level === "high") message = `周辺確認が必要です。${direction}方向 ${distance}m に${visibleName}があります。地域の確認ルールの重点確認距離 ${rules.organicRadius}m 以内です。`;
+        if (level === "high") message = `周辺確認が必要です。${direction}方向 ${distance}m に${visibleName}があります。確認距離の設定（重点 ${rules.organicRadius}m）以内です。`;
         else if (level === "medium") message = `${direction}方向 ${distance}m の${visibleName}が通知・作業調整の確認対象です。`;
       }
       return {
@@ -7624,7 +7626,7 @@ function notificationLabel(plan) {
   const done = targets.filter((target) => target.notified).length;
   if (!planFieldResolution(plan).resolved) return "散布する畑を選択してください";
   if (!targets.length) return "登録済みの連絡対象なし・周辺の確認が必要";
-  return `${done}/${targets.length}件 連絡記録あり`;
+  return `連絡記録 ${done}/${targets.length}件`;
 }
 
 function activeCheckItems() {
@@ -8825,9 +8827,9 @@ function createSampleState() {
     plannedSpeed: "3.0m/s",
     pesticideRegistration: "登録番号サンプルB",
     preHarvestDays: "使用条件確認中",
-    amount: "120L/10a",
-    dilution: "1000倍",
-    ratePer10a: 120,
+    amount: "1.6L/10a",
+    dilution: "16倍",
+    ratePer10a: 1.6,
     rateUnit: "L",
     areaHa: 1.4,
     sprayWidthM: 4,
@@ -8985,9 +8987,9 @@ function createSampleState() {
     plannedSpeed: "3.5m/s",
     pesticideRegistration: "肥料のため農薬登録番号なし",
     preHarvestDays: "－",
-    amount: "100L/10a",
-    dilution: "500倍",
-    ratePer10a: 100,
+    amount: "2L/10a",
+    dilution: "10倍",
+    ratePer10a: 2,
     rateUnit: "L",
     areaHa: 3.6,
     sprayWidthM: 9,
@@ -9032,7 +9034,7 @@ function createSampleState() {
       incident: "なし",
       inquiry: "なし",
       reportType: "通常報告",
-      actualAmount: "100L/10a",
+      actualAmount: "2L/10a",
       altitudeNotes: "高度要確認区間なし",
       outsideFlight: "なし",
       reportNotes: "化学肥料の葉面散布。有機ほ場への飛散なしを確認。",
@@ -9360,6 +9362,6 @@ function renderSaveStatus() {
   const node = $("#saveStatus");
   if (!node) return;
   const cloud = Boolean(supabaseSession?.user?.id && cloudSyncEnabled());
-  node.textContent = lastSaveFailed ? "保存できていません。入力はこの画面に残っています。もう一度保存してください。" : cloud ? supabaseSyncState.message : "この端末に保存・自動送信はしません";
+  node.textContent = lastSaveFailed ? "保存できていません。入力はこの画面に残っています。もう一度保存してください。" : cloud ? supabaseSyncState.message : "この端末に保存します（自動送信はしません）";
   node.dataset.failed = String(lastSaveFailed);
 }
